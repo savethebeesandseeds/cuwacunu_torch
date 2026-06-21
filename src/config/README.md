@@ -4,6 +4,18 @@
 paths. Grammar files live under `src/config/grammar/*.bnf`; authored DSL
 payloads live at the config root.
 
+Path-valued keys ending in `_path` are authored relative to the directory that
+contains `.config` unless they are absolute. Runtime and protocol loaders
+canonicalize those paths before reading files, so the central bundle does not
+repeat `/cuwacunu/src/config` on every entry.
+Graph-first protocol optional path defaults first look beside the active
+`.config`; when a partial override config omits a default file, they fall back
+through the canonical default config root rather than carrying per-file absolute
+paths.
+Hero policy DSLs use the same local-bundle convention for their own config
+bundle pointers: `config_root = .`, `managed_roots = .`, and
+`default_config_path = .config` resolve beside the owning `hero.*.dsl` policy.
+
 Current migrated sections:
 
 - `UJCAMEI`: source registry, source retrieval channel, and source cursor DSL
@@ -17,6 +29,16 @@ Current migrated sections:
   Runtime wave selection, and Lattice target/split paths.
 - `GUI`: `cuwacunu_cmd`/`iinuji_cmd` terminal Shell Logs defaults plus image
   and animation asset paths.
+
+The Ujcamei source registry supports compact `KLINE_SOURCE_SET` blocks for
+repeated instrument/interval families. Decode expands those blocks into ordinary
+source rows with deterministic paths; `SOURCE_DEFAULTS.SOURCE_ROOT` supplies the
+shared root for those expansions, and `SOURCE_DEFAULTS.KLINE_INTERVALS` supplies
+the common interval list unless a source set overrides it. The table form
+remains available for non-kline or one-off source files. The retrieval-channel
+DSL similarly supports
+`CHANNEL_SET` for repeated rows that share active state, record type, window
+lengths, channel weight, and normalization policy.
 
 The `[ACCOUNTING]` section currently defines
 `accounting_numeraire_node_id`. This value names the ordinary graph node used
@@ -53,7 +75,9 @@ schedule, policy DSL/net/features/jkimyei identity, action distribution, reward
 contract, execution profile, graph order, target-node universe, and
 checkpoint/update evidence. Environment replay profiles remain
 historical-world profiles: they drive reset/step/reward over a replay source
-and call Cajtucu paper execution.
+and call Cajtucu paper execution. The replay Environment DSL owns stable replay
+world/action numerics such as initial equity, max per-node target weight, and
+L1 turnover bound.
 The default graph-first path is now the strict channel-preserving pair:
 `wikimyei.representation.encoding.vicreg` and
 `wikimyei.inference.expected_value.mdn`. The MDN path consumes the
@@ -89,10 +113,13 @@ binds `kikijyeba.environment.policy_input.v1`,
 `target_node_weights_simplex.v1`,
 `masked_dirichlet_simplex.v1`,
 `kikijyeba.environment.action.target_node_weights.v1`, and
-`kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_drawdown.v1`; its `.net`
-binds the V1 feature manifest, shared node/global/risk encoder shape,
+`kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_drawdown.v1`;
+its `.net` binds the V1 feature manifest, shared node/global/risk encoder shape,
 mask-aware pooling, separate policy/value heads, `node_weight_logits` output
-head, and default action distribution. The `.features.dsl` freezes actor-visible
+head, Dirichlet distribution parameterization, and the logistic-normal candidate
+parameterization. The net decoder derives the V1 action adapter,
+action-distribution identity, and PPO execution gate from the policy surface
+instead of reauthoring them in the net file. The `.features.dsl` freezes actor-visible
 node/global/risk feature names and evidence-only identity fields. V1 policy
 input exposes compressed `AllocationBelief` distributional summaries, portfolio
 weights, execution/cost state, masks, an accounting-numeraire node flag, and a
@@ -100,9 +127,22 @@ compact cross-node risk block;
 raw observation anchor indexes and raw knowledge timestamps remain evidence
 identity fields and are not actor-visible global features. It does not expose
 raw MDN tensors or the full scenario bank by default. Its
-`.jkimyei` is `policy_graph_node_allocation_ppo_v0`, uses `OPTIMIZER =
-ppo_clip`, requires `causal_walk_forward_training.v1`, and keeps live capital
-forbidden. Runtime supports the guarded `policy_kind=ppo_policy_adapter.v1`
+`.jkimyei` is `policy_graph_node_allocation_ppo_v0`; the training-spec decoder
+derives `ppo_clip`, `causal_walk_forward_training.v1`, the causal-schedule
+requirement, the PPO execution gate, and `ppo_v0_policy_adapter` checkpoint kind
+from that task while the profile owns the stable PPO hyperparameters,
+minibatch/gradient/cadence knobs, and seed. Live capital remains forbidden.
+`src/config/kikijyeba.protocol.cwu_02v.dsl` owns the canonical
+`NO_LOOKAHEAD_CONTRACT` block. Config-bundle loading derives the
+representation, MDN, and policy no-lookahead/order ids, digests, component
+assembly ids from the owning component DSLs, and component roles and
+serving-order indexes from the protocol-owned contract; the training-spec
+decoder also derives each training version token and freeze policy from `TASK`
+and supplies the canonical v1 visibility, lane, valid-from, and
+artifact-provenance policies for every root `.jkimyei` profile.
+Runtime
+supports the guarded
+`policy_kind=ppo_policy_adapter.v1`
 trainer that writes actor/critic/optimizer, rollout/update, validation, and
 Lattice-readable fact artifacts without policy-quality or market-readiness
 authority. Without `report_path` or `replay_job_dir`, that Runtime path uses an
@@ -118,16 +158,41 @@ reports remain explicitly labeled as missing that evidence. With
 `replay_job_dir`, Runtime can
 dispatch `cuwacunu_exec --replay-from-job-dir` with graph-node allocation and
 `on_policy_sample`, then ingest the generated report as
-`collection_source=kikijyeba_on_policy_replay`. Runtime now writes bounded
-post-update actor/critic checkpoints with learned graph-node logits and a value
-estimate derived from PPO V0 rollout evidence. PPO policy-training requests must
-bind policy DSL/net/features/jkimyei digests, target-node universe digest,
-actor/critic architecture and checkpoint digests, optimizer state, PPO config,
-rollout collection evidence, PPO update-report evidence, validation rollout
-evidence, and PPO hyperparameters before they can satisfy policy-training
-artifact readiness. Runtime folds those policy-source and environment bindings
-into a `policy_operator_surface_digest`, which is the policy-training
-component-spawn identity used by Runtime layout and Lattice exposure.
+`collection_source=kikijyeba_on_policy_replay`. Runtime derives the parent
+replay report's `execution_profile_digest` and `policy_set_digest` into the
+policy-training contract when `replay_job_dir` points at a completed replay job
+or a digest-bound replay report under configured Runtime roots, rejecting
+authored drift against that report. Runtime also derives a
+`certified_replay_bank_manifest.v1` from the completed replay job and binds the
+bank manifest digest, policy experience-set digest, chunk count, sample count,
+coverage range, and experience mode in the rollout report, policy report,
+performance profile, execution packet, and `runtime.policy_training.fact`.
+Runtime now writes bounded post-update actor/critic checkpoints with learned
+graph-node logits and a value estimate derived from PPO V0 rollout evidence.
+PPO policy-training requests must
+bind or derive policy DSL/net/features/jkimyei digests, the policy `.jkimyei`
+no-lookahead/order contract refs, target-node universe digest,
+actor/critic architecture digests, and PPO hyperparameters before execution.
+Runtime-owned output checkpoint, optimizer-state, rollout-collection,
+PPO update, validation rollout, and policy-quality report digests remain blank
+in sparse pre-execution contracts and are bound only after Runtime writes those
+artifacts. With `config_path` present, Runtime derives the policy DSL digest,
+feature-manifest digest, policy net digest, action distribution config digest,
+policy architecture digest, and actor/critic architecture digests from the
+configured graph-node allocation policy source files. The configured
+graph-node allocation `.jkimyei` owns `ppo_learning_rate` through
+`LEARNING_RATE` plus gamma, GAE lambda, clip epsilon, KL target, entropy and
+value-loss coefficients, epochs per rollout, minibatch size, max-gradient norm,
+policy-training `max_steps`, and the training seed; Runtime derives the
+contract fields from that profile,
+derives `linear_transaction_cost_rate` and policy-training `max_parallel_jobs`
+from the configured Environment rollout profile,
+derives `ppo_config_digest` from the bound PPO hyperparameters when the full V0
+input set is present, and reports the resulting actor/critic learning rates in
+PPO update and performance profile artifacts. Runtime folds those policy-source
+and environment bindings into a `policy_operator_surface_digest`, which is the
+policy-training component-spawn identity used by Runtime layout and Lattice
+exposure.
 Policy acceptance remains a separate post-training Environment evidence
 sidecar: `hero.environment.certify.policy_acceptance` takes direct
 `policy_training_job_dir`, `acceptance_id`, and `certification_evidence`
@@ -202,7 +267,8 @@ action/execution, computes decomposed reward after ledger update, and emits
 audit-only replay artifacts. Actions use
 `kikijyeba.environment.action.target_node_weights.v1`: target weights over the
 ordered graph-node action universe, including the accounting numeraire node.
-Reports persist bundle/policy task
+The contract also owns the replay initial equity and target-action bounds used
+by Runtime-backed environment runs. Reports persist bundle/policy task
 identity, requested/resolved parallelism, aggregate time-law/projection
 counters, and `direct_edge_realized_return_truth_v1` evidence for realized
 asset/numeraire returns. Runtime may write replay artifacts for MDN run jobs, but
@@ -240,18 +306,15 @@ and records both coordinates in manifests, states, reports, and component stream
 `.lls` payloads.
 
 MDN training is graph-slot centered and expects a frozen representation encoder.
-`wikimyei.inference.expected_value.mdn.jkimyei` should normally provide
-`INPUT_REPRESENTATION_CHECKPOINT`; `ALLOW_UNTRAINED_REPRESENTATION=true` is an
-explicit smoke-mode escape hatch for running the pipeline before a VICReg
-checkpoint exists. `INPUT_REPRESENTATION_CHECKPOINT` and
-`INPUT_MDN_CHECKPOINT` are runtime model-state inputs. They are recorded and
-proven through manifests/reports/exposure facts/checkpoint lineage, and must not
-change the protocol contract fingerprint. `ALLOW_UNTRAINED_REPRESENTATION`
-is runtime model-state admission policy and also does not change the protocol
-contract fingerprint. Keep the repository default MDN
-`.jkimyei` checkpoint fields empty; operational waves should receive concrete
-checkpoint paths through Marshal-resolved Runtime handoffs or explicit
-Runtime-local debug overlays. MDN run/evaluation also requires
+`INPUT_REPRESENTATION_CHECKPOINT` and `INPUT_MDN_CHECKPOINT` are runtime
+model-state inputs. They are recorded and proven through
+manifests/reports/exposure facts/checkpoint lineage, and must not change the
+protocol contract fingerprint. `ALLOW_UNTRAINED_REPRESENTATION` is runtime
+model-state admission policy and also does not change the protocol contract
+fingerprint. The repository default MDN `.jkimyei` omits those runtime input
+fields; operational waves should receive concrete checkpoint paths through
+Marshal-resolved Runtime handoffs or explicit Runtime-local debug overlays.
+MDN run/evaluation also requires
 `INPUT_MDN_CHECKPOINT`; the runtime rejects evaluation with a fresh untrained
 channel-context MDN.
 
@@ -326,8 +389,11 @@ Reusable wave profiles now live inside the single canonical wave catalog:
   `train_core_mtf_jepa_mae_vicreg`, `train_core_channel_mdn`,
   `cwu_02v_channel_validation_eval_mdn_1800_2050`,
   `cwu_01v_validation_eval_channel_mdn`,
-  `cwu_02v_validation_eval_channel_mdn`, `policy_training_pre_ppo_noop`, and
-  `policy_training_ppo_v0`
+  `cwu_02v_validation_eval_channel_mdn`, and `policy_training_ppo_v0`
+
+Train-core training waves use the bounded `train_core.0_1600` source cursor so
+their Runtime evidence matches the Lattice `train_core` split instead of
+full-corpus pretraining evidence.
 
 The canonical `src/config/.config` points `[HERO].runtime_wave_dsl_path` at this
 same file and selects the active block with `[HERO].runtime_wave_id`. The
@@ -339,20 +405,104 @@ launch range through Runtime handoff wave fields, or the equivalent
 `cuwacunu_exec --source-range ...` flags, without mutating the wave or cursor
 catalog. Effective ranges are not protocol identity.
 
-The durable learned-policy contract is
-`src/config/policy_training_ppo_v0.contract`. It binds the current replay,
-forecast evaluation, observer, causal-schedule, reward, execution-profile,
-action-distribution, and policy DSL/net/features evidence into the
-`policy_training_ppo_v0` wave while keeping live execution disabled. The older
-`src/config/policy_training_pre_ppo_noop.contract` remains only as a bounded
-contract-path smoke reference; it is not the current learned-policy path.
+The learned-policy activation request is derived by Runtime from the active
+`policy_training_ppo_v0` wave. There is no checked-in policy-training
+activation contract under `src/config`: dry-runs derive the config root, replay
+source, experiment label, resume mode, and finite execution bounds from the
+Runtime context, configured policy profile, split policy, and completed
+compatible replay artifacts while keeping live execution disabled. Runtime
+derives the contract's policy-training `accounting_numeraire_node_id` from
+`[ACCOUNTING].accounting_numeraire_node_id`, `target_node_ids` from
+`src/config/kikijyeba.topology.graph.dsl`, `target_node_universe_digest` from
+the graph/accounting pair, policy input/action/reward surface values and
+policy-source identity digests from
+`src/config/wikimyei.policy.portfolio.graph_node_allocation.dsl`, policy
+net/feature source identities from the configured graph-node allocation net and
+feature manifest, `policy_jkimyei_digest`, `training_config_digest`, and
+policy-training `max_steps` from the configured graph-node allocation
+`.jkimyei`, policy id/kind, training-schedule mode, causal schedule digest,
+snapshot-family digest, and selector policy digests from the selected
+policy-training Runtime wave,
+representation/MDN bundle component ids from the active protocol DSL, and
+`linear_transaction_cost_rate` plus policy-training `max_parallel_jobs` from the
+configured Environment rollout profile. Runtime derives
+`initial_equity_numeraire`, `max_node_weight`, and `max_turnover_l1` from the
+configured Environment replay contract.
+If
+`[HERO].runtime_wave_id` currently selects a
+non-policy wave, Runtime uses the unique `JOB_KIND=policy_training`
+`WAVE_SETTINGS` block in the same catalog and fails closed if that is
+ambiguous. Policy-training waves bind `TRAIN_SPLIT`, `VALIDATION_SPLIT`, and
+`TEST_SPLIT`; Runtime derives the split-policy fingerprint plus the
+training/validation/test range digests from those names and
+`[HERO].lattice_splits_dsl_path`. Runtime derives the policy-execution target
+id for the
+`policy_training_artifact_ready` artifact-readiness target, derives the
+PPO advantage-normalization policy from the Runtime PPO update semantics,
+derives the Runtime-owned purged-embargo policy fingerprint, derives the
+policy-execution target anchor range from `validation_range_digest`, defaults an
+omitted embargo purged window from that policy-execution target range,
+derives the policy-execution no-lookahead schema/digests from the active
+protocol DSL, derives representation/MDN bundle component ids from the active
+protocol DSL, and
+derives protocol-contract and graph-order
+fingerprints from the configured graph-first protocol bundle. When
+`replay_job_dir` is present, Runtime derives the source cursor token, parent
+forecast/observer/allocation fact digests, parent forecast artifact digest,
+parent replay report digest, and replay batch-index digest from the completed
+replay job artifacts. Runtime also derives
+the representation/MDN bundle checkpoint and generation-vector inputs from the
+replay forecast fact. Fresh-spawn PPO parent checkpoint, parent policy
+generation, parent policy generation-vector, and seed influence bounds are
+Runtime-derived from `resume_mode=fresh_spawn`; they are not hand-authored
+operator config. Runtime derives
+policy-execution parent replay input mirrors from the parent replay environment
+identity when those mirror fields are omitted, and derives the
+policy-execution consumed artifact list from the policy-execution input locks
+and consumed checkpoint list from bundle checkpoint inputs. Runtime derives the
+consumed generation-vector list from bundle generation inputs, replay forecast
+lineage, while parent policy generation-vector lineage remains in its dedicated
+field. Runtime also derives
+the trained-against representation/MDN mirrors from the bundle generation
+inputs and policy output fit/valid-from anchors from the policy-execution target
+range. A materialized policy-training proof contract or handoff must not author
+duplicate
+accounting-numeraire, graph-node, target-node-universe digest, policy-surface
+schema/reward, policy source digests, policy architecture digests, wave policy
+identity, wave schedule/snapshot-family selector digests, action distribution
+config digest,
+policy operator-surface/component assembly fingerprint, Environment replay
+initial-equity/action-bound defaults, protocol id,
+protocol-contract/graph-order fingerprints, protocol no-lookahead,
+protocol-owned bundle component ids,
+policy/training `.jkimyei` digests, PPO hyperparameter fields, random seed, PPO
+config digest, PPO advantage-normalization policy,
+replay-artifact identities, policy-execution target id, policy-execution parent
+replay input mirrors, policy-execution consumed artifact/checkpoint lists,
+trained-against bundle
+mirrors, policy-execution target anchor ranges, policy output anchor mirrors,
+Runtime-emitted checkpoint/report output digests,
+schema/job-kind, default
+action-distribution, training-range mirror fields, default
+causal schedule/snapshot selector values, or Runtime-owned purged-embargo policy
+fingerprints. The policy
+`.jkimyei` profile also
+keeps action distribution, causal-schedule identity, the PPO execution gate, and
+checkpoint kind out of the training surface; those identities belong to the task,
+Runtime wave, policy DSL, decoded net defaults, and Runtime policy-training
+contract. The checked-in PPO V0 profile currently pins `LEARNING_RATE=0.00002`
+and `PPO_TARGET_KL=0.03`. The performance profile remains the authority for
+each run. The latest diagnostic run is KL-stable and still flags low certified
+replay sample count, so broader certified replay generation is the next
+bottleneck rather than simply raising PPO `MAX_STEPS`.
 
 Config-profile audit policy:
 
 - `src/config/.config` is the canonical default config and Config Hero validates
   its path map.
-- There should be only one checked-in `.config` file. The train-core operator
-  directory may contain durable `.jkimyei` policies, but not config copies.
+- There should be only one checked-in `.config` file. Train-core long training
+  policies are the canonical root `.jkimyei` files; do not keep separate
+  operator copies or config copies.
 - Temporary config copies are still discouraged for real training because
   downstream Runtime/Lattice evidence must be recoverable from repo-local
   config.
@@ -399,7 +549,20 @@ not give Marshal independent execution, scheduling, proof, model-selection,
 checkpoint-selection, or config-editing authority. Marshal exposes a small
 deterministic coordination surface over Lattice target state and Runtime
 policy/wave evidence, while Runtime remains the executor and Lattice remains the
-proof authority.
+proof authority. Prepare profiles may require structured Lattice certificate
+state for readiness-grade gates; for no-lookahead this means a passing
+`no_lookahead_artifact_provenance.v1` state for the exact target/range/evidence
+snapshot, not merely a certificate ref.
+Checkpoint inputs used by that proof must now be generation-backed:
+`lattice.checkpoint.fact` embeds
+`generation_manifest_schema=component_checkpoint_generation_manifest.v1` and
+binds a `runtime.component_training_update.fact`; Lattice recomputes the
+checkpoint influence from parent generation manifests plus the producing update
+instead of accepting a declared clean checkpoint frontier.
+Policy-training facts also carry the policy `.jkimyei` no-lookahead/order
+contract refs. Lattice rejects readiness-grade policy evidence when those refs
+are missing, drifted from the canonical cwu_02v contract, or inconsistent with
+the contract digest carried by the no-lookahead evidence.
 `hero.marshal.inspect.facts` is the read-only path for Lattice
 artifact-readiness targets and fact-family summaries. It can relay current
 Lattice inspect panels
@@ -416,21 +579,51 @@ operators to inspect evidence instead of preparing Runtime handoffs, dispatch
 validation, or dry-run previews.
 
 The lattice target DSL is now profile/guard aware. `LATTICE_PROFILE` captures
-reusable readiness defaults, `LATTICE_GUARD` remains available for low-level
+reusable target defaults, including artifact-readiness class/scope/component
+defaults, `LATTICE_GUARD` remains available for low-level
 forbidden exposure policy, and `LATTICE_TARGET` binds those pieces to a concrete
 split or source range. Validation/test holdout protection should usually live in
 `hero.lattice.splits.dsl` through `PROTECT_FROM_USES`; targets can opt into
 that default with `PROTECT_SPLIT`. The preferred target spellings are
-`SUBJECT_COMPONENT`, `OVER_SPLIT`, `WAVE_MODE`, and `PLAN_MAX_ATTEMPTS`;
-compatibility aliases still load so older flat targets remain valid.
+`OVER_SPLIT`, `WAVE_MODE`, and `PLAN_MAX_ATTEMPTS`; compatibility aliases still
+load so older flat targets remain valid. Readiness targets derive
+`SUBJECT_COMPONENT` from `TARGET_KIND` and reject mismatches, so only artifact
+or non-standard proof surfaces need to author a component explicitly.
+Channel-MDN leakage guards can use
+`LEAKAGE_GUARD_SCOPE=channel_mdn_validation` or
+`LEAKAGE_GUARD_SCOPE=channel_mdn_test` to lower the standard guard class,
+component, source range, protected split, run mode, and zero-attempt plan
+defaults without reauthoring them on each target.
 The DSL also accepts clause blocks keyed by `TARGET_ID`: `LATTICE_DEPENDS`,
 `LATTICE_REQUIRES`, `LATTICE_FORBIDS`, `LATTICE_PLAN`, and `LATTICE_WARN`. In
 v0 these clauses are proof-language syntax that lower into the existing target
 evaluator fields; they do not execute waves and they do not make the lattice a
-scheduler. `LATTICE_WARN` is explicitly non-blocking.
+scheduler. `LATTICE_DEPENDS` defaults to the standard
+`loaded_representation_checkpoint` binding with exact loaded-checkpoint matching;
+only non-standard dependencies need to declare those fields. Exposure-coverage
+requirements and exposure-domain warnings inherit the target `OVER_SPLIT` or
+artifact-scope split when the clause omits `SPLIT`; representation targets
+default to `observed_input`, channel-MDN training targets default to
+`target_supervision`, and evaluation-readiness targets default to
+`evaluation_metric` with non-mutating warning effect. Clauses only need
+`SPLIT`, `USE`, or `EFFECT` when intentionally overriding those target-derived
+defaults. Repeated requirement clauses with the same fields may use
+`LATTICE_REQUIRES_SET` with paired `TARGET_IDS` and `REQUIREMENT_IDS`; it lowers
+to ordinary `LATTICE_REQUIRES` clauses before validation and fingerprinting.
+Artifact fact warnings for forecast-baseline, forecast-evaluation,
+observer-belief, and allocation-engine targets derive `KIND` from
+`SUBJECT_FACT_FAMILY`. Repeated warning clauses with the same target and
+threshold direction may use `LATTICE_WARN_SET` with paired `WARNING_IDS`,
+`METRICS`, and either `ABOVE_VALUES` or `BELOW_VALUES`; it lowers to ordinary
+`LATTICE_WARN` clauses before validation.
+`LATTICE_WARN` is explicitly non-blocking.
 Artifact-readiness targets use `TARGET_CLASS=artifact_readiness`,
 `SUBJECT_FACT_FAMILY`, and optional `PROOF_KIND` rather than expanding
-`TARGET_KIND`. The default target catalog declares the first cwu_02v
+`TARGET_KIND`. `ARTIFACT_SCOPE=cwu_02v_validation` is the compact authoring
+form for the current artifact-proof scope and may be inherited through a
+`LATTICE_PROFILE`; it lowers to
+`PROTOCOL_ID=cwu_02v`, `SOURCE_RANGE=anchor_index`, and
+`OVER_SPLIT=validation_holdout`. The default target catalog declares the first cwu_02v
 validation-scope artifact proofs as `target_transform_contract_ready`,
 `forecast_baseline_artifact_ready`, `forecast_eval_artifact_ready`,
 `observer_belief_artifact_ready`, and `allocation_artifact_ready`. Policy gates
@@ -475,13 +668,17 @@ existing targets.
 Config inspect tools expose their small selectors directly. Config apply tools
 also expose their operation-specific arguments directly.
 
-Runtime Hero is the agent-facing control and inspection surface for
-`/cuwacunu/.build/exec/cuwacunu_exec`. It decodes the active wave, performs
+Runtime Hero is the agent-facing control and inspection surface for the
+repo-local executable authored as `../../.build/exec/cuwacunu_exec` in
+`hero.runtime.dsl`. Relative Hero policy paths resolve beside their owning
+`hero.*.dsl` file; in the default checkout that executable resolves to
+`/cuwacunu/.build/exec/cuwacunu_exec`. Runtime decodes the active wave, performs
 guarded dry-runs/executions, and reads runtime artifacts under the canonical
-execution root `/cuwacunu/.runtime/cuwacunu_exec`. The parent
-`/cuwacunu/.runtime` is disposable runtime state; new runtime subtrees should
-live under the canonical execution root unless a policy explicitly introduces a
-separate owner. Runtime manifests record config
+execution root authored as `../../.runtime/cuwacunu_exec`, which resolves to
+`/cuwacunu/.runtime/cuwacunu_exec` in the default checkout. The parent
+repo-local `.runtime` tree is disposable runtime state; new runtime subtrees
+should live under the canonical execution root unless a policy explicitly
+introduces a separate owner. Runtime manifests record config
 provenance and component spawn links: `config_bundle_id`, `config_receipt_id`,
 `component_spawn_registry_id`, `component_family_id`,
 `component_operator_surface_digest` for representation/MDN component waves,
@@ -498,14 +695,13 @@ Developer runtime reset is owned by Runtime Hero as `hero.runtime.reset`, not by
 Config Hero. `mode=plan` reports the exact runtime-root entries it
 would clear. `mode=execute` requires `allow_dev_nuke=true` plus a
 direct optional `runtime_root` selector and `backup` override when needed.
-Checked-in policies allow clearing
-`/cuwacunu/.runtime` but keep backup snapshots disabled by default so a reset
-does not leave legacy backup folders under the disposable runtime tree.
-Operators can explicitly enable backups to the configured
-`/cuwacunu/.backups/runtime_dev_nuke` root, which is outside `runtime_root` and
-under the repo-level ignored `.backups` area. Backup mode first tries an atomic
-move into the snapshot and falls back to recursive copy then remove when rename
-is not available across filesystems.
+Checked-in policies allow clearing the repo-local `.runtime` tree but keep
+backup snapshots disabled by default so a reset does not leave legacy backup
+folders under the disposable runtime tree. Operators can explicitly enable
+backups to the configured `../../.backups/runtime_dev_nuke` root, which is
+outside `runtime_root` and under the repo-level ignored `.backups` area. Backup
+mode first tries an atomic move into the snapshot and falls back to recursive
+copy then remove when rename is not available across filesystems.
 
 `hero.lattice.targets.dsl` sits one level above waves and is pointed to by
 `[HERO].lattice_targets_dsl_path`. It declares read-only readiness targets over
@@ -613,11 +809,12 @@ exposure-load summaries, filtered node-support summaries,
 representation-health facts, and anchor-domain facts. Availability booleans mark
 which summary envelope is a real warning basis and which is only an empty
 placeholder. Every warning kind may use `SPLIT` or explicit
-`ANCHOR_INDEX_BEGIN`/`ANCHOR_INDEX_END`; warning measurements are scoped to that
-anchor interval, defaulting to the target range. Warning interval overlap may
-use anchor-range visibility when trusted completed coverage is unavailable; that
-does not make untrusted coverage satisfy readiness. Hero JSON exposes the
-resolved interval as `warning_results[].warning_anchor_range`;
+`ANCHOR_INDEX_BEGIN`/`ANCHOR_INDEX_END`; when a warning omits both, the compiler
+inherits the target `OVER_SPLIT`/artifact-scope split where one exists and
+otherwise falls back to the target range. Warning interval overlap may use
+anchor-range visibility when trusted completed coverage is unavailable; that does
+not make untrusted coverage satisfy readiness. Hero JSON exposes the resolved
+interval as `warning_results[].warning_anchor_range`;
 `hero.lattice.inspect.target` exposes the same pre-evaluation scope as
 `warning_scope_previews[].resolved_warning_anchor_range`; and
 `warning_anchor_scope_policy_vocabulary` describes the visibility-only fallback
@@ -1027,8 +1224,13 @@ that `plan_basis`, `suggested_wave`, and `PLAN_INPUT_*` are advisory projections
 from deficits, not evidence, scheduler authority, contract identity, or
 execution. `PLAN_INPUT_*` carries symbolic `latest_satisfying` source-target
 hints; the resulting runtime report remains the proof of the concrete
-checkpoint path that was loaded. `PLAN_MAX_ATTEMPTS`/`MAX_WAVES` only guard
-whether another suggestion is advertised.
+checkpoint path that was loaded. `LATTICE_PLAN` may keep only the advisory
+`PLAN_ID` when the target/profile already declares the component, mode, split,
+and attempt budget. Channel-MDN training plan clauses derive
+`PLAN_INPUT_REPRESENTATION_CHECKPOINT` from `UPSTREAM_TARGET_ID`, and evaluation
+plans derive `PLAN_INPUT_MDN_CHECKPOINT` from `EVALUATED_CHECKPOINT_SOURCE`
+unless the clause explicitly overrides those hints. `PLAN_MAX_ATTEMPTS` /
+`MAX_WAVES` only guard whether another suggestion is advertised.
 `deficit_vector_planning_summary` self-checks the combined planning boundary:
 12 ordered deficit priority classes, 5 plan-advice policy rows, 4 advisory
 planning surfaces, zero evidence/contract-identity authority, zero Lattice

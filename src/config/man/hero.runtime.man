@@ -22,35 +22,35 @@ nuance = Selects a named RUNTIME_PROFILE block from the same Runtime policy file
 key = runtime_exec_path
 scope = Runtime Hero policy
 type = path
-default = /cuwacunu/.build/exec/cuwacunu_exec
+default = ../../.build/exec/cuwacunu_exec
 nuance = Runtime Hero shells out to this executable instead of embedding the heavy graph runtime.
 
 [FIELD default_config_path]
 key = default_config_path
 scope = Runtime Hero policy
 type = path
-default = /cuwacunu/src/config/.config
-nuance = Default config used for runtime tools when neither tool args nor --global-config override it.
+default = .config
+nuance = Default config used for runtime tools when neither tool args nor --global-config override it. Relative values resolve beside src/config/hero.runtime.dsl.
 
 [FIELD runtime_root]
 key = runtime_root
 scope = Runtime Hero policy
 type = path
-default = /cuwacunu/.runtime/cuwacunu_exec
+default = ../../.runtime/cuwacunu_exec
 nuance = Job discovery starts here.
 
 [FIELD runtime_wave_dsl_bnf_path]
 key = runtime_wave_dsl_bnf_path
 scope = [HERO] global config
 type = path
-default = /cuwacunu/src/config/grammar/hero.runtime.wave.dsl.bnf
+default = grammar/hero.runtime.wave.dsl.bnf
 nuance = Grammar for the canonical Runtime wave catalog.
 
 [FIELD runtime_wave_dsl_path]
 key = runtime_wave_dsl_path
 scope = [HERO] global config
 type = path
-default = /cuwacunu/src/config/hero.runtime.wave.dsl
+default = hero.runtime.wave.dsl
 nuance = Canonical Runtime wave catalog. Runtime reads this from [HERO], not [KIKIJYEBA].
 
 [FIELD runtime_wave_id]
@@ -64,7 +64,7 @@ nuance = Active WAVE_SETTINGS.WAVE_ID. If omitted, Runtime uses WAVE_SELECTION.A
 key = allowed_job_roots
 scope = Runtime Hero policy
 type = path_list
-default = /cuwacunu/.runtime/cuwacunu_exec,/tmp
+default = ../../.runtime/cuwacunu_exec,/tmp
 nuance = Explicit job_dir and artifact path args must stay under these roots.
 
 [FIELD default_dry_run]
@@ -107,20 +107,20 @@ key = dev_nuke_backup_enabled
 scope = Runtime Hero policy
 type = bool
 default = false
-nuance = When true, runtime root entries are moved into a backup snapshot before they disappear from the active runtime root. The checked-in policies keep this false so `/cuwacunu/.runtime` stays disposable and does not accumulate backup folders.
+nuance = When true, runtime root entries are moved into a backup snapshot before they disappear from the active runtime root. The checked-in policies keep this false so `../../.runtime` stays disposable and does not accumulate backup folders.
 
 [FIELD dev_nuke_backup_root]
 key = dev_nuke_backup_root
 scope = Runtime Hero policy
 type = path
-default = /cuwacunu/.backups/runtime_dev_nuke
+default = ../../.backups/runtime_dev_nuke
 nuance = Backup snapshots are written below this root as <runtime-root-leaf>/<stamp>/ when backup is explicitly enabled. The default is outside runtime_root and under the repo-level ignored .backups area. Runtime first tries an atomic rename into the snapshot and falls back to recursive copy then remove when rename is not available across filesystems.
 
 [FIELD allowed_dev_nuke_roots]
 key = allowed_dev_nuke_roots
 scope = Runtime Hero policy
 type = path_list
-default = /cuwacunu/.runtime
+default = ../../.runtime
 nuance = Explicit runtime_root arguments to hero.runtime.reset must resolve within one of these roots. This lets operators wipe either the whole disposable runtime tree or the canonical execution root.
 
 [FIELD max_capture_bytes]
@@ -149,17 +149,20 @@ hero.runtime.inspect.wave nuance = The checked-in wave catalog may contain multi
 hero.runtime.inspect.wave nuance = PROTOCOL_STATUS, SUCCESSOR_PROTOCOL, and PROTOCOL_WARNING are protocol metadata fields surfaced by Runtime status/manifests. cwu_01v should warn and recommend cwu_02v for new training/evaluation.
 hero.runtime.inspect.wave nuance = WAVE_SETTINGS declares one exact PROTOCOL. Runtime reports wave_protocol_id, wave_protocol_match, and wave_protocol_warning; execution fails closed when WAVE_SETTINGS.PROTOCOL does not match the active protocol.
 hero.runtime.inspect.wave nuance = SOURCE_CURSOR_ID selects a protocol-neutral source cursor from [UJCAMEI].ujcamei_source_cursor_dsl_path. The decoded active wave reports source_cursor_id, cursor kind/scope, source_range, bounds, source_order, job_kind, train_target, and model_state_inputs.
+hero.runtime.inspect.wave nuance = Policy-training WAVE_SETTINGS may bind CAUSAL_SCHEDULE_DIGEST, SNAPSHOT_FAMILY_DIGEST, selector policy digests, TRAIN_SPLIT, VALIDATION_SPLIT, and TEST_SPLIT. Runtime reports those selectors and split ids as the policy-training wave owner.
 hero.runtime.job nuance = Runtime manifests split job_stable_id from immutable job_attempt_id. The stable id names the launch intent; each default execution writes a fresh attempt path so reports/checkpoints are not silently overwritten. Explicit job_dir launches fail closed when prior job artifacts are already present.
 hero.runtime.inspect.wave nuance = Cursor SOURCE_RANGE accepts all, anchor_index, or source_key; source_key uses SOURCE_KEY_BEGIN/END and is resolved by runtime to accepted graph-anchor indices before execution.
 hero.runtime.inspect.wave nuance = SOURCE_ORDER defaults by wave action: train defaults to random_per_epoch, run defaults to sequential. random_per_epoch uses Torch RandomSampler over graph anchors without changing graph-anchor source identity and is seeded from the target component training SEED; explicit train sequential emits a source_order warning.
-hero.runtime.run mode=dry_run [runtime_handoff_path=...] [runtime_handoff_digest=...] = guarded cuwacunu_exec --dry-run of the active Runtime wave. Wave locators, launch overlays, checkpoint inputs, and Marshal lineage are derived from the Runtime handoff artifact; for policy component waves without a contract, report the contract-backed graph_node_allocation policy-training packet
+hero.runtime.run mode=dry_run [runtime_handoff_path=...] [runtime_handoff_digest=...] = guarded cuwacunu_exec --dry-run of the active Runtime wave. Wave locators, launch overlays, checkpoint inputs, and Marshal lineage are derived from the Runtime handoff artifact; for active policy component waves without a contract, Runtime synthesizes the graph_node_allocation policy-training packet from the selected wave, split policy, configured policy profile, and completed compatible replay artifacts
 hero.runtime.run mode=execute = guarded cuwacunu_exec invocation or policy component contract execution; non-dry-run requires Runtime policy acceptance through allow_execute and, for training waves, allow_train_execute
 hero.runtime.replay_executor.v1 = internal low-level delegation adapter for completed Runtime jobs. It is not a Runtime tool; operators should prefer hero.environment.rollout, which validates rollout admission and delegates back to Runtime when replay execution is allowed.
 hero.runtime.run arguments = top-level public arguments are mode, optional runtime_handoff_path/runtime_handoff_digest, and optional contract_path/contract_digest. runtime_handoff_path and contract_path are mutually exclusive. mode=execute requires runtime_handoff_digest when runtime_handoff_path is supplied.
-hero.runtime.run request = Runtime run no longer accepts args_path/args_digest or execution_request_path packets. Wave execution uses the active Runtime wave plus the optional Runtime handoff artifact. Policy-training execution uses a persisted contract_path artifact.
-hero.runtime.run policy_training_request nuance = Policy-training contract artifacts provide evidence, lineage, schedule, distribution, hyperparameter, and finite-bound fields. Runtime derives fixed contract constants such as the Environment replay contract id, action schema, policy input schema, action adapter, reward contract id, PPO artifact contract id, graph-node allocation policy family, PPO checkpoint/update/rollout schemas, optimizer-state schema, CUDA device policy/index, GAE estimator id, causal-schedule schema, and no-future snapshot source before contracts are persisted by upstream authorities.
+hero.runtime.run request = Runtime run no longer accepts args_path/args_digest or execution_request_path packets. Wave execution uses the active Runtime wave plus the optional Runtime handoff artifact. Policy-training dry-run can synthesize its sparse contract from Runtime state; policy-training execution uses a persisted contract_path artifact or materialized handoff carrying policy-execution no-lookahead locks.
+hero.runtime.run policy_training_request nuance = Policy-training contract artifacts provide evidence, lineage, schedule, distribution, hyperparameter, and finite-bound fields. Runtime derives fixed contract constants such as accounting numeraire from [ACCOUNTING], target nodes and target-node universe digest from the graph/accounting pair, policy input/action/reward surface values from the graph-node allocation DSL, policy DSL/features/net/jkimyei raw digests, training_config_digest, PPO hyperparameter fields, PPO minibatch size, PPO max-gradient norm, policy-training max_steps, and random_seed from the configured graph-node allocation jkimyei source, linear_transaction_cost_rate and policy-training max_parallel_jobs from the configured Environment rollout profile, action distribution config digest, and policy architecture semantic digests from the configured graph-node allocation policy source files, policy id/kind, training-schedule mode, causal schedule digest, snapshot-family digest, selector policy digests, and split ids from the selected policy-training Runtime wave, split_policy_fingerprint and training/validation/test range digests from those split ids plus [HERO].lattice_splits_dsl_path, the Environment replay contract id, PPO artifact contract id, graph-node allocation policy family, PPO checkpoint/update/rollout schemas, optimizer-state schema, CUDA device policy/index, GAE estimator id, PPO advantage-normalization policy, causal-schedule schema, no-future snapshot source, Runtime-owned purged-embargo policy fingerprint, fresh-spawn parent policy seed lineage from resume_mode=fresh_spawn, policy-execution target anchor range from validation_range_digest, omitted embargo purged window defaults from that target range, policy-execution target id from the fixed artifact-readiness target, policy-execution no-lookahead schema/digests and bundle component ids from the active protocol DSL, protocol-contract and graph-order fingerprints from the configured graph-first protocol bundle, source-cursor, replay-report policy/profile identity, parent allocation and replay report digests, replay-artifact identity locks, and representation/MDN bundle checkpoint and generation-vector inputs from replay_job_dir artifacts when present, normalization/replay-buffer range mirrors from training_range_digest, policy-execution parent replay input mirrors from parent replay identity, policy-execution consumed artifact lists from policy-execution input locks, consumed checkpoint lists from bundle checkpoint inputs, consumed generation-vector lists from bundle generation inputs and replay forecast lineage while parent policy generation-vector lineage remains in its dedicated field, trained-against bundle generation mirrors from representation/MDN bundle inputs, policy output fit/valid-from anchor mirrors from the policy-execution target range, policy operator-surface/component assembly fingerprint from the effective policy-training contract, and ppo_config_digest from bound PPO V0 hyperparameters when the full digest input set is present before contracts are persisted by upstream authorities. Contractless policy-training dry-runs choose the completed compatible MDN replay job by matching the selected policy-training validation anchor range, protocol id, graph order, and any declared protocol fingerprint under the Runtime root. If the active config wave is not policy training, sparse policy-training contracts use the unique JOB_KIND=policy_training WAVE_SETTINGS block in the same catalog and fail closed if multiple policy-training waves are present. PPO V0 contracts derive ppo_learning_rate from the configured jkimyei LEARNING_RATE; Runtime applies it to the combined policy/value Adam update and reports the resulting actor/critic learning rates in PPO artifacts.
+hero.runtime.run policy_training_split_defaults nuance = Sparse policy-training contract files derive split_policy_fingerprint plus training_range_digest, validation_range_digest, and test_range_digest from the selected policy-training Runtime wave's TRAIN_SPLIT, VALIDATION_SPLIT, and TEST_SPLIT bindings and [HERO].lattice_splits_dsl_path. Authored stale values fail closed.
+hero.runtime.run policy_training_environment_replay_defaults nuance = Runtime derives policy-training initial_equity_numeraire, max_node_weight, and max_turnover_l1 from the configured kikijyeba.environment.replay.dsl contract; checked-in policy-training contracts should not author those Environment-owned replay/action bounds.
 hero.runtime.run nuance = runtime_handoff_path points to the preferred Marshal handoff object; it binds schema/id/digest, target id, base config path/digest, concrete wave fields, checkpoint inputs, runtime policy path/digest, intent, and an empty unresolved-symbol list before launch. Historical base_config.hash and runtime_policy.hash handoffs are accepted as read compatibility only.
-hero.runtime.run nuance = Accepted runtime_handoff checkpoint inputs are passed to cuwacunu_exec as launch-time --input-representation-checkpoint and --input-mdn-checkpoint overrides after Runtime validates they are concrete and match wave.model_state_inputs. Operators should not copy materialized latest_satisfying resolutions into static .jkimyei files for readiness-grade launches.
+hero.runtime.run nuance = Accepted runtime_handoff checkpoint inputs are passed to cuwacunu_exec as launch-time --input-representation-checkpoint and --input-mdn-checkpoint overrides after Runtime validates they are concrete. Static wave.model_state_inputs are optional for handoff launches and, when present, must match the handoff. Operators should not copy materialized latest_satisfying resolutions into static .jkimyei files for readiness-grade launches.
 hero.runtime.run nuance = Runtime handoff wave fields provide launch-time SOURCE_RANGE plus anchor/source-key bounds for wave execution. Runtime validates the effective wave against runtime_handoff_path and passes the concrete range to cuwacunu_exec without mutating the profile file.
 hero.runtime.run nuance = Runtime terminal facts emit operator-visible identity fields as source_report_digest, config_bundle_id, runtime_policy_digest, and checkpoint_artifact_digest; Lattice readers retain read compatibility for historical checkpoint_artifact_hash facts.
 hero.runtime.run nuance = Runtime rejects latest_satisfying:* and other symbolic model-state selectors before cuwacunu_exec is launched.

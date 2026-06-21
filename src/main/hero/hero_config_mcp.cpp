@@ -12,12 +12,9 @@
 #include "hero/config_hero/config/hero_config_store.h"
 #include "hero/config_hero/hero_config.h"
 #include "hero/config_hero/hero_config_tools.h"
+#include "hero/config_path_defaults.h"
 
 namespace {
-
-constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
-constexpr const char *kDefaultHeroConfigPath =
-    "/cuwacunu/src/config/hero.config.dsl";
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   std::size_t begin = 0;
@@ -116,10 +113,17 @@ resolve_near(const std::filesystem::path &base_file,
           read_ini_value(global_config_path, "HERO", "config_hero_dsl_path")) {
     return resolve_near(global_config_path, *fresh).string();
   }
-  return kDefaultHeroConfigPath;
+  return cuwacunu::hero::config_paths::default_config_sibling_path(
+             global_config_path, "hero.config.dsl")
+      .string();
 }
 
 void print_help(const char *argv0) {
+  const auto default_global_config_path =
+      cuwacunu::hero::config_paths::default_global_config_path(argv0);
+  const auto default_global_config = default_global_config_path.string();
+  const auto default_policy_path =
+      default_config_path_from_global(default_global_config_path);
   std::cout << "Usage: " << argv0
             << " [--global-config <path>] [--config <hero_config_dsl>]"
                " [--tool <name>] [--args-json <json>]"
@@ -127,7 +131,8 @@ void print_help(const char *argv0) {
             << "  default mode: JSON-RPC over stdio\n"
             << "  default config path: [HERO].config_hero_dsl_path in "
                "--global-config, then "
-            << kDefaultHeroConfigPath << "\n"
+            << default_policy_path << "\n"
+            << "  default global config: " << default_global_config << "\n"
             << "\n"
             << "Authority groups:\n"
             << "  Read-only health:\n"
@@ -157,7 +162,8 @@ void print_help(const char *argv0) {
 } // namespace
 
 int main(int argc, char **argv) {
-  std::filesystem::path global_config_path = kDefaultGlobalConfigPath;
+  std::filesystem::path global_config_path =
+      cuwacunu::hero::config_paths::default_global_config_path(argv[0]);
   std::string config_path;
   bool config_overridden = false;
   bool list_tools = false;

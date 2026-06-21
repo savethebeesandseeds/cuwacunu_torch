@@ -45,7 +45,7 @@ and BNF path entries.
     `kikijyeba.environment.action.target_node_weights.v1` through
     `target_node_weights_simplex.v1`.
   - `ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1` is the default
-    pre-PPO stochastic action law. `masked_logistic_normal_simplex.v1` is
+    PPO stochastic action law. `masked_logistic_normal_simplex.v1` is
     accepted as a contract candidate, but is not the default.
   - The accounting numeraire remains an ordinary graph node inside the same
     target-node weight vector; there is no separate cash output.
@@ -53,18 +53,26 @@ and BNF path entries.
     `LIVE_CAPITAL_ALLOWED = false` are required. PPO V0 is Runtime-owned and
     replay/paper-only.
   - Runtime `ppo_policy_artifact_contract.v1` gates executable PPO-shaped
-    policy facts. It requires actor/critic checkpoint and architecture
-    digests, optimizer state, PPO config, rollout collection, PPO update
-    report, validation rollout report, GAE identity, and PPO hyperparameters.
+    policy facts. Pre-execution contracts require actor/critic architecture
+    digests and GAE identity; the graph-node allocation `.jkimyei` owns stable
+    PPO hyperparameters and the seed. Runtime-emitted
+    actor/critic checkpoint, optimizer-state, rollout collection, PPO update
+    report, validation rollout report, and policy-quality report digests are
+    bound after Runtime writes those artifacts. Runtime derives policy source
+    and action-distribution config digests from configured graph-node
+    allocation files, derives PPO contract fields from the `.jkimyei`, and
+    derives the PPO config digest from bound PPO V0 hyperparameters when the
+    full digest input set is present.
 - `wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path`
   - Grammar for `wikimyei.policy.portfolio.graph_node_allocation.net`.
 - `wikimyei_policy_portfolio_graph_node_allocation_net_path`
   - Architecture identity for the bounded PPO V0 graph-node allocation policy.
     V1 binds the feature manifest, node/global/risk encoder shape,
     mask-aware pooling, `node_weight_logits` policy head, `state_value` critic
-    head, Dirichlet default distribution config, logistic-normal candidate
-    config, and the action adapter/distribution. Raw timestamp and anchor
-    identity stay outside the actor-visible global feature tensor.
+    head, Dirichlet default distribution config, and logistic-normal candidate
+    config. The net decoder derives the V1 action adapter/distribution and PPO
+    execution gate from the policy surface. Raw timestamp and anchor identity
+    stay outside the actor-visible global feature tensor.
 - `wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path`
   - Grammar for
     `wikimyei.policy.portfolio.graph_node_allocation.features.dsl`.
@@ -80,10 +88,90 @@ and BNF path entries.
   - Grammar for the graph-node allocation PPO V0 `.jkimyei`.
 - `wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path`
   - Bounded PPO V0 policy-training profile. It requires
-    `TASK = policy_graph_node_allocation_ppo_v0`, `OPTIMIZER = ppo_clip`,
-    `TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1`, and
-    `PPO_EXECUTION_ALLOWED = true`; live capital remains forbidden by the
-    policy DSL and Runtime authority.
+    `TASK = policy_graph_node_allocation_ppo_v0`; the training-spec decoder
+    derives the fixed PPO optimizer, causal schedule requirement, PPO execution
+    gate, and checkpoint kind from the task, and live capital remains forbidden
+    by the policy DSL and Runtime authority.
+
+All trainable component `.jkimyei` grammars keep only component training knobs.
+The current canonical no-lookahead/order contract block is
+`NO_LOOKAHEAD_CONTRACT` in `src/config/kikijyeba.protocol.cwu_02v.dsl`;
+config-bundle loading derives no-lookahead ids, digests, component roles, and
+serving-order indexes from that protocol contract, and component assembly ids
+from the owning component DSLs, before validating training specs. The
+training-spec decoder also derives each training version token, freeze policy,
+and policy-task causal/PPO checkpoint gate from `TASK` and fills the canonical
+v1 visibility, lane, valid-from, and artifact-provenance policies when those
+fields are omitted from root `.jkimyei` profiles. Runtime
+carries the derived policy `.jkimyei` contract refs into policy-training
+evidence, and Lattice fails readiness-grade
+claims closed when those refs are missing or drift from the canonical cwu_02v
+no-lookahead contract. Policy-training `accounting_numeraire_node_id` is derived
+from `[ACCOUNTING].accounting_numeraire_node_id`; `target_node_ids` are derived
+from `src/config/kikijyeba.topology.graph.dsl`; `target_node_universe_digest` is
+derived from the graph/accounting pair; policy input/action/reward surface
+values, policy-source identity digests, and action-distribution config digest
+are derived from
+`src/config/wikimyei.policy.portfolio.graph_node_allocation.dsl`, the
+configured graph-node allocation net, the feature manifest, and the configured
+policy `.jkimyei`; none of these are authored in checked-in activation config,
+including `training_config_digest`; policy
+id/kind, training-schedule mode, causal schedule digest, snapshot-family digest,
+and selector policy digests are derived from the selected policy-training
+Runtime wave. If the
+active config wave is not policy training, Runtime uses the unique
+policy-training `WAVE_SETTINGS` block in the same catalog and fails closed when
+that selection is ambiguous. Runtime derives the policy operator-surface and
+component-assembly fingerprint from the effective policy-training contract
+instead of accepting the checked-in contract as the source. Protocol-contract
+and graph-order fingerprints are derived from the configured graph-first
+protocol bundle; when `replay_job_dir` is present, Runtime derives the resolved
+`source_cursor_token`, replay-report policy/profile identity,
+parent allocation/replay report digests, and replay-artifact identity locks from
+the completed replay job, including digest-bound replay reports under configured
+Runtime roots, plus representation/MDN bundle checkpoint and generation-vector
+inputs from the replay forecast fact. Runtime also derives the PPO
+hyperparameter fields, minibatch size, max-gradient norm, policy-training
+`max_steps`, and random seed from the configured graph-node allocation
+`.jkimyei`, derives
+`linear_transaction_cost_rate` and policy-training `max_parallel_jobs` from the
+configured Environment rollout profile, derives `initial_equity_numeraire`,
+`max_node_weight`, and `max_turnover_l1` from the configured Environment replay
+contract,
+derives `ppo_config_digest` from bound PPO V0 hyperparameters when the full
+digest input set is present, derives fresh-spawn parent policy seed lineage
+from `resume_mode=fresh_spawn`, and derives the PPO advantage-normalization
+policy from Runtime PPO update semantics. Runtime dry-runs derive PPO V0
+activation from the selected wave, split policy, configured policy profile, and
+completed compatible replay artifacts; execute still requires a materialized
+proof contract or handoff carrying policy-execution no-lookahead locks.
+Policy-training Runtime waves bind `TRAIN_SPLIT`,
+`VALIDATION_SPLIT`, and `TEST_SPLIT`; Runtime derives the split-policy
+fingerprint plus the training/validation/test range digests from those names
+and `[HERO].lattice_splits_dsl_path`. Runtime derives
+`normalization_fit_range_digest` and `replay_buffer_source_range_digest` from
+`training_range_digest`, and policy-execution parent replay input mirrors from
+the parent replay environment identity. Runtime derives the policy-execution
+target anchor range from `validation_range_digest`, defaults an omitted embargo
+purged window from that target range, derives the Runtime-owned purged-embargo
+policy fingerprint, derives policy-execution target id,
+consumed artifact lists from policy-execution input locks and
+consumed checkpoint lists from bundle checkpoint inputs, consumed
+generation-vector lists from bundle generation inputs and replay forecast
+lineage while parent policy generation-vector lineage remains in its dedicated
+field, and trained-against bundle generation
+mirrors from representation/MDN bundle inputs. Runtime also
+derives
+policy output fit/valid-from anchor mirrors from the policy-execution target
+range, and representation/MDN bundle component ids from the active protocol. The
+contract protocol id is derived from the active protocol when
+`config_path` is present and fills default schema/job-kind, action-distribution,
+resume-mode, causal schedule, cursor-key, and selector-split values from Runtime
+policy-training defaults.
+Graph-node policy `.jkimyei` and `.net` authoring omit `ACTION_DISTRIBUTION`;
+the policy DSL owns that identity, and the net decoder derives the matching V1
+defaults. Root `.jkimyei` profiles also omit runtime model-state input
+checkpoint fields; Marshal/Runtime handoffs own concrete checkpoint paths.
 
 These observer and policy assemblies are included in the graph-first
 `wikimyei_registry` and dock-binding report. Lattice can audit their identity

@@ -1,11 +1,14 @@
 #include "kikijyeba/protocol/pipeline_builder.h"
 
+#include <cctype>
 #include <cmath>
 #include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <unistd.h>
@@ -68,6 +71,78 @@ void write_text(const std::filesystem::path &path, const std::string &text) {
   std::ofstream out(path, std::ios::trunc);
   check(out.is_open(), "failed to open text output");
   out << text;
+}
+
+std::string read_text(const std::filesystem::path &path) {
+  std::ifstream in(path);
+  check(in.is_open(), "failed to open text input: " + path.string());
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
+}
+
+std::string trim_ascii(std::string_view value) {
+  std::size_t begin = 0;
+  while (begin < value.size() &&
+         std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
+    ++begin;
+  }
+  std::size_t end = value.size();
+  while (end > begin &&
+         std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
+    --end;
+  }
+  return std::string(value.substr(begin, end - begin));
+}
+
+bool ends_with(std::string_view value, std::string_view suffix) {
+  return value.size() >= suffix.size() &&
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
+             0;
+}
+
+std::string absolutize_config_paths_for_temp_copy(std::string text) {
+  const std::filesystem::path config_root{"/cuwacunu/src/config"};
+  std::istringstream lines(text);
+  std::ostringstream out;
+  std::string line;
+  while (std::getline(lines, line)) {
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      out << line << '\n';
+      continue;
+    }
+    const std::string key = trim_ascii(line.substr(0, eq));
+    std::string value = trim_ascii(line.substr(eq + 1));
+    std::filesystem::path path(value);
+    if (ends_with(key, "_path") && !value.empty() && !path.is_absolute()) {
+      path = (config_root / path).lexically_normal();
+      out << line.substr(0, eq + 1) << ' ' << path.string() << '\n';
+      continue;
+    }
+    out << line << '\n';
+  }
+  return out.str();
+}
+
+std::filesystem::path
+make_default_config_with_runtime_wave_id(const std::string &label,
+                                         const std::string &wave_id) {
+  const auto dir = make_tmp_dir(label);
+  const auto config = dir / ".config";
+  std::string text = absolutize_config_paths_for_temp_copy(
+      read_text("/cuwacunu/src/config/.config"));
+  const std::string key = "    runtime_wave_id = ";
+  const auto key_pos = text.find(key);
+  check(key_pos != std::string::npos,
+        "default config is missing HERO runtime_wave_id");
+  const auto value_begin = key_pos + key.size();
+  const auto value_end = text.find('\n', value_begin);
+  check(value_end != std::string::npos,
+        "default config HERO runtime_wave_id line is unterminated");
+  text.replace(value_begin, value_end - value_begin, wave_id);
+  write_text(config, text);
+  return config;
 }
 
 struct fixture_paths_t {
@@ -306,6 +381,12 @@ fixture_paths_t make_config_fixture(const std::string &label,
              "  VALIDATION_EVERY = 0;\n"
              "  SEED = 17;\n"
              "  FREEZE_REPRESENTATION = false;\n"
+             "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = "
+             "transitive_influence_required;\n"
              "};\n");
   write_text(channel_mdn_jkimyei,
              "TRAINING {\n"
@@ -327,6 +408,12 @@ fixture_paths_t make_config_fixture(const std::string &label,
              "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
              "  INPUT_MDN_CHECKPOINT = ;\n"
              "  ALLOW_UNTRAINED_REPRESENTATION = true;\n"
+             "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = "
+             "transitive_influence_required;\n"
              "};\n");
 
   write_text(
@@ -458,12 +545,14 @@ fixture_paths_t make_config_fixture(const std::string &label,
 }
 
 void test_default_channel_config_dry_run_report() {
+  const auto channel_config = make_default_config_with_runtime_wave_id(
+      "default_channel_wave", "cwu_02v_channel_validation_eval_mdn_1800_2050");
   const auto bundle =
       builder::load_channel_graph_first_config_bundle_from_config(
-          "/cuwacunu/src/config/.config");
+          channel_config);
   const auto contract =
       builder::load_channel_graph_first_protocol_contract_from_config(
-          "/cuwacunu/src/config/.config");
+          channel_config);
   check(!builder::channel_graph_first_protocol_contract_fingerprint(contract)
              .empty(),
         "default channel protocol contract has fingerprint");
@@ -609,6 +698,12 @@ void test_channel_contract_ignores_runtime_model_state_inputs() {
              "/tmp/runtime-evidence/representation.pt;\n"
              "  INPUT_MDN_CHECKPOINT = /tmp/runtime-evidence/mdn.pt;\n"
              "  ALLOW_UNTRAINED_REPRESENTATION = false;\n"
+             "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = "
+             "transitive_influence_required;\n"
              "};\n");
 
   const auto model_state_contract =

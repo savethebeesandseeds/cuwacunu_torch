@@ -15,6 +15,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/marshal_hero/marshal/digest.h"
 
 namespace cuwacunu::hero::marshal {
@@ -61,11 +62,12 @@ struct marshal_rollout_request_t {
   std::string idempotency_key{};
   std::string experiment_id{};
 
-  std::filesystem::path config_path{"/cuwacunu/src/config/.config"};
+  std::filesystem::path config_path{
+      cuwacunu::hero::config_paths::default_global_config_path()};
   std::filesystem::path runtime_job_dir{};
   std::filesystem::path replay_batch_index_path{};
   std::filesystem::path runtime_exec_path{
-      "/cuwacunu/.build/exec/cuwacunu_exec"};
+      cuwacunu::hero::config_paths::default_runtime_exec_path()};
   std::filesystem::path report_path{};
   std::string requested_mode{"plan"};
 

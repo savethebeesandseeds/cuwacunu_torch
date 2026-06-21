@@ -10,6 +10,7 @@
 #include "hero/marshal_hero/marshal/tool_handler.h"
 #include "hero/marshal_hero/marshal/tool_schema.h"
 #include "hero/short_ref.h"
+#include "tests/bench/kikijyeba/test_support/canonical_protocol_fixture.h"
 #include "tests/bench/kikijyeba/test_support/lattice_forecast_artifact_fixture.h"
 
 #include <array>
@@ -28,12 +29,26 @@
 
 namespace marshal = cuwacunu::hero::marshal;
 namespace lattice_fixture = cuwacunu::tests::kikijyeba::lattice_fixture;
+namespace protocol_fixture = cuwacunu::tests::kikijyeba::protocol_fixture;
 
 namespace {
 
 void check(bool condition, const std::string &message) {
   if (!condition) {
     throw std::runtime_error(message);
+  }
+}
+
+void replace_all(std::string &text, const std::string &from,
+                 const std::string &to) {
+  check(!from.empty(), "replace_all requires a non-empty search string");
+  if (from == to) {
+    return;
+  }
+  std::size_t pos = 0;
+  while ((pos = text.find(from, pos)) != std::string::npos) {
+    text.replace(pos, from.size(), to);
+    pos += to.size();
   }
 }
 
@@ -692,6 +707,89 @@ valid_request(const marshal::marshal_dispatch_advice_t &advice) {
   return request;
 }
 
+marshal::marshal_lattice_certificate_state_t
+passing_no_lookahead_state(const marshal::marshal_dispatch_advice_t &advice) {
+  marshal::marshal_lattice_certificate_state_t state{};
+  state.present = true;
+  state.schema = marshal::k_marshal_no_lookahead_certificate_schema_v1;
+  state.certificate_ref = "cert_no_lookahead_artifact_provenance_v1";
+  state.certificate_digest =
+      "070bdb168a737d0b070bdb168a737d0b070bdb168a737d0b070bdb168a737d0b";
+  state.target_id = advice.target_id;
+  state.target_anchor_index_begin = advice.plan_basis.target_anchor_index_begin;
+  state.target_anchor_index_end = advice.plan_basis.target_anchor_index_end;
+  state.no_lookahead_contract_digest =
+      protocol_fixture::canonical_cwu_02v_no_lookahead_contract_digest();
+  state.no_lookahead_provenance_checked = true;
+  state.no_lookahead_provenance_complete = true;
+  state.no_lookahead_provenance_admissible = true;
+  state.proof_certificate_check_passed = true;
+  state.influence_anchor_end_exclusive_max_bound = true;
+  state.influence_anchor_end_exclusive_max = 1800;
+  state.label_or_reward_availability_frontier_checked = true;
+  state.label_or_reward_availability_frontier_complete = true;
+  state.label_or_reward_availability_frontier_admissible = true;
+  state.label_or_reward_availability_end_exclusive_max_bound = true;
+  state.label_or_reward_availability_end_exclusive_max = 1800;
+  state.embargo_purged_window_checked = true;
+  state.embargo_purged_window_complete = true;
+  state.embargo_purged_window_admissible = true;
+  state.embargo_policy_fingerprint = "embargo_policy_anchor_v1";
+  state.embargo_purged_window_anchor_range_bound = true;
+  state.embargo_purged_window_anchor_begin = 1800;
+  state.embargo_purged_window_anchor_end_exclusive = 1800;
+  state.consumed_artifact_digests = {"forecast_fact_digest",
+                                     "replay_fact_digest"};
+  state.consumed_checkpoint_digests = {"rep_checkpoint_digest",
+                                       "mdn_checkpoint_digest"};
+  state.consumed_generation_vector_digests = {
+      "rep_generation_digest", "mdn_generation_digest",
+      "forecast_generation_digest", "replay_generation_digest"};
+  state.provenance_closure_digest = "policy_training_closure_digest";
+  state.evidence_snapshot_digest =
+      "snapshotdb168a737d0b070bdb168a737d0b070bdb168a737d0b070bdb168a";
+  state.snapshot_bundle_certificate_schema =
+      marshal::k_marshal_snapshot_bundle_certificate_schema_v1;
+  state.snapshot_bundle_publishability_checked = true;
+  state.snapshot_bundle_publishability_complete = true;
+  state.snapshot_bundle_publishability_admissible = true;
+  state.snapshot_bundle_id = "snapshot_bundle_policy_ready_1";
+  state.snapshot_bundle_kind = "readiness_candidate";
+  state.snapshot_bundle_generation_vector_digest =
+      "snapshot_bundle_generation_vector_digest_1";
+  state.snapshot_bundle_valid_from_anchor = 2050;
+  state.snapshot_bundle_compatibility_closure_digest =
+      "snapshot_bundle_compatibility_closure_digest_1";
+  state.snapshot_bundle_component_generation_ids = {"rep_generation_prior_1",
+                                                    "mdn_generation_prior_1",
+                                                    "policy_generation_ppo_1"};
+  state.snapshot_bundle_component_checkpoint_digests = {
+      "rep_checkpoint_digest", "mdn_checkpoint_digest",
+      "policy_checkpoint_digest"};
+  state.snapshot_bundle_component_generation_vector_digests = {
+      "rep_generation_digest", "mdn_generation_digest",
+      "policy_generation_digest"};
+  state.causal_provenance_certificate_schema =
+      marshal::k_marshal_causal_provenance_certificate_schema_v1;
+  state.causal_provenance_checked = true;
+  state.causal_provenance_complete = true;
+  state.causal_provenance_admissible = true;
+  state.causal_atom_schema = "causal_atom.anchor_interval_v1";
+  state.causal_interval_set_schema = "causal_interval_set.anchor_half_open_v1";
+  state.causal_label_reward_horizon_policy_fingerprint =
+      "label_reward_horizon.anchor_scalar_v1";
+  state.causal_fold_policy_fingerprint = "fold_policy.single_time_split_v1";
+  state.causal_purged_embargo_policy_fingerprint = "embargo_policy_anchor_v1";
+  state.causal_artifact_production_schema =
+      "runtime.artifact_production.inline_policy_training.v1";
+  state.causal_artifact_production_closure_digest =
+      state.provenance_closure_digest;
+  state.causal_interface_stability_contract_digest =
+      "interface_stability.trained_against_generation_vector.v1";
+  state.causal_provenance_closure_digest = state.provenance_closure_digest;
+  return state;
+}
+
 marshal::marshal_runtime_policy_snapshot_t valid_policy() {
   marshal::marshal_runtime_policy_snapshot_t policy{};
   policy.runtime_hero_available = true;
@@ -1107,6 +1205,438 @@ void test_missing_suggested_wave() {
   check(!result.dispatchable, "missing suggested_wave must fail closed");
   check(result.has(marshal::marshal_refusal_reason_t::missing_suggested_wave),
         "missing suggested_wave refusal should be reported");
+}
+
+void test_required_no_lookahead_certificate_state_gate() {
+  auto ctx = context();
+  ctx.required_lattice_certificate_schemas = {
+      marshal::k_marshal_no_lookahead_certificate_schema_v1};
+  ctx.required_lattice_certificate_contract_digests
+      [marshal::k_marshal_no_lookahead_certificate_schema_v1] =
+      protocol_fixture::canonical_cwu_02v_no_lookahead_contract_digest();
+  auto advice = valid_advice();
+  auto request = valid_request(advice);
+  auto result = marshal::validate_dispatch_advice(advice, request, ctx);
+  check(!result.dispatchable,
+        "readiness-grade dispatch context must require no-lookahead "
+        "certificate state");
+  check(result.has(marshal::marshal_refusal_reason_t::
+                       no_lookahead_certificate_state_missing),
+        "missing no-lookahead certificate state should be reported");
+
+  request.lattice_certificate_refs["no_lookahead_artifact_provenance.v1"] =
+      "cert_no_lookahead_artifact_provenance_v1";
+  result = marshal::validate_dispatch_advice(advice, request, ctx);
+  check(!result.dispatchable, "certificate ref alone must not satisfy gate");
+  check(result.has(marshal::marshal_refusal_reason_t::
+                       no_lookahead_certificate_state_missing),
+        "ref-only no-lookahead proof should still report missing state");
+
+  advice.lattice_certificate_states
+      [marshal::k_marshal_no_lookahead_certificate_schema_v1] =
+      passing_no_lookahead_state(advice);
+  request = valid_request(advice);
+  result = marshal::validate_dispatch_advice(advice, request, ctx);
+  check(result.dispatchable,
+        "readiness-grade dispatch context should accept a passing "
+        "claim-bound no-lookahead certificate state");
+
+  auto bad_schema = advice;
+  bad_schema
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .schema = "other_certificate_schema.v1";
+  result = marshal::validate_dispatch_advice(bad_schema,
+                                             valid_request(bad_schema), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_schema_mismatch),
+        "schema mismatch should fail readiness no-lookahead gate");
+
+  auto unchecked = advice;
+  unchecked
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .no_lookahead_provenance_checked = false;
+  result = marshal::validate_dispatch_advice(unchecked,
+                                             valid_request(unchecked), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_not_checked),
+        "unchecked no-lookahead state should fail readiness gate");
+
+  auto incomplete = advice;
+  incomplete
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .no_lookahead_provenance_complete = false;
+  result = marshal::validate_dispatch_advice(incomplete,
+                                             valid_request(incomplete), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_incomplete),
+        "incomplete no-lookahead state should fail readiness gate");
+
+  auto inadmissible = advice;
+  inadmissible
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .no_lookahead_provenance_admissible = false;
+  result = marshal::validate_dispatch_advice(inadmissible,
+                                             valid_request(inadmissible), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_not_admissible),
+        "inadmissible no-lookahead state should fail readiness gate");
+
+  auto check_failed = advice;
+  check_failed
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .proof_certificate_check_passed = false;
+  result = marshal::validate_dispatch_advice(check_failed,
+                                             valid_request(check_failed), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_check_failed),
+        "failed proof certificate check should fail readiness gate");
+
+  auto wrong_target = advice;
+  wrong_target
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .target_id = "neighbor_target";
+  result = marshal::validate_dispatch_advice(wrong_target,
+                                             valid_request(wrong_target), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_target_mismatch),
+        "neighbor-target certificate state should fail readiness gate");
+
+  auto wrong_range = advice;
+  wrong_range
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .target_anchor_index_begin = 2050;
+  result = marshal::validate_dispatch_advice(wrong_range,
+                                             valid_request(wrong_range), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_anchor_range_mismatch),
+        "neighbor-range certificate state should fail readiness gate");
+
+  auto wrong_contract = advice;
+  wrong_contract
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .no_lookahead_contract_digest = "other_contract_digest";
+  result = marshal::validate_dispatch_advice(
+      wrong_contract, valid_request(wrong_contract), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_contract_digest_mismatch),
+        "wrong no-lookahead contract should fail readiness gate");
+
+  auto missing_artifact = advice;
+  missing_artifact
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .consumed_artifact_digests.clear();
+  result = marshal::validate_dispatch_advice(
+      missing_artifact, valid_request(missing_artifact), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_artifact_digest_mismatch),
+        "missing consumed artifact closure should fail readiness gate");
+
+  auto missing_generation = advice;
+  missing_generation
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .consumed_generation_vector_digests.clear();
+  result = marshal::validate_dispatch_advice(
+      missing_generation, valid_request(missing_generation), ctx);
+  check(
+      !result.dispatchable &&
+          result.has(marshal::marshal_refusal_reason_t::
+                         no_lookahead_certificate_generation_closure_mismatch),
+      "missing generation-vector closure should fail readiness gate");
+
+  auto stale = advice;
+  stale
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .evidence_snapshot_digest.clear();
+  result = marshal::validate_dispatch_advice(stale, valid_request(stale), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           no_lookahead_certificate_state_stale_or_unbound),
+        "stale or unbound certificate state should fail readiness gate");
+
+  auto missing_availability = advice;
+  missing_availability
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .label_or_reward_availability_end_exclusive_max_bound = false;
+  result = marshal::validate_dispatch_advice(
+      missing_availability, valid_request(missing_availability), ctx);
+  check(
+      !result.dispatchable &&
+          result.has(marshal::marshal_refusal_reason_t::
+                         label_reward_availability_frontier_missing),
+      "missing label/reward availability frontier should fail readiness gate");
+
+  auto unchecked_availability = advice;
+  unchecked_availability
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .label_or_reward_availability_frontier_checked = false;
+  result = marshal::validate_dispatch_advice(
+      unchecked_availability, valid_request(unchecked_availability), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           label_reward_availability_frontier_not_checked),
+        "unchecked label/reward availability frontier should fail readiness "
+        "gate");
+
+  auto inadmissible_availability = advice;
+  inadmissible_availability
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .label_or_reward_availability_frontier_admissible = false;
+  result = marshal::validate_dispatch_advice(
+      inadmissible_availability, valid_request(inadmissible_availability), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           label_reward_availability_frontier_not_admissible),
+        "inadmissible label/reward availability frontier should fail readiness "
+        "gate");
+
+  auto missing_embargo = advice;
+  missing_embargo
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .embargo_purged_window_anchor_range_bound = false;
+  result = marshal::validate_dispatch_advice(
+      missing_embargo, valid_request(missing_embargo), ctx);
+  check(
+      !result.dispatchable &&
+          result.has(
+              marshal::marshal_refusal_reason_t::embargo_purged_window_missing),
+      "missing embargo/purged window should fail readiness gate");
+
+  auto unchecked_embargo = advice;
+  unchecked_embargo
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .embargo_purged_window_checked = false;
+  result = marshal::validate_dispatch_advice(
+      unchecked_embargo, valid_request(unchecked_embargo), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           embargo_purged_window_not_checked),
+        "unchecked embargo/purged window should fail readiness gate");
+
+  auto inadmissible_embargo = advice;
+  inadmissible_embargo
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .embargo_purged_window_admissible = false;
+  result = marshal::validate_dispatch_advice(
+      inadmissible_embargo, valid_request(inadmissible_embargo), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           embargo_purged_window_not_admissible),
+        "inadmissible embargo/purged window should fail readiness gate");
+
+  auto missing_bundle = advice;
+  missing_bundle
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .snapshot_bundle_certificate_schema.clear();
+  result = marshal::validate_dispatch_advice(
+      missing_bundle, valid_request(missing_bundle), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           snapshot_bundle_certificate_state_missing),
+        "missing snapshot bundle certificate state should fail readiness gate");
+
+  auto unchecked_bundle = advice;
+  unchecked_bundle
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .snapshot_bundle_publishability_checked = false;
+  result = marshal::validate_dispatch_advice(
+      unchecked_bundle, valid_request(unchecked_bundle), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           snapshot_bundle_certificate_not_checked),
+        "unchecked snapshot bundle state should fail readiness gate");
+
+  auto missing_bundle_vector = advice;
+  missing_bundle_vector
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .snapshot_bundle_generation_vector_digest.clear();
+  result = marshal::validate_dispatch_advice(
+      missing_bundle_vector, valid_request(missing_bundle_vector), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           snapshot_bundle_generation_vector_missing),
+        "missing bundle generation-vector closure should fail readiness gate");
+
+  auto missing_causal_state = advice;
+  missing_causal_state
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .causal_provenance_certificate_schema.clear();
+  result = marshal::validate_dispatch_advice(
+      missing_causal_state, valid_request(missing_causal_state), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           causal_provenance_certificate_state_missing),
+        "missing generalized causal provenance state should fail readiness "
+        "gate");
+
+  auto unchecked_causal = advice;
+  unchecked_causal
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .causal_provenance_checked = false;
+  result = marshal::validate_dispatch_advice(
+      unchecked_causal, valid_request(unchecked_causal), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           causal_provenance_certificate_not_checked),
+        "unchecked generalized causal provenance state should fail readiness "
+        "gate");
+
+  auto incomplete_causal = advice;
+  incomplete_causal
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .causal_provenance_complete = false;
+  result = marshal::validate_dispatch_advice(
+      incomplete_causal, valid_request(incomplete_causal), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           causal_provenance_certificate_incomplete),
+        "incomplete generalized causal provenance state should fail readiness "
+        "gate");
+
+  auto inadmissible_causal = advice;
+  inadmissible_causal
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .causal_provenance_admissible = false;
+  result = marshal::validate_dispatch_advice(
+      inadmissible_causal, valid_request(inadmissible_causal), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           causal_provenance_certificate_not_admissible),
+        "inadmissible generalized causal provenance state should fail "
+        "readiness gate");
+
+  auto missing_artifact_production = advice;
+  missing_artifact_production
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .causal_artifact_production_closure_digest.clear();
+  result = marshal::validate_dispatch_advice(
+      missing_artifact_production, valid_request(missing_artifact_production),
+      ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           causal_artifact_production_closure_missing),
+        "missing causal artifact-production closure should fail readiness "
+        "gate");
+
+  auto missing_interface = advice;
+  missing_interface
+      .lattice_certificate_states
+          [marshal::k_marshal_no_lookahead_certificate_schema_v1]
+      .causal_interface_stability_contract_digest.clear();
+  result = marshal::validate_dispatch_advice(
+      missing_interface, valid_request(missing_interface), ctx);
+  check(!result.dispatchable &&
+            result.has(marshal::marshal_refusal_reason_t::
+                           causal_interface_stability_contract_missing),
+        "missing causal interface-stability contract should fail readiness "
+        "gate");
+}
+
+void test_no_lookahead_state_materialized_from_lattice_result() {
+  std::string lattice_result =
+      R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=deficit executed"}],"structuredContent":{"config_path":"/cuwacunu/src/config/.config","runtime_root":"/cuwacunu/.runtime/cuwacunu_exec","active_identity":{"protocol_contract_fingerprint":"contract_1","graph_order_fingerprint":"graph_1","source_cursor_token":"cursor_1"},"target_id":"channel_mdn_validation_eval_ready","status":"blocked","split_policy_fingerprint":"split_policy_1","plan_ready":true,"plan_basis":{"available":true,"reason":"suggested wave addresses proof deficits","primary_deficit_key":"coverage:evaluation_metric","primary_deficit_message":"validation evaluation coverage missing","primary_deficit_priority_class":"coverage","deficit_keys":["coverage:evaluation_metric"],"deficit_priority_classes":["coverage"]},"suggested_wave":{"target":"wikimyei.inference.expected_value.mdn","mode":"run|debug","source_range":"anchor_index","anchor_index_begin":1800,"anchor_index_end":2050,"input_mdn_checkpoint":"/cuwacunu/.runtime/cuwacunu_exec/jobs/mdn/checkpoint.pt","input_representation_checkpoint":"/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt"},"proof_certificate_check":{"passed":true,"issues":[]},"proof_certificate":{"certificate_ref":"cert_no_lookahead_artifact_provenance_v1","certificate_digest":"070bdb168a737d0b","target_id":"channel_mdn_validation_eval_ready","target_spec_fingerprint":"target_spec_1","split_policy_fingerprint":"split_policy_1","artifacts":[{"proof_kind":"policy_training_artifact_bound","fact_family":"policy_training","fact_digest":"policy_fact_digest","completed_anchor_range":{"begin":1800,"end":2050,"length":250},"no_lookahead_certificate_schema":"no_lookahead_artifact_provenance.v1","no_lookahead_provenance_checked":true,"no_lookahead_provenance_complete":true,"no_lookahead_provenance_admissible":true,"influence_anchor_end_exclusive_max_bound":true,"influence_anchor_end_exclusive_max":1800,"label_or_reward_availability_frontier_checked":true,"label_or_reward_availability_frontier_complete":true,"label_or_reward_availability_frontier_admissible":true,"label_or_reward_availability_end_exclusive_max_bound":true,"label_or_reward_availability_end_exclusive_max":1800,"embargo_purged_window_checked":true,"embargo_purged_window_complete":true,"embargo_purged_window_admissible":true,"embargo_policy_fingerprint":"embargo_policy_anchor_v1","embargo_purged_window_anchor_range_bound":true,"embargo_purged_window_anchor_begin":1800,"embargo_purged_window_anchor_end_exclusive":1800,"no_lookahead_contract_digest":"CANONICAL_CWU_02V_NO_LOOKAHEAD_CONTRACT_DIGEST","consumed_artifact_digests":["forecast_fact_digest","replay_fact_digest"],"consumed_checkpoint_digests":["rep_checkpoint_digest","mdn_checkpoint_digest"],"consumed_generation_vector_digests":["rep_generation_digest","mdn_generation_digest","forecast_generation_digest","replay_generation_digest"],"provenance_closure_digest":"policy_training_closure_digest","snapshot_bundle_certificate_schema":"snapshot_bundle_publishability.v1","snapshot_bundle_publishability_checked":true,"snapshot_bundle_publishability_complete":true,"snapshot_bundle_publishability_admissible":true,"snapshot_bundle_id":"snapshot_bundle_policy_ready_1","snapshot_bundle_kind":"readiness_candidate","snapshot_bundle_generation_vector_digest":"snapshot_bundle_generation_vector_digest_1","snapshot_bundle_valid_from_anchor_bound":true,"snapshot_bundle_valid_from_anchor":2050,"snapshot_bundle_compatibility_closure_digest":"snapshot_bundle_compatibility_closure_digest_1","snapshot_bundle_component_generation_ids":["rep_generation_prior_1","mdn_generation_prior_1","policy_generation_ppo_1"],"snapshot_bundle_component_checkpoint_digests":["rep_checkpoint_digest","mdn_checkpoint_digest","policy_checkpoint_digest"],"snapshot_bundle_component_generation_vector_digests":["rep_generation_digest","mdn_generation_digest","policy_generation_digest"],"causal_provenance_certificate_schema":"causal_provenance_generalization.v1","causal_provenance_checked":true,"causal_provenance_complete":true,"causal_provenance_admissible":true,"causal_atom_schema":"causal_atom.anchor_interval_v1","causal_interval_set_schema":"causal_interval_set.anchor_half_open_v1","causal_label_reward_horizon_policy_fingerprint":"label_reward_horizon.anchor_scalar_v1","causal_fold_policy_fingerprint":"fold_policy.single_time_split_v1","causal_purged_embargo_policy_fingerprint":"embargo_policy_anchor_v1","causal_artifact_production_schema":"runtime.artifact_production.inline_policy_training.v1","causal_artifact_production_closure_digest":"policy_training_closure_digest","causal_interface_stability_contract_digest":"interface_stability.trained_against_generation_vector.v1","causal_provenance_closure_digest":"policy_training_closure_digest","passed":true,"issues":[]}]}},"isError":false})";
+  replace_all(
+      lattice_result, "CANONICAL_CWU_02V_NO_LOOKAHEAD_CONTRACT_DIGEST",
+      protocol_fixture::canonical_cwu_02v_no_lookahead_contract_digest());
+
+  auto advice =
+      marshal::tool_detail::materialize_advice_from_lattice_plan_result(
+          lattice_result, "2026-05-23T00:00:00Z", 1, 0);
+  const auto state_it = advice.lattice_certificate_states.find(
+      marshal::k_marshal_no_lookahead_certificate_schema_v1);
+  check(state_it != advice.lattice_certificate_states.end(),
+        "Marshal should materialize no-lookahead certificate state from "
+        "Lattice artifact proof");
+  check(state_it->second.target_anchor_index_begin.has_value() &&
+            *state_it->second.target_anchor_index_begin == 1800,
+        "materialized no-lookahead state should bind target anchor begin");
+  check(!state_it->second.evidence_snapshot_digest.empty(),
+        "materialized no-lookahead state should bind an evidence snapshot");
+  check(state_it->second.provenance_closure_digest ==
+            "policy_training_closure_digest",
+        "materialized no-lookahead state should carry provenance closure "
+        "digest when Lattice exposes it");
+  check(state_it->second.label_or_reward_availability_frontier_checked &&
+            state_it->second.label_or_reward_availability_frontier_complete &&
+            state_it->second.label_or_reward_availability_frontier_admissible &&
+            state_it->second
+                .label_or_reward_availability_end_exclusive_max_bound &&
+            state_it->second.label_or_reward_availability_end_exclusive_max ==
+                1800,
+        "materialized no-lookahead state should carry label/reward "
+        "availability frontier state when Lattice exposes it");
+  check(state_it->second.embargo_purged_window_checked &&
+            state_it->second.embargo_purged_window_complete &&
+            state_it->second.embargo_purged_window_admissible &&
+            state_it->second.embargo_policy_fingerprint ==
+                "embargo_policy_anchor_v1" &&
+            state_it->second.embargo_purged_window_anchor_range_bound &&
+            state_it->second.embargo_purged_window_anchor_begin == 1800 &&
+            state_it->second.embargo_purged_window_anchor_end_exclusive == 1800,
+        "materialized no-lookahead state should carry embargo/purged-window "
+        "state when Lattice exposes it");
+  check(state_it->second.snapshot_bundle_publishability_checked &&
+            state_it->second.snapshot_bundle_id ==
+                "snapshot_bundle_policy_ready_1" &&
+            !state_it->second.snapshot_bundle_generation_vector_digest.empty(),
+        "materialized no-lookahead state should carry snapshot bundle "
+        "publishability state when Lattice exposes it");
+  check(
+      state_it->second.causal_provenance_checked &&
+          state_it->second.causal_provenance_complete &&
+          state_it->second.causal_provenance_admissible &&
+          state_it->second.causal_provenance_certificate_schema ==
+              marshal::k_marshal_causal_provenance_certificate_schema_v1 &&
+          state_it->second.causal_artifact_production_closure_digest ==
+              "policy_training_closure_digest" &&
+          !state_it->second.causal_interface_stability_contract_digest.empty(),
+      "materialized no-lookahead state should carry generalized causal "
+      "provenance state when Lattice exposes it");
+
+  auto ctx = context();
+  ctx.required_lattice_certificate_schemas = {
+      marshal::k_marshal_no_lookahead_certificate_schema_v1};
+  ctx.required_lattice_certificate_contract_digests
+      [marshal::k_marshal_no_lookahead_certificate_schema_v1] =
+      protocol_fixture::canonical_cwu_02v_no_lookahead_contract_digest();
+  const auto result =
+      marshal::validate_dispatch_advice(advice, valid_request(advice), ctx);
+  check(result.dispatchable,
+        "Lattice-materialized passing no-lookahead state should satisfy the "
+        "Marshal readiness-grade gate");
 }
 
 void test_stale_identity() {
@@ -1537,7 +2067,7 @@ void test_m2_dry_run_preview_success() {
 void test_runtime_handoff_accepts_reusable_all_range_overlay() {
   marshal::marshal_runtime_dry_run_request_t request{};
   request.target_id = "cwu_02v_representation_train_core_ready";
-  request.config_path = "/cuwacunu/src/config/operator/train_core.config";
+  request.config_path = "/cuwacunu/src/config/.config";
   request.wave_target = "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
   request.wave_mode = "train|debug";
   request.source_range = "anchor_index";
@@ -1626,12 +2156,13 @@ void test_m2_checkpoint_mismatch_and_unavailable_handoff() {
   wave.model_state_inputs.erase("PLAN_INPUT_MDN_CHECKPOINT");
   decision = marshal::build_runtime_dry_run_dispatch_preview(
       advice, valid_request(advice), context(), valid_policy(), wave);
-  check(!decision.accepted,
-        "missing Runtime wave checkpoint input must block preview");
+  check(decision.accepted,
+        "missing static Runtime wave checkpoint input should be allowed when "
+        "Lattice advice supplies a resolved handoff input");
   check(
-      decision.has(
+      !decision.has(
           marshal::marshal_refusal_reason_t::runtime_checkpoint_input_missing),
-      "missing Runtime checkpoint input should be reported");
+      "missing static Runtime checkpoint input should not be reported");
 
   wave = valid_active_wave(advice);
   wave.available = false;
@@ -6418,9 +6949,31 @@ void test_operational_report_summarizes_training_state() {
              "[JKIMYEI]\n"
              "wikimyei_inference_expected_value_mdn_jkimyei_path = " +
                  mdn_jkimyei_path.string() + "\n");
-  write_text(mdn_jkimyei_path, "TRAINING {\n"
-                               "  GRAD_CLIP_NORM = 5.0;\n"
-                               "};\n");
+  write_text(mdn_jkimyei_path,
+             "TRAINING {\n"
+             "  VERSION = wikimyei.inference.expected_value.mdn.jkimyei.v1;\n"
+             "  TRAINING_ID = marshal_fixture_mdn;\n"
+             "  TASK = mdn_expected_value_inference;\n"
+             "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
+             "  OPTIMIZER = adam;\n"
+             "  LEARNING_RATE = 0.001;\n"
+             "  MAX_STEPS = 1;\n"
+             "  BATCH_SIZE = 2;\n"
+             "  GRAD_CLIP_NORM = 5.0;\n"
+             "  CHECKPOINT_EVERY = 1;\n"
+             "  REPORT_EVERY = 1;\n"
+             "  VALIDATION_EVERY = 0;\n"
+             "  SEED = 31;\n"
+             "  FREEZE_REPRESENTATION = true;\n"
+             "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
+             "  INPUT_MDN_CHECKPOINT = ;\n"
+             "  ALLOW_UNTRAINED_REPRESENTATION = false;\n"
+             "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = transitive_influence_required;\n"
+             "};\n");
 
   const auto vicreg_dir =
       runtime_root /
@@ -7847,6 +8400,8 @@ int main() {
   test_stale_contract_status_remains_dispatchable();
   test_missing_plan_basis();
   test_missing_suggested_wave();
+  test_required_no_lookahead_certificate_state_gate();
+  test_no_lookahead_state_materialized_from_lattice_result();
   test_stale_identity();
   test_forbidden_mode();
   test_missing_checkpoint_input();

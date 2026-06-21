@@ -251,7 +251,8 @@ direct rollout selectors, validates rollout admission, and delegates back to
 Runtime when replay is allowed. Runtime checks the job is completed and has
 replay batch evidence, then delegates to the executable with the requested
 replay policy options and Cajtucu paper profile hints such as
-`allow_synthetic_direct_edges` and `linear_transaction_cost_rate`. When the
+`allow_synthetic_direct_edges`, `linear_transaction_cost_rate`, and
+`max_parallel_jobs`. When the
 execution request sets `validation_rollout=true`, Runtime treats replay as
 validation-grade: it
 requires positive `max_steps`, positive `max_parallel_jobs`, nonzero
@@ -274,14 +275,20 @@ small selectors directly: `hero.runtime.inspect.wave` accepts optional
 
 Policy is represented as a first-class component wave for
 `wikimyei.policy.portfolio.graph_node_allocation`, with a specialized
-contract-backed Runtime driver. `hero.runtime.run mode=dry_run` reports the
-required policy-training packet for an active policy component wave; the same
-`hero.runtime.run` surface with `contract_path` and optional `contract_digest`
-runs the persisted contract. The selected `WAVE_SETTINGS`
-block may bind
-`POLICY_ID`, `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and
-`LIVE_EXECUTION_ALLOWED`; the contract still supplies causal schedule evidence,
-parent evidence, range digests, and finite bounds. Runtime returns a deterministic
+Runtime driver. `hero.runtime.run mode=dry_run` synthesizes the
+policy-training packet for an active policy component wave from the selected
+wave, split policy, configured policy profile, and completed compatible replay
+artifacts under the Runtime root; the same `hero.runtime.run` surface with
+`contract_path` and optional `contract_digest` runs a materialized proof
+contract. The selected policy-training `WAVE_SETTINGS` block
+may bind `POLICY_ID`, `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and
+`LIVE_EXECUTION_ALLOWED`; if the active config wave is not policy training,
+Runtime uses the unique policy-training block in the same catalog and rejects an
+ambiguous catalog. Sparse materialized contracts may omit the active protocol id
+when `config_path` is present, plus default schema/job-kind,
+action-distribution, resume-mode, causal schedule, cursor-key, and selector-split
+values. The contract still supplies causal schedule evidence, parent evidence,
+range digests, and finite bounds. Runtime returns a deterministic
 `kikijyeba.runtime.policy_training_job_contract.v1` packet with a contract
 digest. The contract binds protocol/source identity,
 policy identity, architecture/training-config digests, disjoint
@@ -294,14 +301,30 @@ the Environment replay contract, action schema, policy input schema, action
 adapter, reward contract, PPO artifact contract, graph-node allocation policy
 family, checkpoint/update/rollout schemas, optimizer-state schema, CUDA policy,
 GAE estimator, causal-schedule schema, and no-future snapshot source.
+No-lookahead and component-order contract refs, plus representation/MDN bundle
+component ids, are derived from the active protocol DSL before validation, then
+carried into policy `.jkimyei` and snapshot-bundle evidence.
+Protocol-contract and graph-order fingerprints are derived from the configured
+graph-first protocol bundle; contractless dry-runs select a completed MDN replay
+job by validation anchor range plus protocol/graph compatibility and derive the
+resolved source cursor token from that job.
 PPO-shaped policy kinds additionally bind policy DSL/net/features/jkimyei
-digests, target-node universe digest, action-distribution config, snapshot
-family, actor/critic architecture and checkpoint digests, optimizer state, PPO
-config, advantage-normalization policy, rollout collection evidence, PPO
-update-report evidence, validation rollout evidence, and PPO hyperparameters.
+digests, with `training_config_digest` derived from the configured policy
+`.jkimyei`, target-node universe digest, action-distribution config,
+actor/critic architecture digests, PPO config,
+advantage-normalization policy, and PPO hyperparameters before execution.
+Runtime-owned actor/critic checkpoint, optimizer-state, rollout collection,
+PPO update-report, validation rollout, and policy-quality report digests are
+emitted after artifact writes instead of being authored in sparse contracts.
+For PPO V0, the configured graph-node allocation `.jkimyei` owns
+`LEARNING_RATE` and the PPO hyperparameter fields. Runtime derives
+`ppo_learning_rate` from that profile, applies it to the combined policy/value
+Adam optimizer, and mirrors the actual update rate into the actor/critic
+learning-rate report fields.
 Runtime folds those policy-source and environment bindings into
 `policy_operator_surface_digest`; policy-training Runtime jobs use that digest as
-the graph-node allocation policy component-spawn fingerprint.
+the graph-node allocation policy component-spawn fingerprint, so sparse durable
+PPO contracts do not author `component_assembly_fingerprint`.
 Representation and MDN component-wave manifests also carry a
 `component_operator_surface_digest`, computed from the durable component
 operator surface: target family, protocol/graph/source cursor identity, wave
@@ -316,13 +339,28 @@ causal schedule does not bind a typed cursor-key ordering and ledger-derived
 availability extends beyond artifact `usable_from_key`, where
 `offline_full_window_research` is presented as readiness evidence, or where live
 execution is requested.
+Policy-training evidence now carries the anchor-v1
+`label_or_reward_availability_end_exclusive_max` frontier beside the accepted
+anchor influence frontier. Runtime emits parent-policy availability inputs and
+output-policy availability summaries in policy-training sidecars so Lattice can
+join checkpoint, forecast, replay, parent-policy, and own-fit ranges without
+trusting a standalone declaration.
+Policy-training sidecars also emit Runtime-owned
+`embargo_policy_fingerprint` and the half-open
+`embargo_purged_window_anchor_range`. Lattice uses that window as the
+readiness-grade parent admissibility cut for consumed influence and label/reward
+availability; missing window metadata fails closed.
+Policy-training sidecars additionally carry the
+`causal_provenance_generalization.v1` aggregate metadata: causal atom and
+half-open interval schema ids, scalar label/reward and embargo policy
+fingerprints, inline artifact-production closure digest, trained-against
+interface-stability contract digest, and causal provenance closure digest. These
+fields are evidence for Lattice to check against recomputed parent closures;
+Runtime does not self-certify the aggregate.
 In this mode, `mode=execute` is allowed under Runtime execute/train
-policy for `policy_kind=noop_policy_training.v1` and for the replay/paper
-`policy_kind=ppo_policy_adapter.v1` trainer. The noop path writes a
-Runtime job directory, `policy_training.contract`, `policy_training.report`, a
-deterministic no-op checkpoint, terminal Runtime facts, and
-`runtime.policy_training.fact` for Lattice inspection. The PPO V0 path writes
-actor/critic checkpoints, optimizer state, rollout/update/validation reports,
+policy for the replay/paper `policy_kind=ppo_policy_adapter.v1` trainer.
+The PPO V0 path writes actor/critic checkpoints, optimizer state,
+rollout/update/validation reports,
 `policy_training.report`, terminal Runtime facts, and a Lattice-readable
 `runtime.policy_training.fact`. With no `report_path`, it uses an explicit
 smoke fallback and declares `replay_backed_step_count=0`. With `report_path`,
@@ -343,6 +381,47 @@ passes an explicit actor checkpoint artifact to the replay policy, and then
 ingests the generated replay report with
 `collection_source=kikijyeba_on_policy_replay`. Runtime records the collection
 checkpoint path/digest and writes separate post-update actor/critic checkpoints.
+For contract-backed runs, the same completed replay job is also the canonical
+source for `source_cursor_token`, parent forecast/observer/allocation fact
+digests, the parent forecast artifact digest, parent replay report digest,
+replay-report `execution_profile_digest` and `policy_set_digest`, including
+digest-bound replay reports under configured Runtime roots, the replay
+batch-index digest, and policy-execution parent replay input mirrors when
+replay-environment facts are available. Runtime derives the PPO minibatch size,
+max-gradient norm,
+and policy-training `max_steps` from the configured graph-node allocation
+`.jkimyei`, derives
+`linear_transaction_cost_rate` and policy-training `max_parallel_jobs` from the
+configured Environment rollout profile, derives `initial_equity_numeraire`,
+`max_node_weight`, and `max_turnover_l1` from the configured Environment replay
+contract,
+derives the causal schedule digest, snapshot-family digest, and selector policy
+digests from the selected policy-training Runtime wave, derives the split-policy
+fingerprint and
+training/validation/test range digests from the wave's
+`TRAIN_SPLIT`/`VALIDATION_SPLIT`/`TEST_SPLIT` bindings plus
+`[HERO].lattice_splits_dsl_path`,
+derives the PPO advantage-normalization policy from the Runtime PPO update
+semantics, derives the Runtime-owned purged-embargo policy fingerprint, derives
+the policy-execution target anchor range from `validation_range_digest`,
+defaults an omitted embargo purged window from that target range, and derives
+the policy-execution target id from the fixed
+`policy_training_artifact_ready` artifact-readiness target and rejects authored
+target drift. Runtime
+derives representation/MDN bundle checkpoint and generation-vector inputs from
+the replay forecast fact when `replay_job_dir` is present. Runtime
+derives default policy-execution consumed artifact lists from
+the policy-execution input locks and rejects authored lists that omit those
+derived artifacts. Runtime also derives default policy-execution consumed
+checkpoint lists from bundle checkpoint inputs and rejects authored lists that
+omit them. Runtime derives default policy-execution consumed generation-vector
+lists from bundle generation inputs and replay forecast lineage, and rejects
+authored lists that omit them; parent policy generation-vector lineage remains
+in its dedicated field.
+Trained-against representation and MDN mirrors are also derived from
+the bundle generation inputs and rejected when authored values drift. Policy
+output fit and valid-from anchors are derived from the policy-execution target
+range and rejected when authored values drift.
 The actor checkpoint binds the graph-node allocation Torch module contract and
 stores a sibling `module_state.pt` archive mutated by the Torch autograd
 PPO-Clip/GAE update loop.

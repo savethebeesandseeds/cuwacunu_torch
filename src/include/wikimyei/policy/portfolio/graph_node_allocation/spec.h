@@ -496,8 +496,10 @@ decode_graph_node_allocation_net_spec_from_dsl(const std::string &net_text) {
       kv::parse_i64(kv::required(block, "VALUE_HEAD_HIDDEN_DIM"));
   spec.output_head = kv::required(block, "OUTPUT_HEAD");
   spec.value_head = kv::required(block, "VALUE_HEAD");
-  spec.action_adapter = kv::required(block, "ACTION_ADAPTER");
-  spec.action_distribution = kv::required(block, "ACTION_DISTRIBUTION");
+  spec.action_adapter =
+      kv::optional(block, "ACTION_ADAPTER", spec.action_adapter);
+  spec.action_distribution =
+      kv::optional(block, "ACTION_DISTRIBUTION", spec.action_distribution);
   spec.dirichlet_concentration_head =
       kv::required(block, "DIRICHLET_CONCENTRATION_HEAD");
   spec.dirichlet_alpha_floor =
@@ -518,8 +520,9 @@ decode_graph_node_allocation_net_spec_from_dsl(const std::string &net_text) {
       kv::required(block, "LOGISTIC_NORMAL_COORDINATE_POLICY");
   spec.logistic_normal_entropy_kind =
       kv::required(block, "LOGISTIC_NORMAL_ENTROPY_KIND");
-  spec.ppo_execution_allowed =
-      kv::parse_bool(kv::required(block, "PPO_EXECUTION_ALLOWED"));
+  spec.ppo_execution_allowed = kv::parse_bool(
+      kv::optional(block, "PPO_EXECUTION_ALLOWED",
+                   spec.ppo_execution_allowed ? "true" : "false"));
   validate_graph_node_allocation_net_spec(spec);
   return spec;
 }

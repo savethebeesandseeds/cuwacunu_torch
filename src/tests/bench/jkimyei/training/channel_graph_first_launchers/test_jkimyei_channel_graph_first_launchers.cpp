@@ -341,6 +341,12 @@ fixture_paths_t make_config_fixture(const std::string &label,
                  "  VALIDATION_EVERY = 0;\n"
                  "  SEED = 17;\n"
                  "  FREEZE_REPRESENTATION = false;\n"
+                 "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+                 "  GENERATION_LANE_POLICY = "
+                 "readiness_grade_bootstrap_frozen_init_only;\n"
+                 "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+                 "  ARTIFACT_PROVENANCE_POLICY = "
+                 "transitive_influence_required;\n"
                  "};\n");
   write_text(channel_mdn_jkimyei,
              std::string("TRAINING {\n"
@@ -371,6 +377,12 @@ fixture_paths_t make_config_fixture(const std::string &label,
                  "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
                  "  INPUT_MDN_CHECKPOINT = ;\n"
                  "  ALLOW_UNTRAINED_REPRESENTATION = true;\n"
+                 "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+                 "  GENERATION_LANE_POLICY = "
+                 "readiness_grade_bootstrap_frozen_init_only;\n"
+                 "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+                 "  ARTIFACT_PROVENANCE_POLICY = "
+                 "transitive_influence_required;\n"
                  "};\n");
 
   write_text(

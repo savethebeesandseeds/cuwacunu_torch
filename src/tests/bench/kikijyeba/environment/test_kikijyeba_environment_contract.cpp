@@ -924,27 +924,31 @@ void test_paper_online_session_contract() {
 void test_environment_contract() {
   const auto replay_environment_bnf = read_text(
       "/cuwacunu/src/config/grammar/kikijyeba.environment.replay.dsl.bnf");
-  check(replay_environment_bnf.find("REPLAY_ENVIRONMENT") !=
-                std::string::npos &&
-            replay_environment_bnf.find("REQUIRE_NO_FUTURE_LEAKAGE") !=
-                std::string::npos &&
-            replay_environment_bnf.find("SOURCE_ORDER_POLICY") !=
-                std::string::npos &&
-            replay_environment_bnf.find("ACTION_TIME_POLICY") !=
-                std::string::npos &&
-            replay_environment_bnf.find("ACTION_SCHEMA_ID") !=
-                std::string::npos &&
-            replay_environment_bnf.find("REALIZED_RETURN_TRUTH") !=
-                std::string::npos &&
-            replay_environment_bnf.find("ACTION_POLICY_IDENTITY") !=
-                std::string::npos &&
-            replay_environment_bnf.find("STEP_ARTIFACT_IDENTITY") !=
-                std::string::npos &&
-            replay_environment_bnf.find("EXPERIMENT_REPORT_COUNT_POLICY") !=
-                std::string::npos &&
-            replay_environment_bnf.find("LIVE_CAPITAL_ALLOWED") !=
-                std::string::npos,
-        "environment replay BNF preserves safety contract");
+  check(
+      replay_environment_bnf.find("REPLAY_ENVIRONMENT") != std::string::npos &&
+          replay_environment_bnf.find("REQUIRE_NO_FUTURE_LEAKAGE") !=
+              std::string::npos &&
+          replay_environment_bnf.find("SOURCE_ORDER_POLICY") !=
+              std::string::npos &&
+          replay_environment_bnf.find("ACTION_TIME_POLICY") !=
+              std::string::npos &&
+          replay_environment_bnf.find("ACTION_SCHEMA_ID") !=
+              std::string::npos &&
+          replay_environment_bnf.find("REALIZED_RETURN_TRUTH") !=
+              std::string::npos &&
+          replay_environment_bnf.find("ACTION_POLICY_IDENTITY") !=
+              std::string::npos &&
+          replay_environment_bnf.find("STEP_ARTIFACT_IDENTITY") !=
+              std::string::npos &&
+          replay_environment_bnf.find("EXPERIMENT_REPORT_COUNT_POLICY") !=
+              std::string::npos &&
+          replay_environment_bnf.find("LIVE_CAPITAL_ALLOWED") !=
+              std::string::npos &&
+          replay_environment_bnf.find("INITIAL_EQUITY_NUMERAIRE") !=
+              std::string::npos &&
+          replay_environment_bnf.find("MAX_NODE_WEIGHT") != std::string::npos &&
+          replay_environment_bnf.find("MAX_TURNOVER_L1") != std::string::npos,
+      "environment replay BNF preserves safety contract");
   const auto global_config = read_text("/cuwacunu/src/config/.config");
   check(global_config.find("kikijyeba_environment_replay_dsl_bnf_path") !=
                 std::string::npos &&
@@ -987,6 +991,11 @@ void test_environment_contract() {
         "replay-environment Lattice target");
   check(replay_spec.default_max_parallel_jobs > 0,
         "environment replay DSL declares a positive default parallelism bound");
+  check(replay_spec.initial_equity_numeraire == 10000.0 &&
+            replay_spec.max_node_weight == 0.95 &&
+            replay_spec.max_turnover_l1 == 1.0,
+        "environment replay DSL owns replay equity and action constraint "
+        "defaults");
   bool rejected_live_capital_replay = false;
   auto unsafe_replay_dsl = replay_environment_dsl;
   const auto live_capital_pos =
@@ -1021,6 +1030,24 @@ void test_environment_contract() {
   }
   check(rejected_unbounded_parallelism,
         "environment replay DSL rejects an unbounded default parallelism");
+
+  bool rejected_invalid_action_bound = false;
+  auto invalid_action_bound_dsl = replay_environment_dsl;
+  const auto max_node_weight_pos =
+      invalid_action_bound_dsl.find("MAX_NODE_WEIGHT = 0.95");
+  check(max_node_weight_pos != std::string::npos,
+        "replay DSL fixture contains MAX_NODE_WEIGHT position");
+  invalid_action_bound_dsl.replace(max_node_weight_pos,
+                                   std::string("MAX_NODE_WEIGHT = 0.95").size(),
+                                   "MAX_NODE_WEIGHT = 1.50");
+  try {
+    (void)env::decode_replay_environment_spec_from_dsl(
+        invalid_action_bound_dsl);
+  } catch (const std::exception &) {
+    rejected_invalid_action_bound = true;
+  }
+  check(rejected_invalid_action_bound,
+        "environment replay DSL rejects invalid action constraint bounds");
 
   bool rejected_bad_action_schema_dsl = false;
   auto bad_action_schema_dsl = replay_environment_dsl;

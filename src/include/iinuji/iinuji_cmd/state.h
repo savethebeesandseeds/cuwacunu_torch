@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
+
 namespace cuwacunu {
 namespace iinuji {
 namespace iinuji_cmd {
@@ -479,8 +481,10 @@ struct CmdContentPopupState {
 
 struct CmdState {
   std::string command_name{"cuwacunu_cmd"};
-  std::filesystem::path global_config_path{"/cuwacunu/src/config/.config"};
-  std::filesystem::path config_root{"/cuwacunu/src/config"};
+  std::filesystem::path global_config_path{
+      cuwacunu::hero::config_paths::default_global_config_path()};
+  std::filesystem::path config_root{
+      cuwacunu::hero::config_paths::default_global_config_path().parent_path()};
   ScreenMode screen{ScreenMode::Home};
   WorkspaceState workspace{};
   HomeVisualState home_visual{};

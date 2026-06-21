@@ -15,10 +15,10 @@ HERO_CONFIG_RUNTIME_KEY("protocol_layer", "enum", 1, "STDIO", "one token",
                         "STDIO,HTTPS/SSE",
                         "MCP protocol layer. HTTPS/SSE is reserved and fails "
                         "fast.")
-HERO_CONFIG_RUNTIME_KEY("config_root", "path", 1, "/cuwacunu/src/config",
-                        "directory path", "absolute_or_relative_path",
+HERO_CONFIG_RUNTIME_KEY("config_root", "path", 1, ".", "directory path",
+                        "absolute_or_relative_path",
                         "Base directory for relative Config Hero file paths.")
-HERO_CONFIG_RUNTIME_KEY("managed_roots", "path_list", 1, "/cuwacunu/src/config",
+HERO_CONFIG_RUNTIME_KEY("managed_roots", "path_list", 1, ".",
                         "comma-separated path list",
                         "absolute_or_relative_paths",
                         "Read/write scope roots for config file tools.")
@@ -40,7 +40,7 @@ HERO_CONFIG_RUNTIME_KEY("backup_enabled", "bool", 1, "true", "true|false",
                         "true,false",
                         "Create a backup before overwriting or deleting files.")
 HERO_CONFIG_RUNTIME_KEY("backup_dir", "path", 1,
-                        "/cuwacunu/.backups/hero.config", "directory path",
+                        "../../.backups/hero.config", "directory path",
                         "absolute_or_relative_path",
                         "Destination for Config Hero backup snapshots.")
 HERO_CONFIG_RUNTIME_KEY("backup_max_entries", "int", 1, "20", ">=1", "integer",

@@ -14,15 +14,15 @@ nuance = STDIO is implemented; HTTPS/SSE is reserved and must fail fast.
 key = config_root
 scope = Config Hero policy
 type = path
-default = /cuwacunu/src/config
-nuance = Relative paths passed to hero.config.inspect.file_list, hero.config.inspect.file_read, and hero.config.apply.write/delete operations resolve here.
+default = .
+nuance = Relative paths passed to hero.config.inspect.file_list, hero.config.inspect.file_read, and hero.config.apply.write/delete operations resolve here. Relative config_root values resolve beside src/config/hero.config.dsl.
 
 [FIELD managed_roots]
 key = managed_roots
 scope = Config Hero policy
 type = path_list
-default = /cuwacunu/src/config
-nuance = Read and write targets must stay under one of these roots.
+default = .
+nuance = Read and write targets must stay under one of these roots. Relative managed_roots entries resolve beside src/config/hero.config.dsl.
 
 [FIELD allow_read]
 key = allow_read
@@ -63,7 +63,7 @@ nuance = Existing files are backed up before whole-file replacement, deletion, p
 key = backup_dir
 scope = Config Hero policy
 type = path
-default = /cuwacunu/.backups/hero.config
+default = ../../.backups/hero.config
 nuance = Policy backups live under policy/ and managed file backups live under files/.
 
 [FIELD backup_max_entries]

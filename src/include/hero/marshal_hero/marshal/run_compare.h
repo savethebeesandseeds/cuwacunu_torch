@@ -11,6 +11,7 @@
 #include <string_view>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/marshal_hero/marshal/operational_report.h"
 
 namespace cuwacunu::hero::marshal {
@@ -19,8 +20,10 @@ inline constexpr const char *k_marshal_run_compare_schema_v1 =
     "kikijyeba.marshal.run_compare.v1";
 
 struct marshal_run_compare_options_t {
-  std::filesystem::path runtime_root{"/cuwacunu/.runtime/cuwacunu_exec"};
-  std::filesystem::path config_path{"/cuwacunu/src/config/.config"};
+  std::filesystem::path runtime_root{
+      cuwacunu::hero::config_paths::default_runtime_root_path()};
+  std::filesystem::path config_path{
+      cuwacunu::hero::config_paths::default_global_config_path()};
   std::string baseline_job_id{};
   std::string candidate_job_id{};
   bool include_machine_payload{false};

@@ -1,6 +1,8 @@
 #include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
 #include "hero/runtime_hero/runtime/job_runner.h"
+#include "tests/bench/kikijyeba/test_support/canonical_protocol_fixture.h"
 
+#include <algorithm>
 #include <cmath>
 #include <exception>
 #include <filesystem>
@@ -9,6 +11,7 @@
 #include <iterator>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -28,6 +31,7 @@ namespace runtime = cuwacunu::hero::runtime;
 namespace runtime_report = cuwacunu::hero::lattice::runtime_report;
 namespace target = cuwacunu::hero::lattice::target;
 namespace provenance = cuwacunu::kikijyeba::protocol::config_provenance;
+namespace protocol_fixture = cuwacunu::tests::kikijyeba::protocol_fixture;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 
 namespace {
@@ -74,6 +78,62 @@ std::string join_issue_tokens(const std::vector<std::string> &issues) {
     out += issues[i];
   }
   return out;
+}
+
+std::string join_causal_closure_keys(std::vector<std::string> keys) {
+  std::sort(keys.begin(), keys.end());
+  std::ostringstream out;
+  for (std::size_t i = 0; i < keys.size(); ++i) {
+    if (i != 0) {
+      out << ", ";
+    }
+    out << keys[i];
+  }
+  return out.str();
+}
+
+std::string expected_policy_no_lookahead_closure_digest(
+    const std::string &contract_digest,
+    std::vector<std::string> artifact_digests,
+    std::vector<std::string> checkpoint_digests,
+    std::vector<std::string> generation_digests, std::int64_t influence_end,
+    bool influence_end_bound, std::int64_t availability_end,
+    bool availability_end_bound, const std::string &embargo_policy_fingerprint,
+    std::int64_t embargo_purged_window_anchor_begin,
+    std::int64_t embargo_purged_window_anchor_end_exclusive,
+    bool embargo_purged_window_anchor_range_bound) {
+  std::ostringstream closure;
+  closure << "policy_no_lookahead_provenance_closure.v1|" << contract_digest
+          << "|" << join_causal_closure_keys(std::move(artifact_digests)) << "|"
+          << join_causal_closure_keys(std::move(checkpoint_digests)) << "|"
+          << join_causal_closure_keys(std::move(generation_digests)) << "|"
+          << influence_end << "|" << (influence_end_bound ? "1" : "0") << "|"
+          << availability_end << "|" << (availability_end_bound ? "1" : "0")
+          << "|" << embargo_policy_fingerprint << "|"
+          << embargo_purged_window_anchor_begin << "|"
+          << embargo_purged_window_anchor_end_exclusive << "|"
+          << (embargo_purged_window_anchor_range_bound ? "1" : "0");
+  return exposure::exposure_digest_for_text(closure.str());
+}
+
+std::string digest_vector_for_fixture(const std::string &schema,
+                                      const std::vector<std::string> &parts) {
+  std::ostringstream text;
+  text << schema;
+  for (const auto &part : parts) {
+    text << "|" << part;
+  }
+  return exposure::exposure_digest_for_text(text.str());
+}
+
+bool has_reason_containing(const std::vector<std::string> &reasons,
+                           const std::string &needle) {
+  for (const auto &reason : reasons) {
+    if (reason.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::filesystem::path make_tmp_dir(const std::string &label) {
@@ -197,6 +257,10 @@ env::replay_policy_factory_t make_runtime_replay_numeraire_policy_factory() {
   };
 }
 
+std::string canonical_cwu_02v_no_lookahead_contract_text() {
+  return protocol_fixture::canonical_cwu_02v_no_lookahead_contract_block_text();
+}
+
 fixture_paths_t make_config_fixture(
     const std::string &label, const std::string &wave_range,
     const std::string &target = "wikimyei.inference.expected_value.mdn",
@@ -241,18 +305,19 @@ fixture_paths_t make_config_fixture(
   out.channel_mdn_jkimyei = channel_mdn_jkimyei;
   out.config = out.dir / ".config";
 
-  const bool target_is_mtf =
-      target == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg" ||
-      target == "mtf_jepa_mae_vicreg_representation" ||
-      target == "mtf_jvmae_representation";
+  const bool target_is_vicreg =
+      target == "wikimyei.representation.encoding.vicreg" ||
+      target == "vicreg_representation";
   const std::string protocol_id =
       protocol_id_override.empty()
-          ? (target_is_mtf ? std::string{"cwu_02v"} : std::string{"cwu_01v"})
+          ? (target_is_vicreg ? std::string{"cwu_01v"} : std::string{"cwu_02v"})
           : protocol_id_override;
   const bool protocol_uses_mtf = protocol_id == "cwu_02v";
   const std::string protocol_representation =
       protocol_uses_mtf ? "wikimyei.representation.encoding.mtf_jepa_mae_vicreg"
                         : "wikimyei.representation.encoding.vicreg";
+  const std::string no_lookahead_contract =
+      canonical_cwu_02v_no_lookahead_contract_text();
 
   write_text(
       sources_dsl,
@@ -381,7 +446,8 @@ fixture_paths_t make_config_fixture(
                  "wikimyei.policy.portfolio.graph_node_allocation;\n"
                  "  REPRESENTATION_CONTRACT = "
                  "graph_order.channel_node_representation.v1;\n"
-                 "};\n");
+                 "};\n" +
+                 no_lookahead_contract);
 
   write_text(vicreg_dsl, "VICREG {\n"
                          "  VERSION = wikimyei.representation.vicreg.v1;\n"
@@ -515,6 +581,12 @@ fixture_paths_t make_config_fixture(
              "  VALIDATION_EVERY = 0;\n"
              "  SEED = 17;\n"
              "  FREEZE_REPRESENTATION = false;\n"
+             "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = "
+             "transitive_influence_required;\n"
              "};\n");
   write_text(mtf_jkimyei,
              "TRAINING {\n"
@@ -533,6 +605,12 @@ fixture_paths_t make_config_fixture(
              "  VALIDATION_EVERY = 0;\n"
              "  SEED = 17;\n"
              "  FREEZE_REPRESENTATION = false;\n"
+             "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = "
+             "transitive_influence_required;\n"
              "};\n");
   write_text(channel_mdn_jkimyei,
              "TRAINING {\n"
@@ -554,6 +632,12 @@ fixture_paths_t make_config_fixture(
              "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
              "  INPUT_MDN_CHECKPOINT = ;\n"
              "  ALLOW_UNTRAINED_REPRESENTATION = true;\n"
+             "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = "
+             "transitive_influence_required;\n"
              "};\n");
 
   write_text(
@@ -751,6 +835,8 @@ void write_fixture_wave(const fixture_paths_t &fixture,
 void rewrite_fixture_protocol(const fixture_paths_t &fixture,
                               const std::string &protocol_id,
                               const std::string &representation_family) {
+  const std::string no_lookahead_contract =
+      canonical_cwu_02v_no_lookahead_contract_text();
   write_text(fixture.protocol_dsl,
              std::string("PROTOCOL {\n"
                          "  PROTOCOL_ID = ") +
@@ -770,7 +856,8 @@ void rewrite_fixture_protocol(const fixture_paths_t &fixture,
                  "wikimyei.policy.portfolio.graph_node_allocation;\n"
                  "  REPRESENTATION_CONTRACT = "
                  "graph_order.channel_node_representation.v1;\n"
-                 "};\n");
+                 "};\n" +
+                 no_lookahead_contract);
 }
 
 runtime::job_run_result_t
@@ -789,7 +876,10 @@ void test_component_spawn_identity_is_protocol_not_wave_scoped() {
   const auto fixture = make_config_fixture("spawn_identity_wave_boundary",
                                            "  SOURCE_RANGE = anchor_index;\n"
                                            "  ANCHOR_INDEX_BEGIN = 0;\n"
-                                           "  ANCHOR_INDEX_END = 2;\n");
+                                           "  ANCHOR_INDEX_END = 2;\n",
+                                           "wikimyei.inference.expected_value."
+                                           "mdn",
+                                           "run | debug", "cwu_01v");
 
   provenance::component_spawn_tuple_t tuple{};
   tuple.component_family_id = "wikimyei.inference.expected_value.mdn";
@@ -882,8 +972,8 @@ void test_inference_dry_run_writes_manifest_and_state() {
 
   check(result.manifest.job_kind == "channel_inference_mdn",
         "manifest job kind");
-  check(result.manifest.protocol_id == "cwu_01v",
-        "default fixture records cwu_01v protocol id");
+  check(result.manifest.protocol_id == "cwu_02v",
+        "default inference fixture records cwu_02v protocol id");
   check(!result.manifest.config_bundle_id.empty(),
         "manifest records config bundle id");
   check(!result.manifest.config_receipt_id.empty(),
@@ -1046,7 +1136,7 @@ void test_inference_dry_run_writes_manifest_and_state() {
         "manifest records protocol contract fingerprint");
   check(manifest_text.find("protocol_contract_token=") != std::string::npos,
         "manifest records protocol contract token");
-  check(manifest_text.find("protocol_id=cwu_01v") != std::string::npos,
+  check(manifest_text.find("protocol_id=cwu_02v") != std::string::npos,
         "manifest records protocol id");
   check(manifest_text.find("job_kind=channel_inference_mdn") !=
             std::string::npos,
@@ -1099,7 +1189,7 @@ void test_inference_dry_run_writes_manifest_and_state() {
   check(manifest_text.find("mutated_components=\n") != std::string::npos,
         "run action does not mutate components");
   check(manifest_text.find("frozen_components=wikimyei.representation."
-                           "encoding.vicreg") != std::string::npos,
+                           "encoding.mtf_jepa_mae_vicreg") != std::string::npos,
         "manifest records frozen representation dependency");
   const auto state_text = read_text(job_dir / "job.state");
   check(state_text.find("status=dry_run") != std::string::npos,
@@ -1327,11 +1417,11 @@ void test_train_mode_manifest_mutation_policy() {
             "wikimyei.inference.expected_value.mdn",
         "train mode mutates only MDN target");
   check(result.manifest.frozen_components ==
-            "wikimyei.representation.encoding.vicreg",
+            "wikimyei.representation.encoding.mtf_jepa_mae_vicreg",
         "MDN train mode freezes representation dependency");
   check(result.manifest.execution_chain.find(
-            "wikimyei.representation.encoding.vicreg:run_frozen") !=
-            std::string::npos,
+            "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:"
+            "run_frozen") != std::string::npos,
         "execution chain records frozen upstream representation");
   check(result.state.wave_action == "train", "state records train action");
 }
@@ -1411,11 +1501,11 @@ void test_channel_targets_dispatch_to_channel_runner() {
             "wikimyei.inference.expected_value.mdn",
         "channel inference mutates only MDN");
   check(inference_result.manifest.frozen_components ==
-            "wikimyei.representation.encoding.vicreg",
+            "wikimyei.representation.encoding.mtf_jepa_mae_vicreg",
         "channel inference freezes channel representation");
   check(inference_result.manifest.execution_chain.find(
-            "wikimyei.representation.encoding.vicreg:run_frozen") !=
-            std::string::npos,
+            "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:"
+            "run_frozen") != std::string::npos,
         "channel inference execution chain records frozen representation");
   check(inference_result.delegated_report_path.filename() ==
             "channel_inference.report",
@@ -1520,9 +1610,12 @@ void test_wave_profile_protocol_mismatch_fails() {
 }
 
 void test_strict_channel_baseline_runs_through_runtime() {
-  const auto representation_fixture = make_config_fixture(
-      "strict_channel_baseline_representation", "  SOURCE_RANGE = all;\n",
-      "wikimyei.representation.encoding.vicreg", "train");
+  const auto representation_fixture =
+      make_config_fixture("strict_channel_baseline_representation",
+                          "  SOURCE_RANGE = anchor_index;\n"
+                          "  ANCHOR_INDEX_BEGIN = 0;\n"
+                          "  ANCHOR_INDEX_END = 1;\n",
+                          "wikimyei.representation.encoding.vicreg", "train");
   configure_vicreg_train_smoke(representation_fixture);
   const auto representation_job_dir = representation_fixture.dir / "job";
   runtime::job_runner_options_t representation_options{};
@@ -1648,8 +1741,11 @@ void test_strict_channel_baseline_runs_through_runtime() {
         "number");
 
   const auto inference_fixture = make_config_fixture(
-      "strict_channel_baseline_inference", "  SOURCE_RANGE = all;\n",
-      "wikimyei.inference.expected_value.mdn", "train");
+      "strict_channel_baseline_inference",
+      "  SOURCE_RANGE = anchor_index;\n"
+      "  ANCHOR_INDEX_BEGIN = 0;\n"
+      "  ANCHOR_INDEX_END = 1;\n",
+      "wikimyei.inference.expected_value.mdn", "train", "cwu_01v");
   configure_channel_mdn_strict_smoke(
       inference_fixture, representation_result.state.checkpoint_path);
   const auto inference_job_dir = inference_fixture.dir / "job";
@@ -1846,12 +1942,12 @@ void test_strict_channel_baseline_runs_through_runtime() {
             std::string::npos,
         "strict baseline exposure fact carries mixture usage");
 
-  const auto missing_mdn_eval_fixture =
-      make_config_fixture("strict_channel_eval_missing_mdn_checkpoint",
-                          "  SOURCE_RANGE = anchor_index;\n"
-                          "  ANCHOR_INDEX_BEGIN = 1;\n"
-                          "  ANCHOR_INDEX_END = 3;\n",
-                          "wikimyei.inference.expected_value.mdn", "run");
+  const auto missing_mdn_eval_fixture = make_config_fixture(
+      "strict_channel_eval_missing_mdn_checkpoint",
+      "  SOURCE_RANGE = anchor_index;\n"
+      "  ANCHOR_INDEX_BEGIN = 1;\n"
+      "  ANCHOR_INDEX_END = 3;\n",
+      "wikimyei.inference.expected_value.mdn", "run", "cwu_01v");
   configure_channel_mdn_strict_smoke(
       missing_mdn_eval_fixture, representation_result.state.checkpoint_path);
   const auto missing_mdn_eval_job_dir = missing_mdn_eval_fixture.dir / "job";
@@ -1892,12 +1988,12 @@ void test_strict_channel_baseline_runs_through_runtime() {
                                  "lattice.exposure.fact"),
         "strict baseline missing-MDN eval does not write exposure fact");
 
-  const auto eval_fixture =
-      make_config_fixture("strict_channel_baseline_eval",
-                          "  SOURCE_RANGE = source_key;\n"
-                          "  SOURCE_KEY_BEGIN = 1002;\n"
-                          "  SOURCE_KEY_END = 1004;\n",
-                          "wikimyei.inference.expected_value.mdn", "run");
+  const auto eval_fixture = make_config_fixture(
+      "strict_channel_baseline_eval",
+      "  SOURCE_RANGE = source_key;\n"
+      "  SOURCE_KEY_BEGIN = 1002;\n"
+      "  SOURCE_KEY_END = 1004;\n",
+      "wikimyei.inference.expected_value.mdn", "run", "cwu_01v");
   configure_channel_mdn_strict_eval(eval_fixture,
                                     representation_result.state.checkpoint_path,
                                     inference_result.state.checkpoint_path);
@@ -2322,6 +2418,16 @@ void test_strict_channel_baseline_runs_through_runtime() {
   check(exposure::forecast_eval_fact_issues(emitted_forecast_eval_fact).empty(),
         "strict baseline emitted forecast-eval fact has closed checkpoint, "
         "transform, baseline, and selection audit lineage");
+  check(exposure::artifact_influence_summary_declared(
+            emitted_forecast_eval_fact.influence_summary) &&
+            emitted_forecast_eval_fact.influence_summary.complete &&
+            emitted_forecast_eval_fact.influence_summary
+                .influence_anchor_end_exclusive_max_bound &&
+            emitted_forecast_eval_fact.influence_summary
+                    .influence_anchor_end_exclusive_max <=
+                emitted_forecast_eval_fact.anchor_range.begin,
+        "strict baseline emitted forecast-eval fact carries complete prior "
+        "checkpoint no-lookahead provenance");
   check(
       !emitted_forecast_eval_fact.mean_nll_per_channel.empty() &&
           !emitted_forecast_eval_fact.mean_nll_per_target_feature.empty() &&
@@ -2345,13 +2451,23 @@ void test_strict_channel_baseline_runs_through_runtime() {
             .empty(),
         "strict baseline emitted observer-belief fact has forecast and "
         "scenario lineage");
+  const auto &emitted_replay_environment_fact =
+      eval_scan.ledger.replay_environment_facts().front();
   const auto replay_environment_issues =
-      exposure::replay_environment_fact_issues(
-          eval_scan.ledger.replay_environment_facts().front());
+      exposure::replay_environment_fact_issues(emitted_replay_environment_fact);
   check(replay_environment_issues.empty(),
         "strict baseline emitted replay-environment fact has cost-aware "
         "Cajtucu, time-law, projection, and source cursor evidence: " +
             join_issue_tokens(replay_environment_issues));
+  check(exposure::artifact_influence_summary_declared(
+            emitted_replay_environment_fact.influence_summary) &&
+            emitted_replay_environment_fact.influence_summary.complete &&
+            emitted_replay_environment_fact.influence_summary
+                    .influence_anchor_end_exclusive_max ==
+                emitted_forecast_eval_fact.influence_summary
+                    .influence_anchor_end_exclusive_max,
+        "strict baseline emitted replay-environment fact inherits forecast "
+        "no-lookahead provenance");
 
   const auto &eval_parent_exposure = eval_scan.ledger.facts().front();
   const auto forecast_eval_digest =
@@ -2359,8 +2475,7 @@ void test_strict_channel_baseline_runs_through_runtime() {
   const auto observer_belief_digest = exposure::observer_belief_fact_digest(
       eval_scan.ledger.observer_belief_facts().front());
   const auto replay_environment_digest =
-      exposure::replay_environment_fact_digest(
-          eval_scan.ledger.replay_environment_facts().front());
+      exposure::replay_environment_fact_digest(emitted_replay_environment_fact);
 
   exposure::lattice_allocation_engine_fact_t allocation_fact{};
   exposure::populate_artifact_fact_identity(allocation_fact,
@@ -2392,7 +2507,7 @@ void test_strict_channel_baseline_runs_through_runtime() {
       eval_job_dir, {}, eval_scan_options);
   check(allocation_scan.ledger.allocation_engine_facts().size() == 1,
         "strict baseline eval scan sees durable allocation-engine sidecar for "
-        "pre-PPO policy-training parent evidence");
+        "PPO policy-training parent evidence");
   const auto &emitted_allocation_fact =
       allocation_scan.ledger.allocation_engine_facts().front();
   const auto allocation_issues =
@@ -2403,6 +2518,20 @@ void test_strict_channel_baseline_runs_through_runtime() {
             join_issue_tokens(allocation_issues));
   const auto allocation_engine_digest =
       exposure::allocation_engine_fact_digest(emitted_allocation_fact);
+  const auto representation_checkpoint_fact =
+      exposure::find_checkpoint_fact_for_checkpoint_path(
+          representation_result.state.checkpoint_path,
+          emitted_forecast_eval_fact.evaluated_representation_checkpoint_digest,
+          eval_parent_exposure.split_policy_fingerprint);
+  const auto mdn_checkpoint_fact =
+      exposure::find_checkpoint_fact_for_checkpoint_path(
+          inference_result.state.checkpoint_path,
+          emitted_forecast_eval_fact.evaluated_mdn_checkpoint_digest,
+          eval_parent_exposure.split_policy_fingerprint);
+  check(representation_checkpoint_fact.has_value() &&
+            mdn_checkpoint_fact.has_value(),
+        "strict baseline resolves parent representation and MDN checkpoint "
+        "identity facts for PPO bundle provenance");
 
   exposure::lattice_policy_training_fact_t policy_training_fact{};
   exposure::populate_artifact_fact_identity(policy_training_fact,
@@ -2411,7 +2540,7 @@ void test_strict_channel_baseline_runs_through_runtime() {
       "wikimyei.policy.portfolio.graph_node_allocation";
   policy_training_fact.policy_id =
       "wikimyei.policy.portfolio.graph_node_allocation.v1";
-  policy_training_fact.policy_kind = "noop_policy_training.v1";
+  policy_training_fact.policy_kind = "ppo_policy_adapter.v1";
   policy_training_fact.policy_architecture_digest =
       "graph_node_allocation_contract_fixture_arch";
   policy_training_fact.training_config_digest =
@@ -2439,15 +2568,50 @@ void test_strict_channel_baseline_runs_through_runtime() {
       eval_scan.ledger.replay_environment_facts()
           .front()
           .execution_profile_digest;
+  policy_training_fact.ppo_policy_artifact_contract_id =
+      "kikijyeba.runtime.ppo_policy_artifact_contract.v1";
+  policy_training_fact.policy_family_id =
+      "wikimyei.policy.portfolio.graph_node_allocation";
+  policy_training_fact.policy_checkpoint_schema_id =
+      "wikimyei.policy.portfolio.graph_node_allocation.ppo_checkpoint.v1";
+  policy_training_fact.policy_dsl_digest = "policy_dsl_digest_fixture";
+  policy_training_fact.policy_net_digest = "policy_net_digest_fixture";
+  policy_training_fact.policy_input_feature_manifest_digest =
+      "policy_input_feature_manifest_digest_fixture";
+  policy_training_fact.policy_jkimyei_digest = "policy_jkimyei_digest_fixture";
+  const auto canonical_no_lookahead =
+      protocol_fixture::canonical_cwu_02v_no_lookahead_contract();
+  policy_training_fact.policy_jkimyei_no_lookahead_contract_id =
+      canonical_no_lookahead.contract_id;
+  policy_training_fact.policy_jkimyei_no_lookahead_contract_digest =
+      canonical_no_lookahead.contract_digest;
+  policy_training_fact.policy_jkimyei_component_order_contract_id =
+      canonical_no_lookahead.contract_id;
+  policy_training_fact.policy_jkimyei_component_order_contract_digest =
+      canonical_no_lookahead.contract_digest;
+  policy_training_fact.policy_jkimyei_component_role = "policy";
+  policy_training_fact.policy_jkimyei_serving_order_index = 2;
+  policy_training_fact.policy_jkimyei_serving_order_index_bound = true;
+  policy_training_fact.target_node_universe_digest =
+      "target_node_universe_digest_fixture";
+  policy_training_fact.action_distribution_config_digest =
+      "action_distribution_config_digest_fixture";
+  policy_training_fact.snapshot_family_digest =
+      "snapshot_family_digest_fixture";
   policy_training_fact.training_schedule_mode =
       "causal_walk_forward_training.v1";
   policy_training_fact.causal_schedule_schema_id =
       "kikijyeba.runtime.policy_training_causal_schedule.v1";
-  policy_training_fact.causal_schedule_digest =
-      "causal_schedule_pre_ppo_rehearsal_digest";
+  policy_training_fact.causal_schedule_digest = "causal_schedule_ppo_v0_digest";
   policy_training_fact.causal_schedule_cursor_key_kind = "numeric_anchor_index";
   policy_training_fact.causal_schedule_no_future_snapshot_use_source =
       "derived_from_artifact_fit_use_ledgers";
+  policy_training_fact.embargo_policy_fingerprint = "embargo_policy_anchor_v1";
+  policy_training_fact.embargo_purged_window_anchor_range.begin =
+      policy_training_fact.anchor_range.begin;
+  policy_training_fact.embargo_purged_window_anchor_range.end =
+      policy_training_fact.anchor_range.begin;
+  policy_training_fact.embargo_purged_window_anchor_range_bound = true;
   policy_training_fact.normalization_fit_range_digest =
       policy_training_fact.training_range_digest;
   policy_training_fact.replay_buffer_source_range_digest =
@@ -2460,9 +2624,125 @@ void test_strict_channel_baseline_runs_through_runtime() {
   policy_training_fact.selector_policy_digest =
       "selector_policy_validation_only_digest";
   policy_training_fact.parent_checkpoint_digest =
-      "noop_policy_training_parent_checkpoint_digest";
+      "ppo_policy_training_parent_checkpoint_digest";
   policy_training_fact.checkpoint_digest =
-      "noop_policy_training_checkpoint_digest";
+      "ppo_policy_training_checkpoint_digest";
+  policy_training_fact.snapshot_bundle_id =
+      "snapshot_bundle_policy_ready_fixture";
+  policy_training_fact.snapshot_bundle_selection_basis = "bundle_manifest";
+  policy_training_fact.snapshot_bundle_no_lookahead_contract_id =
+      canonical_no_lookahead.contract_id;
+  policy_training_fact.snapshot_bundle_no_lookahead_contract_digest =
+      canonical_no_lookahead.contract_digest;
+  policy_training_fact.snapshot_bundle_component_order_contract_id =
+      canonical_no_lookahead.contract_id;
+  policy_training_fact.snapshot_bundle_component_order_contract_digest =
+      canonical_no_lookahead.contract_digest;
+  policy_training_fact.snapshot_bundle_protocol_contract_fingerprint =
+      policy_training_fact.contract_fingerprint;
+  policy_training_fact.snapshot_bundle_generation_vector_digest =
+      "snapshot_bundle_generation_vector_digest_fixture";
+  policy_training_fact.snapshot_bundle_valid_from_anchor =
+      policy_training_fact.anchor_range.end;
+  policy_training_fact.snapshot_bundle_valid_from_anchor_bound = true;
+  policy_training_fact.snapshot_bundle_compatibility_closure_digest =
+      "snapshot_bundle_compatibility_closure_digest_fixture";
+  policy_training_fact.bundle_representation_component_id =
+      representation_checkpoint_fact->component;
+  policy_training_fact.bundle_representation_checkpoint_digest =
+      representation_checkpoint_fact->checkpoint_file_digest;
+  policy_training_fact.bundle_representation_generation_id =
+      representation_checkpoint_fact->generation_id;
+  policy_training_fact.bundle_representation_generation_vector_digest =
+      representation_checkpoint_fact->generation_vector_member_digest;
+  policy_training_fact.bundle_mdn_component_id = mdn_checkpoint_fact->component;
+  policy_training_fact.bundle_mdn_checkpoint_digest =
+      mdn_checkpoint_fact->checkpoint_file_digest;
+  policy_training_fact.bundle_mdn_generation_id =
+      mdn_checkpoint_fact->generation_id;
+  policy_training_fact.bundle_mdn_generation_vector_digest =
+      mdn_checkpoint_fact->generation_vector_member_digest;
+  policy_training_fact.bundle_policy_component_id =
+      "wikimyei.policy.portfolio.graph_node_allocation";
+  policy_training_fact.bundle_policy_checkpoint_digest =
+      policy_training_fact.checkpoint_digest;
+  policy_training_fact.bundle_policy_generation_id =
+      "policy_generation_fixture";
+  policy_training_fact.bundle_policy_generation_vector_digest =
+      "policy_generation_vector_digest_fixture";
+  policy_training_fact
+      .mdn_trained_against_representation_generation_vector_digest =
+      representation_checkpoint_fact->generation_vector_member_digest;
+  policy_training_fact
+      .policy_trained_against_representation_generation_vector_digest =
+      representation_checkpoint_fact->generation_vector_member_digest;
+  policy_training_fact.policy_trained_against_mdn_generation_vector_digest =
+      mdn_checkpoint_fact->generation_vector_member_digest;
+  policy_training_fact
+      .policy_trained_against_policy_parent_generation_vector_digest =
+      "generation_vector_seed_policy_v1";
+  policy_training_fact.snapshot_bundle_policy_execution_certificate_digest =
+      "snapshot_bundle_policy_execution_certificate_digest_fixture";
+  policy_training_fact.actor_architecture_digest =
+      "actor_architecture_digest_fixture";
+  policy_training_fact.critic_architecture_digest =
+      "critic_architecture_digest_fixture";
+  policy_training_fact.input_policy_checkpoint_digest =
+      "seed_policy_checkpoint_digest_fixture";
+  policy_training_fact.actor_checkpoint_digest =
+      policy_training_fact.checkpoint_digest;
+  policy_training_fact.critic_checkpoint_digest =
+      "critic_checkpoint_digest_fixture";
+  policy_training_fact.optimizer_state_digest =
+      "optimizer_state_digest_fixture";
+  policy_training_fact.optimizer_state_schema_id =
+      "kikijyeba.runtime.ppo_optimizer_state.v1";
+  policy_training_fact.optimizer_torch_state_path = "ppo_optimizer_state.pt";
+  policy_training_fact.optimizer_torch_state_digest =
+      "optimizer_torch_state_digest_fixture";
+  policy_training_fact.ppo_config_digest = "ppo_config_digest_fixture";
+  policy_training_fact.device_policy = "require_cuda";
+  policy_training_fact.runtime_device_kind = "cuda";
+  policy_training_fact.cuda_device_index = 0;
+  policy_training_fact.cuda_device_index_bound = true;
+  policy_training_fact.cuda_available = true;
+  policy_training_fact.module_parameters_on_cuda = true;
+  policy_training_fact.forward_input_on_cuda = true;
+  policy_training_fact.loss_on_cuda = true;
+  policy_training_fact.optimizer_state_on_cuda = true;
+  policy_training_fact.cuda_verification_passed = true;
+  policy_training_fact.resume_mode = "fresh_spawn";
+  policy_training_fact.advantage_estimator_id = "gae.v1";
+  policy_training_fact.advantage_normalization_policy =
+      "per_rollout_standardize_v1";
+  policy_training_fact.rollout_collection_schema_id =
+      "kikijyeba.runtime.ppo_rollout_collection.v1";
+  policy_training_fact.rollout_collection_digest =
+      "rollout_collection_digest_fixture";
+  policy_training_fact.ppo_update_report_schema_id =
+      "kikijyeba.runtime.ppo_update_report.v1";
+  policy_training_fact.ppo_update_report_digest =
+      "ppo_update_report_digest_fixture";
+  policy_training_fact.validation_rollout_report_digest =
+      "validation_rollout_report_digest_fixture";
+  policy_training_fact.ppo_gamma = 0.99;
+  policy_training_fact.ppo_gamma_bound = true;
+  policy_training_fact.ppo_gae_lambda = 0.95;
+  policy_training_fact.ppo_gae_lambda_bound = true;
+  policy_training_fact.ppo_clip_epsilon = 0.2;
+  policy_training_fact.ppo_clip_epsilon_bound = true;
+  policy_training_fact.ppo_target_kl = 0.02;
+  policy_training_fact.ppo_target_kl_bound = true;
+  policy_training_fact.ppo_entropy_coeff = 0.01;
+  policy_training_fact.ppo_entropy_coeff_bound = true;
+  policy_training_fact.ppo_value_loss_coeff = 0.5;
+  policy_training_fact.ppo_value_loss_coeff_bound = true;
+  policy_training_fact.ppo_max_grad_norm = 0.5;
+  policy_training_fact.ppo_max_grad_norm_bound = true;
+  policy_training_fact.ppo_minibatch_size = 32;
+  policy_training_fact.ppo_minibatch_size_bound = true;
+  policy_training_fact.ppo_epochs_per_rollout = 4;
+  policy_training_fact.ppo_epochs_per_rollout_bound = true;
   policy_training_fact.parent_forecast_eval_fact_digest = forecast_eval_digest;
   policy_training_fact.parent_observer_belief_fact_digest =
       observer_belief_digest;
@@ -2487,6 +2767,366 @@ void test_strict_channel_baseline_runs_through_runtime() {
   policy_training_fact.causal_schedule_readiness_eligible = true;
   policy_training_fact.causal_schedule_no_future_snapshot_use = true;
   policy_training_fact.offline_full_window_research = false;
+  std::vector<std::string> policy_closure_artifacts{
+      forecast_eval_digest,
+      emitted_forecast_eval_fact.forecast_artifact_digest};
+  policy_closure_artifacts.insert(policy_closure_artifacts.end(),
+                                  emitted_forecast_eval_fact.influence_summary
+                                      .parent_artifact_digests.begin(),
+                                  emitted_forecast_eval_fact.influence_summary
+                                      .parent_artifact_digests.end());
+  policy_closure_artifacts.insert(
+      policy_closure_artifacts.end(),
+      emitted_replay_environment_fact.influence_summary.parent_artifact_digests
+          .begin(),
+      emitted_replay_environment_fact.influence_summary.parent_artifact_digests
+          .end());
+  policy_closure_artifacts.push_back(
+      emitted_replay_environment_fact.parent_forecast_eval_fact_digest);
+  policy_closure_artifacts.push_back(
+      emitted_replay_environment_fact.parent_forecast_artifact_digest);
+  policy_closure_artifacts.insert(policy_closure_artifacts.end(),
+                                  emitted_forecast_eval_fact.influence_summary
+                                      .parent_artifact_digests.begin(),
+                                  emitted_forecast_eval_fact.influence_summary
+                                      .parent_artifact_digests.end());
+  auto policy_execution_artifacts = policy_closure_artifacts;
+  policy_execution_artifacts.push_back(replay_environment_digest);
+  std::vector<std::string> policy_closure_checkpoints =
+      emitted_forecast_eval_fact.influence_summary.parent_checkpoint_digests;
+  policy_closure_checkpoints.insert(
+      policy_closure_checkpoints.end(),
+      emitted_replay_environment_fact.influence_summary
+          .parent_checkpoint_digests.begin(),
+      emitted_replay_environment_fact.influence_summary
+          .parent_checkpoint_digests.end());
+  policy_closure_checkpoints.insert(policy_closure_checkpoints.end(),
+                                    emitted_forecast_eval_fact.influence_summary
+                                        .parent_checkpoint_digests.begin(),
+                                    emitted_forecast_eval_fact.influence_summary
+                                        .parent_checkpoint_digests.end());
+  std::vector<std::string> policy_closure_generations =
+      emitted_forecast_eval_fact.influence_summary
+          .parent_generation_vector_digests;
+  policy_closure_generations.push_back(
+      emitted_forecast_eval_fact.influence_summary
+          .producer_generation_vector_digest);
+  policy_closure_generations.insert(
+      policy_closure_generations.end(),
+      emitted_replay_environment_fact.influence_summary
+          .parent_generation_vector_digests.begin(),
+      emitted_replay_environment_fact.influence_summary
+          .parent_generation_vector_digests.end());
+  policy_closure_generations.insert(
+      policy_closure_generations.end(),
+      emitted_forecast_eval_fact.influence_summary
+          .parent_generation_vector_digests.begin(),
+      emitted_forecast_eval_fact.influence_summary
+          .parent_generation_vector_digests.end());
+  policy_closure_generations.push_back(
+      emitted_forecast_eval_fact.influence_summary
+          .producer_generation_vector_digest);
+  const auto policy_no_lookahead_closure =
+      expected_policy_no_lookahead_closure_digest(
+          emitted_forecast_eval_fact.influence_summary
+              .no_lookahead_contract_digest,
+          policy_closure_artifacts, policy_closure_checkpoints,
+          policy_closure_generations,
+          std::max(emitted_forecast_eval_fact.influence_summary
+                       .influence_anchor_end_exclusive_max,
+                   emitted_replay_environment_fact.influence_summary
+                       .influence_anchor_end_exclusive_max),
+          emitted_forecast_eval_fact.influence_summary
+                  .influence_anchor_end_exclusive_max_bound ||
+              emitted_replay_environment_fact.influence_summary
+                  .influence_anchor_end_exclusive_max_bound,
+          std::max(emitted_forecast_eval_fact.influence_summary
+                       .label_or_reward_availability_end_exclusive_max,
+                   emitted_replay_environment_fact.influence_summary
+                       .label_or_reward_availability_end_exclusive_max),
+          emitted_forecast_eval_fact.influence_summary
+                  .label_or_reward_availability_end_exclusive_max_bound ||
+              emitted_replay_environment_fact.influence_summary
+                  .label_or_reward_availability_end_exclusive_max_bound,
+          policy_training_fact.embargo_policy_fingerprint,
+          policy_training_fact.embargo_purged_window_anchor_range.begin,
+          policy_training_fact.embargo_purged_window_anchor_range.end,
+          policy_training_fact.embargo_purged_window_anchor_range_bound);
+  const auto policy_output_provenance_closure = digest_vector_for_fixture(
+      "policy_output_provenance_closure.v1",
+      {policy_no_lookahead_closure,
+       policy_training_fact
+           .policy_trained_against_policy_parent_generation_vector_digest,
+       policy_training_fact.bundle_policy_generation_vector_digest});
+  policy_training_fact.parent_replay_environment_report_digest =
+      emitted_replay_environment_fact.experiment_report_digest;
+  policy_training_fact.policy_trained_against_forecast_eval_fact_digest =
+      forecast_eval_digest;
+  policy_training_fact.policy_trained_against_replay_environment_fact_digest =
+      replay_environment_digest;
+  policy_training_fact.mdn_trained_against_representation_generation_id =
+      representation_checkpoint_fact->generation_id;
+  policy_training_fact.mdn_trained_against_representation_checkpoint_digest =
+      representation_checkpoint_fact->checkpoint_file_digest;
+  policy_training_fact.policy_execution_input_lock_digest =
+      digest_vector_for_fixture("policy_execution_input_lock.v1",
+                                {policy_no_lookahead_closure});
+  policy_training_fact.policy_execution_no_lookahead_certificate_schema =
+      "no_lookahead_artifact_provenance.v1";
+  policy_training_fact.policy_execution_no_lookahead_certificate_digest =
+      policy_no_lookahead_closure;
+  policy_training_fact.policy_execution_evidence_snapshot_digest =
+      policy_no_lookahead_closure;
+  policy_training_fact.policy_execution_provenance_closure_digest =
+      policy_no_lookahead_closure;
+  policy_training_fact.policy_execution_target_id =
+      "emitted_policy_training_artifact_ready";
+  policy_training_fact.policy_execution_target_anchor_range =
+      policy_training_fact.anchor_range;
+  policy_training_fact.policy_execution_target_anchor_range_bound = true;
+  policy_training_fact.policy_execution_no_lookahead_contract_digest =
+      emitted_forecast_eval_fact.influence_summary.no_lookahead_contract_digest;
+  policy_training_fact.policy_execution_input_parent_forecast_eval_fact_digest =
+      forecast_eval_digest;
+  policy_training_fact.policy_execution_input_parent_forecast_artifact_digest =
+      emitted_forecast_eval_fact.forecast_artifact_digest;
+  policy_training_fact
+      .policy_execution_input_parent_replay_environment_fact_digest =
+      replay_environment_digest;
+  policy_training_fact
+      .policy_execution_input_parent_replay_environment_report_digest =
+      emitted_replay_environment_fact.experiment_report_digest;
+  policy_training_fact.policy_execution_replay_job_dir_digest =
+      exposure::exposure_digest_for_text(eval_job_dir.string());
+  policy_training_fact.policy_execution_consumed_artifact_digests =
+      policy_execution_artifacts;
+  policy_training_fact.policy_execution_consumed_checkpoint_digests =
+      policy_closure_checkpoints;
+  policy_training_fact.policy_execution_consumed_generation_vector_digests =
+      policy_closure_generations;
+  policy_training_fact.parent_policy_generation_id =
+      "policy_generation_seed_v1";
+  policy_training_fact.parent_policy_generation_vector_digest =
+      "generation_vector_seed_policy_v1";
+  policy_training_fact.parent_policy_influence_summary.complete = true;
+  policy_training_fact.parent_policy_influence_summary.graph_order_fingerprint =
+      policy_training_fact.graph_order_fingerprint;
+  policy_training_fact.parent_policy_influence_summary.source_cursor_token =
+      policy_training_fact.source_cursor_token;
+  policy_training_fact.parent_policy_influence_summary
+      .split_policy_fingerprint = policy_training_fact.split_policy_fingerprint;
+  policy_training_fact.parent_policy_influence_summary.coverage_anchor_range = {
+      .begin = 0, .end = policy_training_fact.anchor_range.begin};
+  policy_training_fact.parent_policy_influence_summary
+      .coverage_anchor_range_bound = true;
+  policy_training_fact.parent_policy_influence_summary
+      .influence_anchor_begin_min = 0;
+  policy_training_fact.parent_policy_influence_summary
+      .influence_anchor_begin_min_bound = true;
+  policy_training_fact.parent_policy_influence_summary
+      .influence_anchor_end_exclusive_max = 0;
+  policy_training_fact.parent_policy_influence_summary
+      .influence_anchor_end_exclusive_max_bound = true;
+  policy_training_fact.parent_policy_influence_summary
+      .label_or_reward_availability_end_exclusive_max = 0;
+  policy_training_fact.parent_policy_influence_summary
+      .label_or_reward_availability_end_exclusive_max_bound = true;
+  policy_training_fact.parent_policy_influence_summary
+      .producer_generation_vector_digest =
+      policy_training_fact.parent_policy_generation_vector_digest;
+  policy_training_fact.parent_policy_influence_summary
+      .provenance_closure_digest = digest_vector_for_fixture(
+      "policy_seed_parent_closure.v1",
+      {policy_training_fact.parent_policy_generation_vector_digest});
+  policy_training_fact.parent_policy_influence_summary
+      .no_lookahead_contract_digest =
+      policy_training_fact.policy_execution_no_lookahead_contract_digest;
+  policy_training_fact.parent_policy_valid_from_anchor = 0;
+  policy_training_fact.parent_policy_valid_from_anchor_bound = true;
+  policy_training_fact.policy_output_generation_id =
+      policy_training_fact.bundle_policy_generation_id;
+  policy_training_fact.policy_output_generation_vector_digest =
+      policy_training_fact.bundle_policy_generation_vector_digest;
+  policy_training_fact.policy_output_fit_anchor_range =
+      policy_training_fact.anchor_range;
+  policy_training_fact.policy_output_fit_anchor_range_bound = true;
+  policy_training_fact.policy_output_valid_from_anchor =
+      policy_training_fact.anchor_range.end;
+  policy_training_fact.policy_output_valid_from_anchor_bound = true;
+  policy_training_fact.policy_output_provenance_closure_digest =
+      policy_output_provenance_closure;
+  policy_training_fact.influence_summary.complete = true;
+  policy_training_fact.influence_summary.graph_order_fingerprint =
+      policy_training_fact.graph_order_fingerprint;
+  policy_training_fact.influence_summary.source_cursor_token =
+      policy_training_fact.source_cursor_token;
+  policy_training_fact.influence_summary.split_policy_fingerprint =
+      policy_training_fact.split_policy_fingerprint;
+  policy_training_fact.influence_summary.coverage_anchor_range =
+      policy_training_fact.anchor_range;
+  policy_training_fact.influence_summary.coverage_anchor_range_bound = true;
+  policy_training_fact.influence_summary.influence_anchor_begin_min =
+      policy_training_fact.anchor_range.begin;
+  policy_training_fact.influence_summary.influence_anchor_begin_min_bound =
+      true;
+  policy_training_fact.influence_summary.influence_anchor_end_exclusive_max =
+      policy_training_fact.anchor_range.end;
+  policy_training_fact.influence_summary
+      .influence_anchor_end_exclusive_max_bound = true;
+  policy_training_fact.influence_summary
+      .label_or_reward_availability_end_exclusive_max =
+      policy_training_fact.anchor_range.end;
+  policy_training_fact.influence_summary
+      .label_or_reward_availability_end_exclusive_max_bound = true;
+  policy_training_fact.influence_summary.producer_generation_vector_digest =
+      policy_training_fact.policy_output_generation_vector_digest;
+  policy_training_fact.influence_summary.parent_artifact_digests = {
+      policy_no_lookahead_closure};
+  policy_training_fact.influence_summary.parent_checkpoint_digests = {
+      policy_training_fact.input_policy_checkpoint_digest};
+  policy_training_fact.influence_summary.parent_generation_vector_digests =
+      policy_closure_generations;
+  policy_training_fact.influence_summary.parent_generation_vector_digests
+      .push_back(policy_training_fact.parent_policy_generation_vector_digest);
+  policy_training_fact.influence_summary.provenance_closure_digest =
+      policy_output_provenance_closure;
+  policy_training_fact.influence_summary.no_lookahead_contract_digest =
+      policy_training_fact.policy_execution_no_lookahead_contract_digest;
+  policy_training_fact.snapshot_bundle_no_lookahead_certificate_digests = {
+      policy_no_lookahead_closure};
+  policy_training_fact.snapshot_bundle_policy_execution_certificate_digest =
+      policy_no_lookahead_closure;
+  policy_training_fact.snapshot_bundle_generation_vector_digest =
+      digest_vector_for_fixture(
+          "snapshot_bundle_generation_vector.v1",
+          {policy_training_fact.bundle_representation_generation_vector_digest,
+           policy_training_fact.bundle_mdn_generation_vector_digest,
+           policy_training_fact.bundle_policy_generation_vector_digest});
+  policy_training_fact.snapshot_bundle_influence_anchor_end_exclusive_max =
+      policy_training_fact.anchor_range.end;
+  policy_training_fact
+      .snapshot_bundle_influence_anchor_end_exclusive_max_bound = true;
+  policy_training_fact
+      .snapshot_bundle_compatibility_closure_digest = digest_vector_for_fixture(
+      "snapshot_bundle_compatibility_closure.v1",
+      {policy_training_fact.snapshot_bundle_id,
+       policy_training_fact.bundle_representation_generation_vector_digest,
+       policy_training_fact.bundle_mdn_generation_vector_digest,
+       policy_training_fact.bundle_policy_generation_vector_digest,
+       policy_training_fact
+           .mdn_trained_against_representation_generation_vector_digest,
+       policy_training_fact
+           .policy_trained_against_representation_generation_vector_digest,
+       policy_training_fact.policy_trained_against_mdn_generation_vector_digest,
+       policy_training_fact
+           .policy_trained_against_policy_parent_generation_vector_digest,
+       policy_training_fact.policy_execution_no_lookahead_certificate_digest,
+       policy_training_fact.policy_execution_no_lookahead_contract_digest});
+  exposure::lattice_checkpoint_fact_t policy_checkpoint_fact{};
+  policy_checkpoint_fact.checkpoint_path =
+      eval_job_dir / "ppo_policy_actor.checkpoint";
+  policy_checkpoint_fact.checkpoint_file_digest =
+      policy_training_fact.actor_checkpoint_digest;
+  policy_checkpoint_fact.component =
+      policy_training_fact.bundle_policy_component_id;
+  policy_checkpoint_fact.component_role =
+      exposure::component_role_from_component_id(
+          policy_checkpoint_fact.component);
+  policy_checkpoint_fact.created_by_job_id = policy_training_fact.job_id;
+  policy_checkpoint_fact.created_by_wave_id = policy_training_fact.wave_id;
+  policy_checkpoint_fact.direct_exposure_digest =
+      exposure::policy_training_fact_digest(policy_training_fact);
+  policy_checkpoint_fact.checkpoint_id = exposure::exposure_digest_for_text(
+      "checkpoint|" + policy_checkpoint_fact.checkpoint_path.string() + "|" +
+      policy_checkpoint_fact.checkpoint_file_digest + "|" +
+      policy_checkpoint_fact.direct_exposure_digest);
+  policy_checkpoint_fact.generation_id =
+      policy_training_fact.policy_output_generation_id;
+  policy_checkpoint_fact.generation_vector_member_digest =
+      policy_training_fact.policy_output_generation_vector_digest;
+  policy_checkpoint_fact.parent_generation_ids = {
+      policy_training_fact.parent_policy_generation_id};
+  policy_checkpoint_fact.parent_generation_vector_digests = {
+      policy_training_fact.parent_policy_generation_vector_digest};
+  policy_checkpoint_fact.read_checkpoint_digests = {
+      policy_training_fact.input_policy_checkpoint_digest};
+  policy_checkpoint_fact.read_generation_ids = {
+      policy_training_fact.parent_policy_generation_id};
+  policy_checkpoint_fact.generation_lane = "bootstrap";
+  policy_checkpoint_fact.fit_anchor_range = policy_training_fact.anchor_range;
+  policy_checkpoint_fact.fit_anchor_range_bound = true;
+  policy_checkpoint_fact.valid_from_anchor =
+      policy_training_fact.policy_output_valid_from_anchor;
+  policy_checkpoint_fact.valid_from_anchor_bound = true;
+  policy_checkpoint_fact.no_lookahead_contract_digest =
+      policy_training_fact.policy_execution_no_lookahead_contract_digest;
+  policy_checkpoint_fact.contract_fingerprint =
+      policy_training_fact.contract_fingerprint;
+  policy_checkpoint_fact.protocol_id = policy_training_fact.protocol_id;
+  policy_checkpoint_fact.graph_order_fingerprint =
+      policy_training_fact.graph_order_fingerprint;
+  policy_checkpoint_fact.source_cursor_token =
+      policy_training_fact.source_cursor_token;
+  policy_checkpoint_fact.component_assembly_fingerprint =
+      policy_training_fact.component_assembly_fingerprint;
+  policy_checkpoint_fact.influence_summary =
+      policy_training_fact.influence_summary;
+  policy_checkpoint_fact.closure_digest = policy_output_provenance_closure;
+  policy_training_fact.bundle_policy_generation_manifest_digest =
+      exposure::exposure_digest_for_text(
+          exposure::canonical_checkpoint_fact_text(policy_checkpoint_fact));
+  policy_training_fact.causal_provenance_schema =
+      exposure::k_causal_provenance_generalization_schema_v1;
+  policy_training_fact.causal_atom_schema =
+      exposure::k_causal_atom_schema_anchor_interval_v1;
+  policy_training_fact.causal_interval_set_schema =
+      exposure::k_causal_interval_set_schema_anchor_half_open_v1;
+  policy_training_fact.causal_label_reward_horizon_policy_fingerprint =
+      "label_reward_horizon.anchor_scalar_v1";
+  policy_training_fact.causal_fold_policy_fingerprint =
+      "fold_policy.single_time_split_v1";
+  policy_training_fact.causal_purged_embargo_policy_fingerprint =
+      policy_training_fact.embargo_policy_fingerprint;
+  policy_training_fact.causal_artifact_production_schema =
+      exposure::k_runtime_artifact_production_inline_schema_v1;
+  policy_training_fact.causal_artifact_production_closure_digest =
+      policy_no_lookahead_closure;
+  policy_training_fact.policy_trained_against_no_lookahead_certificate_digest =
+      policy_no_lookahead_closure;
+  policy_training_fact.causal_interface_stability_contract_digest =
+      exposure::k_interface_stability_trained_against_generation_vector_v1;
+  policy_training_fact.causal_provenance_closure_digest =
+      policy_no_lookahead_closure;
+  auto bundled_representation_checkpoint_fact = *representation_checkpoint_fact;
+  bundled_representation_checkpoint_fact.generation_lane = "bootstrap";
+  bundled_representation_checkpoint_fact.producer_component_update_fact_digest
+      .clear();
+  auto bundled_mdn_checkpoint_fact = *mdn_checkpoint_fact;
+  bundled_mdn_checkpoint_fact.generation_lane = "bootstrap";
+  bundled_mdn_checkpoint_fact.producer_component_update_fact_digest.clear();
+  write_text(eval_job_dir / "representation.checkpoint.fact",
+             exposure::canonical_checkpoint_fact_text(
+                 bundled_representation_checkpoint_fact) +
+                 "fact_digest=" +
+                 exposure::exposure_digest_for_text(
+                     exposure::canonical_checkpoint_fact_text(
+                         bundled_representation_checkpoint_fact)) +
+                 "\n");
+  write_text(
+      eval_job_dir / "mdn.checkpoint.fact",
+      exposure::canonical_checkpoint_fact_text(bundled_mdn_checkpoint_fact) +
+          "fact_digest=" +
+          exposure::exposure_digest_for_text(
+              exposure::canonical_checkpoint_fact_text(
+                  bundled_mdn_checkpoint_fact)) +
+          "\n");
+  write_text(eval_job_dir / "lattice.checkpoint.fact",
+             exposure::canonical_checkpoint_fact_text(policy_checkpoint_fact) +
+                 "fact_digest=" +
+                 exposure::exposure_digest_for_text(
+                     exposure::canonical_checkpoint_fact_text(
+                         policy_checkpoint_fact)) +
+                 "\n");
   const auto policy_training_canonical =
       exposure::canonical_policy_training_fact_text(policy_training_fact);
   write_text(eval_job_dir / "runtime.policy_training.fact",
@@ -2494,18 +3134,18 @@ void test_strict_channel_baseline_runs_through_runtime() {
                  exposure::policy_training_fact_digest(policy_training_fact) +
                  "\n");
 
-  const auto pre_ppo_scan = exposure::scan_exposure_ledger_from_runtime_root(
+  const auto ppo_scan = exposure::scan_exposure_ledger_from_runtime_root(
       eval_job_dir, {}, eval_scan_options);
-  check(pre_ppo_scan.ledger.policy_training_facts().size() == 1,
-        "strict baseline eval scan sees durable pre-PPO policy-training fact");
-  check(pre_ppo_scan.ledger.policy_training_facts()
+  check(ppo_scan.ledger.policy_training_facts().size() == 1,
+        "strict baseline eval scan sees durable PPO policy-training fact");
+  check(ppo_scan.ledger.policy_training_facts()
                 .front()
                 .target_component_family_id ==
             "wikimyei.policy.portfolio.graph_node_allocation",
         "strict baseline policy-training fact preserves policy component "
         "identity");
   const auto policy_training_issues = exposure::policy_training_fact_issues(
-      pre_ppo_scan.ledger.policy_training_facts().front());
+      ppo_scan.ledger.policy_training_facts().front());
   check(policy_training_issues.empty(),
         "strict baseline policy-training fact has causal schedule, unified "
         "action, post-execution reward, and parent evidence: " +
@@ -2593,7 +3233,7 @@ LATTICE_TARGET {
 
 )DSL");
   target::lattice_target_evaluator_options_t artifact_options{};
-  artifact_options.exposure_ledger = &pre_ppo_scan.ledger;
+  artifact_options.exposure_ledger = &ppo_scan.ledger;
   artifact_options.auto_build_exposure_ledger = false;
   artifact_options.active_identity.protocol_id =
       eval_result.manifest.protocol_id;
@@ -2645,10 +3285,91 @@ LATTICE_TARGET {
         "replay-environment artifact readiness: " +
             describe_lattice_target_evaluation(emitted_replay_eval));
   check(emitted_policy_training_eval.status ==
-            target::lattice_target_status_t::satisfied,
-        "strict baseline emitted pre-PPO policy-training fact satisfies "
-        "artifact readiness against durable parent evidence: " +
+                target::lattice_target_status_t::satisfied &&
+            emitted_policy_training_eval.proof_certificate_check.passed &&
+            emitted_policy_training_eval.proof_certificate.artifacts.size() ==
+                1 &&
+            emitted_policy_training_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_checked &&
+            emitted_policy_training_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_complete &&
+            emitted_policy_training_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_admissible,
+        "strict baseline emitted PPO policy-training fact passes with "
+        "Runtime-emitted forecast/replay no-lookahead provenance: " +
             describe_lattice_target_evaluation(emitted_policy_training_eval));
+  check(emitted_policy_training_eval.proof_certificate.artifacts.size() == 1 &&
+            emitted_policy_training_eval.proof_certificate.artifacts.front()
+                .causal_provenance_checked &&
+            emitted_policy_training_eval.proof_certificate.artifacts.front()
+                .causal_provenance_complete &&
+            emitted_policy_training_eval.proof_certificate.artifacts.front()
+                .causal_provenance_admissible &&
+            emitted_policy_training_eval.proof_certificate.artifacts.front()
+                    .causal_artifact_production_closure_digest ==
+                emitted_policy_training_eval.proof_certificate.artifacts.front()
+                    .provenance_closure_digest,
+        "strict baseline emitted PPO policy-training fact carries passing "
+        "causal_provenance_generalization.v1 aggregate state");
+
+  auto old_style_forecast_eval_fact = emitted_forecast_eval_fact;
+  old_style_forecast_eval_fact.influence_summary = {};
+  const auto old_style_forecast_eval_digest =
+      exposure::forecast_eval_fact_digest(old_style_forecast_eval_fact);
+  auto old_style_replay_environment_fact =
+      ppo_scan.ledger.replay_environment_facts().front();
+  old_style_replay_environment_fact.influence_summary = {};
+  old_style_replay_environment_fact.parent_forecast_eval_fact_digest =
+      old_style_forecast_eval_digest;
+  const auto old_style_replay_environment_digest =
+      exposure::replay_environment_fact_digest(
+          old_style_replay_environment_fact);
+  auto old_style_policy_training_fact =
+      ppo_scan.ledger.policy_training_facts().front();
+  old_style_policy_training_fact.parent_forecast_eval_fact_digest =
+      old_style_forecast_eval_digest;
+  old_style_policy_training_fact
+      .policy_execution_input_parent_forecast_eval_fact_digest =
+      old_style_forecast_eval_digest;
+  old_style_policy_training_fact.parent_replay_environment_fact_digest =
+      old_style_replay_environment_digest;
+  old_style_policy_training_fact
+      .policy_execution_input_parent_replay_environment_fact_digest =
+      old_style_replay_environment_digest;
+  exposure::lattice_exposure_ledger_t old_style_ledger{};
+  for (const auto &fact : ppo_scan.ledger.target_transform_facts()) {
+    old_style_ledger.add_target_transform(fact);
+  }
+  for (const auto &fact : ppo_scan.ledger.forecast_baseline_facts()) {
+    old_style_ledger.add_forecast_baseline(fact);
+  }
+  old_style_ledger.add_forecast_eval(old_style_forecast_eval_fact);
+  for (const auto &fact : ppo_scan.ledger.observer_belief_facts()) {
+    old_style_ledger.add_observer_belief(fact);
+  }
+  for (const auto &fact : ppo_scan.ledger.allocation_engine_facts()) {
+    old_style_ledger.add_allocation_engine(fact);
+  }
+  old_style_ledger.add_replay_environment(old_style_replay_environment_fact);
+  old_style_ledger.add_policy_training(old_style_policy_training_fact);
+  target::lattice_target_evaluator_options_t old_style_options =
+      artifact_options;
+  old_style_options.exposure_ledger = &old_style_ledger;
+  target::lattice_target_evaluator_t old_style_evaluator(artifact_specs,
+                                                         old_style_options);
+  const auto old_style_policy_training_eval =
+      old_style_evaluator.evaluate("emitted_policy_training_artifact_ready");
+  check(
+      old_style_policy_training_eval.status !=
+              target::lattice_target_status_t::satisfied &&
+          !old_style_policy_training_eval.proof_certificate_check.passed &&
+          has_reason_containing(old_style_policy_training_eval.reasons,
+                                "no_lookahead_forecast_influence_incomplete") &&
+          has_reason_containing(old_style_policy_training_eval.reasons,
+                                "no_lookahead_replay_influence_incomplete"),
+      "old-style Runtime evidence without forecast/replay influence still "
+      "fails closed: " +
+          describe_lattice_target_evaluation(old_style_policy_training_eval));
 }
 
 void test_invalid_wave_range_fails_before_launch() {

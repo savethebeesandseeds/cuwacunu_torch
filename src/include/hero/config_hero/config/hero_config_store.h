@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
+
 namespace cuwacunu::hero::config {
 
 class hero_config_store_t {
@@ -46,7 +48,8 @@ public:
 
   explicit hero_config_store_t(
       std::string config_path,
-      std::string global_config_path = "/cuwacunu/src/config/.config");
+      std::string global_config_path =
+          cuwacunu::hero::config_paths::default_global_config_path().string());
 
   [[nodiscard]] bool load(std::string *err);
   [[nodiscard]] const std::string &config_path() const;

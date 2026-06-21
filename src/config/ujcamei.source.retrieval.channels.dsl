@@ -16,6 +16,8 @@
     normalization_policy: binary preprocessing preset applied during CSV -> BIN
 
   Semantics:
+    - CHANNEL_SET expands repeated rows with shared settings into ordinary
+      channel rows during decode.
     - Active rows contribute features to graph-anchor source batch
       construction.
     - Tensor rank convention:
@@ -76,12 +78,13 @@
 |    12h      |   false   |    kline     |     60      |         1         |      1.0       |  log_returns         |
 |    8h       |   false   |    kline     |     90      |         1         |      1.0       |  log_returns         |
 |    6h       |   false   |    kline     |     100     |         1         |      1.0       |  log_returns         |
-|    4h       |   false   |    kline     |     100     |         1         |      1.0       |  log_returns         |
-|    2h       |   false   |    kline     |     100     |         1         |      1.0       |  log_returns         |
-|    1h       |   false   |    kline     |     100     |         1         |      1.0       |  log_returns         |
-|    30m      |   false   |    kline     |     100     |         1         |      1.0       |  log_returns         |
-|    15m      |   false   |    kline     |     100     |         1         |      1.0       |  log_returns         |
-|    5m       |   false   |    kline     |     100     |         1         |      1.0       |  log_returns         |
-|    3m       |   false   |    kline     |     100     |         1         |      1.0       |  log_returns         |
-|    1m       |   false   |    kline     |     100     |         1         |      1.0       |  log_returns         |
 \------------------------------------------------------------------------------------------------------------------/
+CHANNEL_SET {
+  ACTIVE = false;
+  RECORD_TYPE = kline;
+  INPUT_LENGTH = 100;
+  FUTURE_LENGTH = 1;
+  CHANNEL_WEIGHT = 1.0;
+  NORMALIZATION_POLICY = log_returns;
+  INTERVALS = 4h,2h,1h,30m,15m,5m,3m,1m;
+};

@@ -24,6 +24,8 @@ KIKIJYEBA_RUNTIME_OBJS := \
   $(OUTPUT_PATH)/common/grammar_parser.o \
   $(OUTPUT_PATH)/common/instruction_lexer.o \
   $(OUTPUT_PATH)/common/instruction_parser.o \
+  $(OUTPUT_PATH)/common/runtime_lls.o \
+  $(OUTPUT_PATH)/common/lattice.o \
   $(OUTPUT_PATH)/common/memory_mapped_datafile.o \
   $(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o \
   $(OUTPUT_PATH)/libtorch/memory_mapped_dataloader.o
@@ -36,6 +38,16 @@ $(OUTPUT_PATH)/common/hero_runtime_tools.o: INCLUDES_EXTRA += $(TORCH_INCLUDE_PA
 
 $(OUTPUT_PATH)/common/hero_environment_tools.o: \
 	$(IMPL_PATH)/hero/environment_hero/hero_environment_tools.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/runtime_lls.o: \
+	$(IMPL_PATH)/hero/lattice_hero/lattice/runtime_report/runtime_lls.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/lattice.o: \
+	$(IMPL_PATH)/hero/lattice_hero/lattice/lattice.cpp \
 	$(SRC_ROOT)/Makefile.config
 	$(CC_RULE)
 
@@ -53,7 +65,8 @@ $(eval $(call TEST_ONEFILE, test_kikijyeba_job_runner, test_kikijyeba_job_runner
   $(libtorch_a) $(KIKIJYEBA_RUNTIME_OBJS) $(LDLIBS_torch)))
 
 $(eval $(call TEST_ONEFILE, test_hero_runtime_wave_preview, test_hero_runtime_wave_preview.cpp, \
-  $(OUTPUT_PATH)/common/hero_runtime_tools.o $(OUTPUT_PATH)/common/hero_environment_tools.o $(LDLIBS_torch)))
+  $(OUTPUT_PATH)/common/hero_runtime_tools.o $(OUTPUT_PATH)/common/hero_environment_tools.o \
+  $(KIKIJYEBA_RUNTIME_OBJS) $(LDLIBS_torch)))
 
 $(eval $(call TEST_ONEFILE, test_hero_mcp_schema_compat, test_hero_mcp_schema_compat.cpp))
 

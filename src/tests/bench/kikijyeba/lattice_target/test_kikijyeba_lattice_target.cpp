@@ -1,10 +1,12 @@
 #include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
+#include "tests/bench/kikijyeba/test_support/canonical_protocol_fixture.h"
 #include "tests/bench/kikijyeba/test_support/lattice_forecast_artifact_fixture.h"
 
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -12,6 +14,7 @@
 
 namespace exposure = cuwacunu::hero::lattice::exposure;
 namespace lattice_fixture = cuwacunu::tests::kikijyeba::lattice_fixture;
+namespace protocol_fixture = cuwacunu::tests::kikijyeba::protocol_fixture;
 namespace target = cuwacunu::hero::lattice::target;
 namespace fs = std::filesystem;
 
@@ -67,6 +70,19 @@ bool has_reason_containing(const std::vector<std::string> &reasons,
   });
 }
 
+std::string join_issue_tokens(const std::vector<std::string> &issues) {
+  std::ostringstream out;
+  bool first = true;
+  for (const auto &issue : issues) {
+    if (!first) {
+      out << ",";
+    }
+    first = false;
+    out << issue;
+  }
+  return out.str();
+}
+
 bool has_deficit_key(
     const std::vector<target::lattice_target_evaluation_t::proof_deficit_t>
         &deficits,
@@ -103,7 +119,13 @@ std::string
 describe_evaluation(const target::lattice_target_evaluation_t &eval) {
   std::ostringstream out;
   out << " status=" << target::lattice_target_status_name(eval.status)
-      << " reasons=";
+      << " target_class=" << eval.target_class << " target_kind_applicable="
+      << (eval.target_kind_applicable ? "true" : "false")
+      << " proof_kind=" << eval.proof_kind
+      << " subject_fact_family=" << eval.subject_fact_family
+      << " plan_ready=" << (eval.plan_ready ? "true" : "false")
+      << " suggested_wave_empty="
+      << (eval.suggested_wave.empty() ? "true" : "false") << " reasons=";
   for (const auto &reason : eval.reasons) {
     out << "[" << reason << "]";
   }
@@ -111,14 +133,53 @@ describe_evaluation(const target::lattice_target_evaluation_t &eval) {
   for (const auto &deficit : eval.deficits) {
     out << "[" << deficit.key << "]";
   }
-  out << " fact_integrity_declared="
+  out << " fact_integrity_available="
+      << (eval.fact_integrity_summary_available ? "true" : "false")
+      << " fact_integrity_families="
+      << eval.fact_integrity_summary.inspected_family_count
+      << " fact_integrity_declared="
       << eval.fact_integrity_summary.relation_declared_count
       << " fact_integrity_bound="
       << eval.fact_integrity_summary.relation_bound_count
       << " fact_integrity_unresolved="
       << eval.fact_integrity_summary.unresolved_relation_count
       << " fact_integrity_identity_mismatch="
-      << eval.fact_integrity_summary.identity_mismatch_count;
+      << eval.fact_integrity_summary.identity_mismatch_count
+      << " fact_integrity_clean="
+      << (eval.fact_integrity_summary.relation_integrity_clean ? "true"
+                                                               : "false")
+      << " warning_count=" << eval.warning_results.size()
+      << " artifact_count=" << eval.proof_certificate.artifacts.size()
+      << " proof_certificate_check="
+      << (eval.proof_certificate_check.passed ? "true" : "false");
+  if (!eval.proof_certificate.artifacts.empty()) {
+    const auto &artifact = eval.proof_certificate.artifacts.front();
+    out << " artifact_family=" << artifact.fact_family
+        << " artifact_passed=" << (artifact.passed ? "true" : "false")
+        << " lineage_bound=" << (artifact.lineage_bound ? "true" : "false")
+        << " proof_template_bound="
+        << (artifact.proof_template_bound ? "true" : "false")
+        << " no_lookahead_complete="
+        << (artifact.no_lookahead_provenance_complete ? "true" : "false")
+        << " no_lookahead_admissible="
+        << (artifact.no_lookahead_provenance_admissible ? "true" : "false")
+        << " availability_bound="
+        << (artifact.label_or_reward_availability_end_exclusive_max_bound
+                ? "true"
+                : "false")
+        << " availability_end="
+        << artifact.label_or_reward_availability_end_exclusive_max
+        << " embargo_range_bound="
+        << (artifact.embargo_purged_window_anchor_range_bound ? "true"
+                                                              : "false")
+        << " embargo_begin=" << artifact.embargo_purged_window_anchor_begin
+        << " embargo_end="
+        << artifact.embargo_purged_window_anchor_end_exclusive
+        << " causal_complete="
+        << (artifact.causal_provenance_complete ? "true" : "false")
+        << " causal_admissible="
+        << (artifact.causal_provenance_admissible ? "true" : "false");
+  }
   return out.str();
 }
 
@@ -561,6 +622,192 @@ mtf_eval_options(const fs::path &runtime_root) {
   return options;
 }
 
+enum class no_lookahead_fixture_mode_t {
+  clean_prior_bundle,
+  same_slice_forecast_influence,
+  missing_replay_inherited_influence,
+  missing_generation_vector,
+  replay_understates_parent_influence,
+  split_brain_replay_forecast_parent,
+  replay_forecast_artifact_digest_mismatch,
+  contract_digest_mismatch,
+  replay_identity_mismatch,
+  forecast_coverage_miss,
+  forecast_coverage_superset,
+  influence_frontier_one_past_target_begin,
+  missing_influence_frontier,
+  availability_frontier_one_past_target_begin,
+  missing_availability_frontier,
+  replay_understates_parent_availability,
+  missing_embargo_purged_window,
+  embargo_purged_window_overlap,
+  target_anchor_range_missing,
+  missing_generation_vector_closure,
+  policy_execution_input_lock_missing,
+  policy_execution_replay_mismatch,
+  policy_execution_parent_policy_influence_overlaps_target,
+  policy_output_generation_provenance_incomplete,
+  checkpoint_generation_manifest_missing,
+  checkpoint_generation_influence_understates,
+  checkpoint_generation_lane_smoke,
+  policy_parent_checkpoint_manifest_missing,
+  policy_output_checkpoint_manifest_missing,
+  policy_jkimyei_contract_missing,
+  policy_jkimyei_contract_mismatch,
+  bundle_manifest_missing,
+  bundle_latest_selector_unresolved,
+  bundle_mdn_representation_mismatch,
+  bundle_policy_mdn_mismatch,
+  bundle_smoke_component,
+  bundle_valid_from_too_early,
+  bundle_generation_vector_mismatch,
+  bundle_policy_certificate_missing,
+  causal_provenance_metadata_missing,
+  causal_artifact_production_closure_mismatch
+};
+
+std::string join_policy_execution_keys(std::vector<std::string> keys) {
+  std::sort(keys.begin(), keys.end());
+  std::ostringstream out;
+  for (std::size_t i = 0; i < keys.size(); ++i) {
+    if (i != 0) {
+      out << ", ";
+    }
+    out << keys[i];
+  }
+  return out.str();
+}
+
+std::string expected_policy_no_lookahead_closure_digest(
+    const std::string &contract_digest,
+    std::vector<std::string> artifact_digests,
+    std::vector<std::string> checkpoint_digests,
+    std::vector<std::string> generation_digests, std::int64_t influence_end,
+    bool influence_end_bound, std::int64_t availability_end,
+    bool availability_end_bound, const std::string &embargo_policy_fingerprint,
+    std::int64_t embargo_purged_window_anchor_begin,
+    std::int64_t embargo_purged_window_anchor_end_exclusive,
+    bool embargo_purged_window_anchor_range_bound) {
+  std::ostringstream closure;
+  closure << "policy_no_lookahead_provenance_closure.v1|" << contract_digest
+          << "|" << join_policy_execution_keys(std::move(artifact_digests))
+          << "|" << join_policy_execution_keys(std::move(checkpoint_digests))
+          << "|" << join_policy_execution_keys(std::move(generation_digests))
+          << "|" << influence_end << "|" << (influence_end_bound ? "1" : "0")
+          << "|" << availability_end << "|"
+          << (availability_end_bound ? "1" : "0") << "|"
+          << embargo_policy_fingerprint << "|"
+          << embargo_purged_window_anchor_begin << "|"
+          << embargo_purged_window_anchor_end_exclusive << "|"
+          << (embargo_purged_window_anchor_range_bound ? "1" : "0");
+  return exposure::exposure_digest_for_text(closure.str());
+}
+
+std::string expected_snapshot_bundle_digest(const std::string &schema,
+                                            std::vector<std::string> parts) {
+  std::ostringstream text;
+  text << schema;
+  for (const auto &part : parts) {
+    text << "|" << part;
+  }
+  return exposure::exposure_digest_for_text(text.str());
+}
+
+exposure::lattice_checkpoint_fact_t make_checkpoint_generation_fact(
+    const std::string &component, const std::string &checkpoint_digest,
+    const std::string &generation_id,
+    const std::string &generation_vector_digest, std::int64_t fit_begin,
+    std::int64_t fit_end, const std::string &graph_order_fingerprint,
+    const std::string &source_cursor_token,
+    const std::string &split_policy_fingerprint,
+    const std::string &no_lookahead_contract_digest,
+    const std::string &generation_lane = "readiness_grade",
+    std::int64_t declared_influence_end =
+        std::numeric_limits<std::int64_t>::min(),
+    std::vector<std::string> read_checkpoint_digests = {},
+    std::vector<std::string> read_generation_ids = {},
+    std::vector<std::string> parent_generation_ids = {},
+    std::vector<std::string> parent_generation_vector_digests = {}) {
+  exposure::lattice_checkpoint_fact_t fact{};
+  fact.checkpoint_path =
+      fs::path("/runtime/checkpoints") / (generation_id + ".checkpoint");
+  fact.checkpoint_file_digest = checkpoint_digest;
+  fact.component = component;
+  fact.component_role = exposure::component_role_from_component_id(component);
+  fact.created_by_job_id = "job_" + generation_id;
+  fact.created_by_wave_id = "wave_" + generation_id;
+  fact.direct_exposure_digest =
+      exposure::exposure_digest_for_text("producer|" + generation_id);
+  fact.checkpoint_id = exposure::exposure_digest_for_text(
+      "checkpoint|" + fact.checkpoint_path.string() + "|" +
+      fact.checkpoint_file_digest + "|" + fact.direct_exposure_digest);
+  fact.generation_id = generation_id;
+  fact.generation_vector_member_digest = generation_vector_digest;
+  fact.parent_generation_ids = std::move(parent_generation_ids);
+  fact.parent_generation_vector_digests =
+      std::move(parent_generation_vector_digests);
+  fact.read_checkpoint_digests = std::move(read_checkpoint_digests);
+  fact.read_generation_ids = std::move(read_generation_ids);
+  fact.fit_anchor_range = {.begin = fit_begin, .end = fit_end};
+  fact.fit_anchor_range_bound = true;
+  fact.valid_from_anchor = fit_end;
+  fact.valid_from_anchor_bound = true;
+  fact.no_lookahead_contract_digest = no_lookahead_contract_digest;
+  fact.generation_lane = generation_lane;
+  fact.graph_order_fingerprint = graph_order_fingerprint;
+  fact.source_cursor_token = source_cursor_token;
+  fact.influence_summary.complete = true;
+  fact.influence_summary.graph_order_fingerprint = graph_order_fingerprint;
+  fact.influence_summary.source_cursor_token = source_cursor_token;
+  fact.influence_summary.split_policy_fingerprint = split_policy_fingerprint;
+  fact.influence_summary.coverage_anchor_range = fact.fit_anchor_range;
+  fact.influence_summary.coverage_anchor_range_bound = true;
+  fact.influence_summary.influence_anchor_begin_min = fit_begin;
+  fact.influence_summary.influence_anchor_begin_min_bound = true;
+  fact.influence_summary.influence_anchor_end_exclusive_max =
+      declared_influence_end == std::numeric_limits<std::int64_t>::min()
+          ? fit_end
+          : declared_influence_end;
+  fact.influence_summary.influence_anchor_end_exclusive_max_bound = true;
+  fact.influence_summary.label_or_reward_availability_end_exclusive_max =
+      fact.influence_summary.influence_anchor_end_exclusive_max;
+  fact.influence_summary.label_or_reward_availability_end_exclusive_max_bound =
+      true;
+  fact.influence_summary.producer_generation_vector_digest =
+      generation_vector_digest;
+  fact.influence_summary.parent_checkpoint_digests =
+      fact.read_checkpoint_digests;
+  fact.influence_summary.parent_generation_vector_digests =
+      fact.parent_generation_vector_digests;
+  fact.influence_summary.provenance_closure_digest =
+      exposure::exposure_digest_for_text("checkpoint_generation_closure|" +
+                                         generation_id);
+  fact.influence_summary.no_lookahead_contract_digest =
+      no_lookahead_contract_digest;
+  if (generation_lane == "readiness_grade") {
+    auto update =
+        exposure::make_component_training_update_fact_from_checkpoint_fact(
+            fact);
+    update.split_role = "train";
+    fact.producer_component_update_fact_digest =
+        exposure::component_training_update_fact_digest(update);
+  }
+  return fact;
+}
+
+void add_checkpoint_generation_with_update(
+    exposure::lattice_exposure_ledger_t &ledger,
+    exposure::lattice_checkpoint_fact_t fact) {
+  if (!fact.producer_component_update_fact_digest.empty()) {
+    auto update =
+        exposure::make_component_training_update_fact_from_checkpoint_fact(
+            fact);
+    update.split_role = "train";
+    ledger.add_component_training_update(std::move(update));
+  }
+  ledger.add_checkpoint(std::move(fact));
+}
+
 exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
     bool observer_authority_drift = false,
     bool forecast_authority_drift = false, bool replay_authority_drift = false,
@@ -600,7 +847,9 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
     bool policy_training_future_snapshot_use = false,
     bool replay_missing_policy_summary = false,
     bool replay_failed_attempts = false,
-    bool policy_training_component_is_policy = false) {
+    bool policy_training_component_is_policy = false,
+    no_lookahead_fixture_mode_t no_lookahead_mode =
+        no_lookahead_fixture_mode_t::clean_prior_bundle) {
   exposure::lattice_exposure_fact_t parent{};
   parent.fact_type = "exposure";
   parent.contract_fingerprint = "contract_1";
@@ -773,10 +1022,155 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
       forecast_selection_signal_digest_mismatch
           ? std::vector<std::string>{"missing_selection_signal_digest"}
           : std::vector<std::string>{selection_signal_digest};
+  forecast.influence_summary.complete = true;
+  forecast.influence_summary.graph_order_fingerprint =
+      forecast.graph_order_fingerprint;
+  forecast.influence_summary.source_cursor_token = forecast.source_cursor_token;
+  forecast.influence_summary.split_policy_fingerprint =
+      forecast.split_policy_fingerprint;
+  forecast.influence_summary.coverage_anchor_range = forecast.anchor_range;
+  if (no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::forecast_coverage_miss) {
+    forecast.influence_summary.coverage_anchor_range = {.begin = 100,
+                                                        .end = 120};
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::forecast_coverage_superset) {
+    forecast.influence_summary.coverage_anchor_range = {
+        .begin = forecast.anchor_range.begin,
+        .end = forecast.anchor_range.end + forecast.anchor_range.length()};
+  }
+  forecast.influence_summary.coverage_anchor_range_bound = true;
+  forecast.influence_summary.influence_anchor_begin_min = 0;
+  forecast.influence_summary.influence_anchor_begin_min_bound = true;
+  if (no_lookahead_mode ==
+          no_lookahead_fixture_mode_t::same_slice_forecast_influence ||
+      no_lookahead_mode ==
+          no_lookahead_fixture_mode_t::replay_understates_parent_influence) {
+    forecast.influence_summary.influence_anchor_end_exclusive_max =
+        forecast.anchor_range.end;
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::
+                 influence_frontier_one_past_target_begin) {
+    forecast.influence_summary.influence_anchor_end_exclusive_max =
+        parent.anchor_range.begin + 1;
+  } else {
+    forecast.influence_summary.influence_anchor_end_exclusive_max =
+        parent.anchor_range.begin;
+  }
+  forecast.influence_summary.influence_anchor_end_exclusive_max_bound = true;
+  if (no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::missing_influence_frontier) {
+    forecast.influence_summary.influence_anchor_end_exclusive_max_bound = false;
+  }
+  forecast.influence_summary.label_or_reward_availability_end_exclusive_max =
+      no_lookahead_mode == no_lookahead_fixture_mode_t::
+                               availability_frontier_one_past_target_begin ||
+              no_lookahead_mode == no_lookahead_fixture_mode_t::
+                                       replay_understates_parent_availability
+          ? parent.anchor_range.begin + 1
+          : parent.anchor_range.begin;
+  forecast.influence_summary
+      .label_or_reward_availability_end_exclusive_max_bound = true;
+  if (no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::missing_availability_frontier) {
+    forecast.influence_summary
+        .label_or_reward_availability_end_exclusive_max_bound = false;
+  }
+  forecast.influence_summary.horizon = forecast.horizon;
+  forecast.influence_summary.horizon_bound = true;
+  forecast.influence_summary.producer_generation_vector_digest =
+      no_lookahead_mode ==
+              no_lookahead_fixture_mode_t::missing_generation_vector
+          ? ""
+          : "generation_vector_prior_rep_mdn_1";
+  forecast.influence_summary.parent_checkpoint_digests = {
+      forecast.evaluated_representation_checkpoint_digest,
+      forecast.evaluated_mdn_checkpoint_digest};
+  forecast.influence_summary.provenance_closure_digest =
+      "forecast_provenance_closure_1";
+  forecast.influence_summary.no_lookahead_contract_digest =
+      "cwu_02v_no_lookahead_artifact_provenance_anchor_v1";
+  if (no_lookahead_mode !=
+          no_lookahead_fixture_mode_t::checkpoint_generation_manifest_missing &&
+      !forecast.evaluated_representation_checkpoint_digest.empty() &&
+      !forecast.evaluated_mdn_checkpoint_digest.empty()) {
+    const auto checkpoint_generation_vector =
+        forecast.influence_summary.producer_generation_vector_digest.empty()
+            ? "generation_vector_prior_rep_mdn_1"
+            : forecast.influence_summary.producer_generation_vector_digest;
+    add_checkpoint_generation_with_update(
+        ledger,
+        make_checkpoint_generation_fact(
+            "wikimyei.representation.encoding.mtf_jepa_mae_vicreg",
+            forecast.evaluated_representation_checkpoint_digest,
+            "rep_generation_prior_1", checkpoint_generation_vector, 0, 0,
+            forecast.graph_order_fingerprint, forecast.source_cursor_token,
+            forecast.split_policy_fingerprint,
+            forecast.influence_summary.no_lookahead_contract_digest));
+    const std::int64_t mdn_fit_end =
+        no_lookahead_mode == no_lookahead_fixture_mode_t::
+                                 same_slice_forecast_influence ||
+                no_lookahead_mode == no_lookahead_fixture_mode_t::
+                                         replay_understates_parent_influence ||
+                no_lookahead_mode ==
+                    no_lookahead_fixture_mode_t::
+                        checkpoint_generation_influence_understates
+            ? forecast.anchor_range.end
+            : (no_lookahead_mode == no_lookahead_fixture_mode_t::
+                                        influence_frontier_one_past_target_begin
+                   ? forecast.anchor_range.begin + 1
+                   : forecast.anchor_range.begin);
+    const std::int64_t mdn_declared_influence_end =
+        no_lookahead_mode == no_lookahead_fixture_mode_t::
+                                 checkpoint_generation_influence_understates
+            ? forecast.anchor_range.begin
+            : std::numeric_limits<std::int64_t>::min();
+    const std::string mdn_lane =
+        no_lookahead_mode == no_lookahead_fixture_mode_t::
+                                 checkpoint_generation_lane_smoke ||
+                no_lookahead_mode ==
+                    no_lookahead_fixture_mode_t::bundle_smoke_component
+            ? "smoke"
+            : "readiness_grade";
+    add_checkpoint_generation_with_update(
+        ledger,
+        make_checkpoint_generation_fact(
+            "wikimyei.inference.expected_value.mdn",
+            forecast.evaluated_mdn_checkpoint_digest, "mdn_generation_prior_1",
+            checkpoint_generation_vector, 0, mdn_fit_end,
+            forecast.graph_order_fingerprint, forecast.source_cursor_token,
+            forecast.split_policy_fingerprint,
+            forecast.influence_summary.no_lookahead_contract_digest, mdn_lane,
+            mdn_declared_influence_end));
+  }
   forecast.quality_authority = forecast_authority_drift;
   forecast.model_state_mutation = forecast_model_state_mutation;
   ledger.add_forecast_eval(forecast);
   const auto forecast_digest = exposure::forecast_eval_fact_digest(forecast);
+  std::string replay_parent_forecast_digest = forecast_digest;
+  std::string replay_parent_forecast_artifact_digest =
+      forecast.forecast_artifact_digest;
+  std::string replay_parent_generation_vector_digest =
+      forecast.influence_summary.producer_generation_vector_digest;
+  if (no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::split_brain_replay_forecast_parent) {
+    auto replay_parent_forecast = forecast;
+    replay_parent_forecast.job_id = "artifact_job_split_brain_forecast";
+    replay_parent_forecast.forecast_artifact_digest =
+        "forecast_artifact_split_brain";
+    replay_parent_forecast.influence_summary.producer_generation_vector_digest =
+        "generation_vector_split_brain_rep_mdn";
+    replay_parent_forecast.influence_summary.provenance_closure_digest =
+        "forecast_provenance_closure_split_brain";
+    ledger.add_forecast_eval(replay_parent_forecast);
+    replay_parent_forecast_digest =
+        exposure::forecast_eval_fact_digest(replay_parent_forecast);
+    replay_parent_forecast_artifact_digest =
+        replay_parent_forecast.forecast_artifact_digest;
+    replay_parent_generation_vector_digest =
+        replay_parent_forecast.influence_summary
+            .producer_generation_vector_digest;
+  }
 
   exposure::lattice_observer_belief_fact_t observer{};
   observer.parent_exposure_fact_digest = parent_digest;
@@ -1030,6 +1424,81 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
     replay.mean_projection_directional_accuracy = 0.75;
     replay.mean_projection_interval_coverage = 0.80;
   }
+  if (no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::replay_identity_mismatch) {
+    replay.graph_order_fingerprint = "graph_other";
+    replay.source_cursor_token = "cursor_other";
+    replay.split_policy_fingerprint = "split_policy_other";
+  }
+  replay.parent_forecast_eval_fact_digest = replay_parent_forecast_digest;
+  replay.parent_forecast_artifact_digest =
+      no_lookahead_mode == no_lookahead_fixture_mode_t::
+                               replay_forecast_artifact_digest_mismatch
+          ? "forecast_artifact_mismatch"
+          : replay_parent_forecast_artifact_digest;
+  replay.influence_summary.complete =
+      no_lookahead_mode !=
+      no_lookahead_fixture_mode_t::missing_replay_inherited_influence;
+  replay.influence_summary.graph_order_fingerprint =
+      replay.graph_order_fingerprint;
+  replay.influence_summary.source_cursor_token = replay.source_cursor_token;
+  replay.influence_summary.split_policy_fingerprint =
+      replay.split_policy_fingerprint;
+  replay.influence_summary.coverage_anchor_range = replay.anchor_range;
+  replay.influence_summary.coverage_anchor_range_bound = true;
+  replay.influence_summary.influence_anchor_begin_min =
+      forecast.influence_summary.influence_anchor_begin_min;
+  replay.influence_summary.influence_anchor_begin_min_bound = true;
+  replay.influence_summary.influence_anchor_end_exclusive_max =
+      no_lookahead_mode ==
+              no_lookahead_fixture_mode_t::replay_understates_parent_influence
+          ? parent.anchor_range.begin
+          : forecast.influence_summary.influence_anchor_end_exclusive_max;
+  replay.influence_summary.influence_anchor_end_exclusive_max_bound = true;
+  if (no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::missing_influence_frontier) {
+    replay.influence_summary.influence_anchor_end_exclusive_max_bound = false;
+  }
+  replay.influence_summary.label_or_reward_availability_end_exclusive_max =
+      no_lookahead_mode == no_lookahead_fixture_mode_t::
+                               replay_understates_parent_availability
+          ? parent.anchor_range.begin
+          : forecast.influence_summary
+                .label_or_reward_availability_end_exclusive_max;
+  replay.influence_summary
+      .label_or_reward_availability_end_exclusive_max_bound =
+      forecast.influence_summary
+          .label_or_reward_availability_end_exclusive_max_bound;
+  if (no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::missing_availability_frontier) {
+    replay.influence_summary
+        .label_or_reward_availability_end_exclusive_max_bound = false;
+  }
+  replay.influence_summary.horizon = forecast.horizon;
+  replay.influence_summary.horizon_bound = true;
+  replay.influence_summary.producer_generation_vector_digest =
+      no_lookahead_mode ==
+              no_lookahead_fixture_mode_t::missing_generation_vector
+          ? ""
+          : "generation_vector_replay_1";
+  if (no_lookahead_mode !=
+      no_lookahead_fixture_mode_t::missing_replay_inherited_influence) {
+    replay.influence_summary.parent_artifact_digests = {
+        replay_parent_forecast_digest, replay_parent_forecast_artifact_digest};
+  }
+  replay.influence_summary.parent_checkpoint_digests =
+      forecast.influence_summary.parent_checkpoint_digests;
+  if (no_lookahead_mode !=
+      no_lookahead_fixture_mode_t::missing_generation_vector_closure) {
+    replay.influence_summary.parent_generation_vector_digests = {
+        replay_parent_generation_vector_digest};
+  }
+  replay.influence_summary.provenance_closure_digest =
+      "replay_provenance_closure_1";
+  replay.influence_summary.no_lookahead_contract_digest =
+      no_lookahead_mode == no_lookahead_fixture_mode_t::contract_digest_mismatch
+          ? "other_no_lookahead_contract_digest"
+          : forecast.influence_summary.no_lookahead_contract_digest;
   replay.replay_executor = replay_authority_drift;
   ledger.add_replay_environment(replay);
   const auto replay_digest = exposure::replay_environment_fact_digest(replay);
@@ -1046,7 +1515,7 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.target_component_family_id =
       policy_training_component_is_policy
           ? "wikimyei.policy.portfolio.graph_node_allocation"
-                                          : parent.target_component_family_id;
+          : parent.target_component_family_id;
   policy_training.job_id = parent.job_id;
   policy_training.wave_id = parent.wave_id;
   policy_training.job_status = parent.job_status;
@@ -1089,6 +1558,34 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.policy_input_feature_manifest_digest =
       "policy_input_manifest_digest_1";
   policy_training.policy_jkimyei_digest = "policy_jkimyei_digest_1";
+  const auto canonical_no_lookahead =
+      protocol_fixture::canonical_cwu_02v_no_lookahead_contract();
+  policy_training.policy_jkimyei_no_lookahead_contract_id =
+      no_lookahead_mode ==
+              no_lookahead_fixture_mode_t::policy_jkimyei_contract_missing
+          ? ""
+          : canonical_no_lookahead.contract_id;
+  policy_training.policy_jkimyei_no_lookahead_contract_digest =
+      no_lookahead_mode ==
+              no_lookahead_fixture_mode_t::policy_jkimyei_contract_missing
+          ? ""
+          : (no_lookahead_mode == no_lookahead_fixture_mode_t::
+                                      policy_jkimyei_contract_mismatch
+                 ? "other_no_lookahead_contract_digest"
+                 : forecast.influence_summary.no_lookahead_contract_digest);
+  policy_training.policy_jkimyei_component_order_contract_id =
+      policy_training.policy_jkimyei_no_lookahead_contract_id;
+  policy_training.policy_jkimyei_component_order_contract_digest =
+      policy_training.policy_jkimyei_no_lookahead_contract_digest;
+  policy_training.policy_jkimyei_component_role =
+      no_lookahead_mode ==
+              no_lookahead_fixture_mode_t::policy_jkimyei_contract_missing
+          ? ""
+          : "policy";
+  policy_training.policy_jkimyei_serving_order_index = 2;
+  policy_training.policy_jkimyei_serving_order_index_bound =
+      no_lookahead_mode !=
+      no_lookahead_fixture_mode_t::policy_jkimyei_contract_missing;
   policy_training.target_node_universe_digest = "target_node_universe_digest_1";
   policy_training.action_distribution_config_digest =
       "action_distribution_config_digest_1";
@@ -1170,9 +1667,376 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.parent_forecast_eval_fact_digest = forecast_digest;
   policy_training.parent_observer_belief_fact_digest = observer_digest;
   (void)allocation_digest;
-  (void)replay_digest;
   policy_training.parent_replay_environment_report_digest =
       replay.experiment_report_digest;
+  std::vector<std::string> policy_input_artifacts{
+      forecast_digest, forecast.forecast_artifact_digest};
+  policy_input_artifacts.insert(
+      policy_input_artifacts.end(),
+      replay.influence_summary.parent_artifact_digests.begin(),
+      replay.influence_summary.parent_artifact_digests.end());
+  policy_input_artifacts.push_back(replay.parent_forecast_eval_fact_digest);
+  policy_input_artifacts.push_back(replay.parent_forecast_artifact_digest);
+  auto policy_execution_artifacts = policy_input_artifacts;
+  policy_execution_artifacts.push_back(replay_digest);
+  std::vector<std::string> policy_input_checkpoints =
+      forecast.influence_summary.parent_checkpoint_digests;
+  policy_input_checkpoints.insert(
+      policy_input_checkpoints.end(),
+      replay.influence_summary.parent_checkpoint_digests.begin(),
+      replay.influence_summary.parent_checkpoint_digests.end());
+  policy_input_checkpoints.insert(
+      policy_input_checkpoints.end(),
+      forecast.influence_summary.parent_checkpoint_digests.begin(),
+      forecast.influence_summary.parent_checkpoint_digests.end());
+  std::vector<std::string> policy_input_generations{};
+  if (!forecast.influence_summary.producer_generation_vector_digest.empty()) {
+    policy_input_generations.push_back(
+        forecast.influence_summary.producer_generation_vector_digest);
+  }
+  for (const auto &digest :
+       replay.influence_summary.parent_generation_vector_digests) {
+    if (!digest.empty()) {
+      policy_input_generations.push_back(digest);
+    }
+  }
+  if (!forecast.influence_summary.producer_generation_vector_digest.empty()) {
+    policy_input_generations.push_back(
+        forecast.influence_summary.producer_generation_vector_digest);
+  }
+  const bool embargo_window_missing =
+      no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::missing_embargo_purged_window;
+  const std::string embargo_policy_fingerprint =
+      embargo_window_missing ? "" : "embargo_policy_anchor_v1";
+  const std::int64_t embargo_purged_window_begin =
+      no_lookahead_mode ==
+              no_lookahead_fixture_mode_t::embargo_purged_window_overlap
+          ? parent.anchor_range.begin - 1
+          : parent.anchor_range.begin;
+  const std::int64_t embargo_purged_window_end = parent.anchor_range.begin;
+  const bool embargo_purged_window_bound = !embargo_window_missing;
+  const auto policy_no_lookahead_closure =
+      expected_policy_no_lookahead_closure_digest(
+          forecast.influence_summary.no_lookahead_contract_digest,
+          policy_input_artifacts, policy_input_checkpoints,
+          policy_input_generations,
+          std::max(
+              forecast.influence_summary.influence_anchor_end_exclusive_max,
+              replay.influence_summary.influence_anchor_end_exclusive_max),
+          forecast.influence_summary.influence_anchor_end_exclusive_max_bound ||
+              replay.influence_summary.influence_anchor_end_exclusive_max_bound,
+          std::max(forecast.influence_summary
+                       .label_or_reward_availability_end_exclusive_max,
+                   replay.influence_summary
+                       .label_or_reward_availability_end_exclusive_max),
+          forecast.influence_summary
+                  .label_or_reward_availability_end_exclusive_max_bound ||
+              replay.influence_summary
+                  .label_or_reward_availability_end_exclusive_max_bound,
+          embargo_policy_fingerprint, embargo_purged_window_begin,
+          embargo_purged_window_end, embargo_purged_window_bound);
+  policy_training.policy_execution_no_lookahead_certificate_schema =
+      "no_lookahead_artifact_provenance.v1";
+  policy_training.policy_execution_no_lookahead_certificate_digest =
+      exposure::exposure_digest_for_text("policy_input_certificate|" +
+                                         policy_no_lookahead_closure);
+  policy_training.policy_execution_evidence_snapshot_digest =
+      exposure::exposure_digest_for_text("policy_input_snapshot|" +
+                                         policy_no_lookahead_closure);
+  policy_training.policy_execution_provenance_closure_digest =
+      policy_no_lookahead_closure;
+  policy_training.causal_provenance_schema =
+      exposure::k_causal_provenance_generalization_schema_v1;
+  policy_training.causal_atom_schema =
+      exposure::k_causal_atom_schema_anchor_interval_v1;
+  policy_training.causal_interval_set_schema =
+      exposure::k_causal_interval_set_schema_anchor_half_open_v1;
+  policy_training.causal_label_reward_horizon_policy_fingerprint =
+      "label_reward_horizon.anchor_scalar_v1";
+  policy_training.causal_fold_policy_fingerprint =
+      "fold_policy.single_time_split_v1";
+  policy_training.causal_purged_embargo_policy_fingerprint =
+      embargo_policy_fingerprint;
+  policy_training.causal_artifact_production_schema =
+      exposure::k_runtime_artifact_production_inline_schema_v1;
+  policy_training.causal_artifact_production_closure_digest =
+      policy_no_lookahead_closure;
+  policy_training.causal_interface_stability_contract_digest =
+      exposure::k_interface_stability_trained_against_generation_vector_v1;
+  policy_training.causal_provenance_closure_digest =
+      policy_no_lookahead_closure;
+  policy_training.policy_execution_target_id = "policy_training_artifact_ready";
+  policy_training.policy_execution_target_anchor_range = parent.anchor_range;
+  policy_training.policy_execution_target_anchor_range_bound = true;
+  policy_training.policy_execution_no_lookahead_contract_digest =
+      forecast.influence_summary.no_lookahead_contract_digest;
+  policy_training.embargo_policy_fingerprint = embargo_policy_fingerprint;
+  policy_training.embargo_purged_window_anchor_range = {
+      .begin = embargo_purged_window_begin, .end = embargo_purged_window_end};
+  policy_training.embargo_purged_window_anchor_range_bound =
+      embargo_purged_window_bound;
+  policy_training.policy_execution_input_parent_forecast_eval_fact_digest =
+      forecast_digest;
+  policy_training.policy_execution_input_parent_forecast_artifact_digest =
+      forecast.forecast_artifact_digest;
+  policy_training.policy_execution_input_parent_replay_environment_fact_digest =
+      replay_digest;
+  policy_training
+      .policy_execution_input_parent_replay_environment_report_digest =
+      replay.experiment_report_digest;
+  policy_training.policy_execution_replay_job_dir_digest =
+      "replay_job_dir_digest_1";
+  policy_training.policy_execution_consumed_artifact_digests =
+      policy_execution_artifacts;
+  policy_training.policy_execution_consumed_checkpoint_digests =
+      policy_input_checkpoints;
+  policy_training.policy_execution_consumed_generation_vector_digests =
+      policy_input_generations;
+  policy_training.parent_policy_generation_id = "policy_generation_seed_1";
+  policy_training.parent_policy_generation_vector_digest =
+      "generation_vector_seed_policy_1";
+  policy_training.parent_policy_influence_summary.complete = true;
+  policy_training.parent_policy_influence_summary.graph_order_fingerprint =
+      policy_training.graph_order_fingerprint;
+  policy_training.parent_policy_influence_summary.source_cursor_token =
+      policy_training.source_cursor_token;
+  policy_training.parent_policy_influence_summary.split_policy_fingerprint =
+      policy_training.split_policy_fingerprint;
+  policy_training.parent_policy_influence_summary.influence_anchor_begin_min =
+      0;
+  policy_training.parent_policy_influence_summary
+      .influence_anchor_begin_min_bound = true;
+  policy_training.parent_policy_influence_summary
+      .influence_anchor_end_exclusive_max = parent.anchor_range.begin;
+  policy_training.parent_policy_influence_summary
+      .influence_anchor_end_exclusive_max_bound = true;
+  policy_training.parent_policy_influence_summary
+      .label_or_reward_availability_end_exclusive_max =
+      policy_training.parent_policy_influence_summary
+          .influence_anchor_end_exclusive_max;
+  policy_training.parent_policy_influence_summary
+      .label_or_reward_availability_end_exclusive_max_bound = true;
+  policy_training.parent_policy_influence_summary
+      .producer_generation_vector_digest =
+      policy_training.parent_policy_generation_vector_digest;
+  policy_training.parent_policy_influence_summary.provenance_closure_digest =
+      "parent_policy_provenance_closure_1";
+  policy_training.parent_policy_influence_summary.no_lookahead_contract_digest =
+      forecast.influence_summary.no_lookahead_contract_digest;
+  policy_training.parent_policy_valid_from_anchor = parent.anchor_range.begin;
+  policy_training.parent_policy_valid_from_anchor_bound = true;
+  policy_training.policy_output_generation_id = "policy_generation_ppo_1";
+  policy_training.policy_output_generation_vector_digest =
+      "generation_vector_policy_output_1";
+  policy_training.policy_output_fit_anchor_range = parent.anchor_range;
+  policy_training.policy_output_fit_anchor_range_bound = true;
+  policy_training.policy_output_valid_from_anchor = parent.anchor_range.end;
+  policy_training.policy_output_valid_from_anchor_bound = true;
+  policy_training.policy_output_provenance_closure_digest =
+      "policy_output_provenance_closure_1";
+  policy_training.influence_summary.complete = true;
+  policy_training.influence_summary.graph_order_fingerprint =
+      policy_training.graph_order_fingerprint;
+  policy_training.influence_summary.source_cursor_token =
+      policy_training.source_cursor_token;
+  policy_training.influence_summary.split_policy_fingerprint =
+      policy_training.split_policy_fingerprint;
+  policy_training.influence_summary.coverage_anchor_range = parent.anchor_range;
+  policy_training.influence_summary.coverage_anchor_range_bound = true;
+  policy_training.influence_summary.influence_anchor_begin_min = 0;
+  policy_training.influence_summary.influence_anchor_begin_min_bound = true;
+  policy_training.influence_summary.influence_anchor_end_exclusive_max =
+      parent.anchor_range.end;
+  policy_training.influence_summary.influence_anchor_end_exclusive_max_bound =
+      true;
+  policy_training.influence_summary
+      .label_or_reward_availability_end_exclusive_max = parent.anchor_range.end;
+  policy_training.influence_summary
+      .label_or_reward_availability_end_exclusive_max_bound = true;
+  policy_training.influence_summary.producer_generation_vector_digest =
+      policy_training.policy_output_generation_vector_digest;
+  policy_training.influence_summary.parent_artifact_digests =
+      policy_input_artifacts;
+  policy_training.influence_summary.parent_artifact_digests.push_back(
+      policy_training.policy_execution_no_lookahead_certificate_digest);
+  policy_training.influence_summary.parent_artifact_digests.push_back(
+      policy_training.policy_execution_provenance_closure_digest);
+  policy_training.influence_summary.parent_checkpoint_digests =
+      policy_input_checkpoints;
+  policy_training.influence_summary.parent_checkpoint_digests.push_back(
+      policy_training.parent_checkpoint_digest);
+  policy_training.influence_summary.parent_checkpoint_digests.push_back(
+      policy_training.input_policy_checkpoint_digest);
+  policy_training.influence_summary.parent_generation_vector_digests =
+      policy_input_generations;
+  policy_training.influence_summary.parent_generation_vector_digests.push_back(
+      policy_training.parent_policy_generation_vector_digest);
+  policy_training.influence_summary.provenance_closure_digest =
+      policy_training.policy_output_provenance_closure_digest;
+  policy_training.influence_summary.no_lookahead_contract_digest =
+      forecast.influence_summary.no_lookahead_contract_digest;
+  policy_training.snapshot_bundle_id = "snapshot_bundle_policy_ready_1";
+  policy_training.snapshot_bundle_kind = "readiness_candidate";
+  policy_training.snapshot_bundle_selection_basis = "bundle_manifest";
+  policy_training.snapshot_bundle_no_lookahead_contract_id =
+      canonical_no_lookahead.contract_id;
+  policy_training.snapshot_bundle_no_lookahead_contract_digest =
+      forecast.influence_summary.no_lookahead_contract_digest;
+  policy_training.snapshot_bundle_component_order_contract_id =
+      policy_training.snapshot_bundle_no_lookahead_contract_id;
+  policy_training.snapshot_bundle_component_order_contract_digest =
+      policy_training.snapshot_bundle_no_lookahead_contract_digest;
+  policy_training.snapshot_bundle_protocol_contract_fingerprint =
+      policy_training.contract_fingerprint;
+  policy_training.snapshot_bundle_valid_from_anchor = parent.anchor_range.end;
+  policy_training.snapshot_bundle_valid_from_anchor_bound = true;
+  policy_training.snapshot_bundle_influence_anchor_end_exclusive_max =
+      parent.anchor_range.end;
+  policy_training.snapshot_bundle_influence_anchor_end_exclusive_max_bound =
+      true;
+  policy_training.snapshot_bundle_policy_execution_certificate_digest =
+      policy_training.policy_execution_no_lookahead_certificate_digest;
+  policy_training.snapshot_bundle_no_lookahead_certificate_digests = {
+      policy_training.policy_execution_no_lookahead_certificate_digest};
+  policy_training.snapshot_bundle_created_by_lattice_target =
+      "policy_training_artifact_ready";
+  policy_training.bundle_representation_component_id =
+      "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
+  policy_training.bundle_representation_jkimyei_digest =
+      "representation_jkimyei_digest_1";
+  policy_training.bundle_representation_checkpoint_digest =
+      forecast.evaluated_representation_checkpoint_digest;
+  policy_training.bundle_representation_generation_id =
+      "rep_generation_prior_1";
+  policy_training.bundle_representation_generation_vector_digest =
+      forecast.influence_summary.producer_generation_vector_digest;
+  policy_training.bundle_mdn_component_id =
+      "wikimyei.inference.expected_value.mdn";
+  policy_training.bundle_mdn_jkimyei_digest = "mdn_jkimyei_digest_1";
+  policy_training.bundle_mdn_checkpoint_digest =
+      forecast.evaluated_mdn_checkpoint_digest;
+  policy_training.bundle_mdn_generation_id = "mdn_generation_prior_1";
+  policy_training.bundle_mdn_generation_vector_digest =
+      forecast.influence_summary.producer_generation_vector_digest;
+  policy_training.bundle_policy_component_id =
+      "wikimyei.policy.portfolio.graph_node_allocation";
+  policy_training.bundle_policy_jkimyei_digest =
+      policy_training.policy_jkimyei_digest;
+  policy_training.bundle_policy_checkpoint_digest =
+      policy_training.actor_checkpoint_digest;
+  policy_training.bundle_policy_generation_id =
+      policy_training.policy_output_generation_id;
+  policy_training.bundle_policy_generation_vector_digest =
+      policy_training.policy_output_generation_vector_digest;
+  policy_training.mdn_trained_against_representation_generation_id =
+      policy_training.bundle_representation_generation_id;
+  policy_training.mdn_trained_against_representation_checkpoint_digest =
+      policy_training.bundle_representation_checkpoint_digest;
+  policy_training.mdn_trained_against_representation_generation_vector_digest =
+      policy_training.bundle_representation_generation_vector_digest;
+  policy_training.mdn_representation_feature_schema_digest =
+      "representation_feature_schema_digest_1";
+  policy_training.policy_trained_against_forecast_eval_fact_digest =
+      forecast_digest;
+  policy_training.policy_trained_against_replay_environment_fact_digest =
+      replay_digest;
+  policy_training
+      .policy_trained_against_representation_generation_vector_digest =
+      policy_training.bundle_representation_generation_vector_digest;
+  policy_training.policy_trained_against_mdn_generation_vector_digest =
+      policy_training.bundle_mdn_generation_vector_digest;
+  policy_training
+      .policy_trained_against_policy_parent_generation_vector_digest =
+      policy_training.parent_policy_generation_vector_digest;
+  policy_training.policy_execution_input_lock_digest =
+      exposure::exposure_digest_for_text("policy_execution_input_lock|" +
+                                         policy_no_lookahead_closure);
+  policy_training.policy_trained_against_no_lookahead_certificate_digest =
+      policy_training.policy_execution_no_lookahead_certificate_digest;
+  policy_training.snapshot_bundle_generation_vector_digest =
+      expected_snapshot_bundle_digest(
+          "snapshot_bundle_generation_vector.v1",
+          {policy_training.bundle_representation_generation_vector_digest,
+           policy_training.bundle_mdn_generation_vector_digest,
+           policy_training.bundle_policy_generation_vector_digest});
+  policy_training.snapshot_bundle_compatibility_closure_digest =
+      expected_snapshot_bundle_digest(
+          "snapshot_bundle_compatibility_closure.v1",
+          {policy_training.snapshot_bundle_id,
+           policy_training.bundle_representation_generation_vector_digest,
+           policy_training.bundle_mdn_generation_vector_digest,
+           policy_training.bundle_policy_generation_vector_digest,
+           policy_training
+               .mdn_trained_against_representation_generation_vector_digest,
+           policy_training
+               .policy_trained_against_representation_generation_vector_digest,
+           policy_training.policy_trained_against_mdn_generation_vector_digest,
+           policy_training
+               .policy_trained_against_policy_parent_generation_vector_digest,
+           policy_training.policy_execution_no_lookahead_certificate_digest,
+           policy_training.snapshot_bundle_no_lookahead_contract_digest});
+  if (no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::policy_execution_input_lock_missing) {
+    policy_training.policy_execution_no_lookahead_certificate_schema.clear();
+    policy_training.policy_execution_no_lookahead_certificate_digest.clear();
+    policy_training.policy_execution_evidence_snapshot_digest.clear();
+    policy_training.policy_execution_provenance_closure_digest.clear();
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::policy_execution_replay_mismatch) {
+    policy_training
+        .policy_execution_input_parent_replay_environment_fact_digest =
+        "different_replay_environment_fact_digest";
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::
+                 policy_execution_parent_policy_influence_overlaps_target) {
+    policy_training.parent_policy_influence_summary
+        .influence_anchor_end_exclusive_max = parent.anchor_range.begin + 1;
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::
+                 policy_output_generation_provenance_incomplete) {
+    policy_training.policy_output_valid_from_anchor_bound = false;
+    policy_training.influence_summary.complete = false;
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::bundle_manifest_missing) {
+    policy_training.snapshot_bundle_id.clear();
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::bundle_latest_selector_unresolved) {
+    policy_training.snapshot_bundle_selection_basis =
+        "latest_satisfying:policy_training_artifact_ready";
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::bundle_mdn_representation_mismatch) {
+    policy_training
+        .mdn_trained_against_representation_generation_vector_digest =
+        "generation_vector_other_representation";
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::bundle_policy_mdn_mismatch) {
+    policy_training.policy_trained_against_mdn_generation_vector_digest =
+        "generation_vector_other_mdn";
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::bundle_valid_from_too_early) {
+    policy_training.snapshot_bundle_valid_from_anchor =
+        parent.anchor_range.begin;
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::bundle_generation_vector_mismatch) {
+    policy_training.snapshot_bundle_generation_vector_digest =
+        "mutated_bundle_generation_vector_digest";
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::bundle_policy_certificate_missing) {
+    policy_training.snapshot_bundle_no_lookahead_certificate_digests.clear();
+    policy_training.snapshot_bundle_policy_execution_certificate_digest.clear();
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::causal_provenance_metadata_missing) {
+    policy_training.causal_provenance_schema.clear();
+    policy_training.causal_atom_schema.clear();
+    policy_training.causal_artifact_production_closure_digest.clear();
+    policy_training.causal_interface_stability_contract_digest.clear();
+  } else if (no_lookahead_mode ==
+             no_lookahead_fixture_mode_t::
+                 causal_artifact_production_closure_mismatch) {
+    policy_training.causal_artifact_production_closure_digest =
+        "mutated_inline_artifact_production_closure";
+  }
   policy_training.random_seed = 0;
   policy_training.random_seed_bound = true;
   policy_training.training_range_disjoint_validation = true;
@@ -1191,9 +2055,95 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.causal_schedule_no_future_snapshot_use =
       !policy_training_future_snapshot_use;
   policy_training.offline_full_window_research = false;
+  if (no_lookahead_mode ==
+      no_lookahead_fixture_mode_t::target_anchor_range_missing) {
+    policy_training.anchor_range = {};
+    policy_training.completed_anchor_range = {};
+  }
+  if (no_lookahead_mode !=
+      no_lookahead_fixture_mode_t::policy_parent_checkpoint_manifest_missing) {
+    add_checkpoint_generation_with_update(
+        ledger,
+        make_checkpoint_generation_fact(
+            "wikimyei.policy.portfolio.graph_node_allocation",
+            policy_training.input_policy_checkpoint_digest,
+            policy_training.parent_policy_generation_id,
+            policy_training.parent_policy_generation_vector_digest, 0,
+            parent.anchor_range.begin, policy_training.graph_order_fingerprint,
+            policy_training.source_cursor_token,
+            policy_training.split_policy_fingerprint,
+            policy_training.parent_policy_influence_summary
+                .no_lookahead_contract_digest,
+            "frozen_init"));
+  }
+  if (no_lookahead_mode !=
+      no_lookahead_fixture_mode_t::policy_output_checkpoint_manifest_missing) {
+    add_checkpoint_generation_with_update(
+        ledger,
+        make_checkpoint_generation_fact(
+            "wikimyei.policy.portfolio.graph_node_allocation",
+            policy_training.actor_checkpoint_digest,
+            policy_training.policy_output_generation_id,
+            policy_training.policy_output_generation_vector_digest,
+            parent.anchor_range.begin, parent.anchor_range.end,
+            policy_training.graph_order_fingerprint,
+            policy_training.source_cursor_token,
+            policy_training.split_policy_fingerprint,
+            policy_training.influence_summary.no_lookahead_contract_digest,
+            "readiness_grade", std::numeric_limits<std::int64_t>::min(),
+            {policy_training.input_policy_checkpoint_digest},
+            {policy_training.parent_policy_generation_id},
+            {policy_training.parent_policy_generation_id},
+            {policy_training.parent_policy_generation_vector_digest}));
+  }
   ledger.add_policy_training(policy_training);
 
   return ledger;
+}
+
+exposure::lattice_exposure_ledger_t
+artifact_readiness_ledger(no_lookahead_fixture_mode_t mode) {
+  return artifact_readiness_ledger(
+      /*observer_authority_drift=*/false,
+      /*forecast_authority_drift=*/false,
+      /*replay_authority_drift=*/false,
+      /*baseline_transform_digest_mismatch=*/false,
+      /*forecast_baseline_digest_mismatch=*/false,
+      /*forecast_selection_signal_digest_mismatch=*/false,
+      /*observer_forecast_lineage_mismatch=*/false,
+      /*allocation_observer_digest_mismatch=*/false,
+      /*allocation_forecast_artifact_mismatch=*/false,
+      /*allocation_reserve_source_mismatch=*/false,
+      /*allocation_reserve_base_policy_mismatch=*/false,
+      /*allocation_reserve_graph_unbound=*/false,
+      /*allocation_missing_reason_contract=*/false,
+      /*replay_contract_mismatch=*/false,
+      /*replay_incomplete_attempts=*/false,
+      /*replay_missing_projection_metrics=*/false,
+      /*forecast_missing_horizon_support=*/false,
+      /*replay_missing_time_law_steps=*/false,
+      /*replay_future_observation_violation=*/false,
+      /*replay_mixed_future_keys=*/false,
+      /*replay_missing_projection_step_evidence=*/false,
+      /*replay_expected_step_mismatch=*/false,
+      /*replay_action_time_policy_mismatch=*/false,
+      /*replay_source_order_policy_mismatch=*/false,
+      /*replay_parallelism_mismatch=*/false,
+      /*replay_world_mode_mismatch=*/false,
+      /*replay_schema_mismatch=*/false,
+      /*replay_runtime_run_id_missing=*/false,
+      /*replay_report_digest_mismatch=*/false,
+      /*transform_missing_support_surface=*/false,
+      /*baseline_missing_support=*/false,
+      /*forecast_missing_target_transform_binding=*/false,
+      /*forecast_missing_baseline_binding=*/false,
+      /*forecast_missing_evaluated_checkpoint_lineage=*/false,
+      /*forecast_model_state_mutation=*/false,
+      /*forecast_negative_skill=*/false,
+      /*policy_training_future_snapshot_use=*/false,
+      /*replay_missing_policy_summary=*/false,
+      /*replay_failed_attempts=*/false,
+      /*policy_training_component_is_policy=*/false, mode);
 }
 
 exposure::lattice_tsodao_settings_protection_fact_t
@@ -1644,6 +2594,193 @@ LATTICE_TARGET {
               }),
       "active target catalog may declare disabled future policy gates without "
       "making them target proofs");
+
+  const auto literal_requires_targets =
+      target::decode_lattice_compiled_targets_from_dsl(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = set_equivalent_mtf_ready;
+  TARGET_KIND = mtf_representation_ready;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = set_equivalent_vicreg_ready;
+  TARGET_KIND = vicreg_ready;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_REQUIRES {
+  TARGET_ID = set_equivalent_mtf_ready;
+  REQUIREMENT_ID = set_equivalent_observed_input_coverage;
+  KIND = exposure_coverage;
+  USE = observed_input;
+  CURSOR_EPOCHS = 0.95;
+};
+
+LATTICE_REQUIRES {
+  TARGET_ID = set_equivalent_vicreg_ready;
+  REQUIREMENT_ID = set_equivalent_vicreg_observed_input_coverage;
+  KIND = exposure_coverage;
+  USE = observed_input;
+  CURSOR_EPOCHS = 0.95;
+};
+)DSL");
+  const auto compact_requires_targets =
+      target::decode_lattice_compiled_targets_from_dsl(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = set_equivalent_mtf_ready;
+  TARGET_KIND = mtf_representation_ready;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = set_equivalent_vicreg_ready;
+  TARGET_KIND = vicreg_ready;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_REQUIRES_SET {
+  TARGET_IDS = set_equivalent_mtf_ready, set_equivalent_vicreg_ready;
+  REQUIREMENT_IDS = set_equivalent_observed_input_coverage, set_equivalent_vicreg_observed_input_coverage;
+  KIND = exposure_coverage;
+  USE = observed_input;
+  CURSOR_EPOCHS = 0.95;
+};
+)DSL");
+  const auto find_compiled_target = [](const auto &targets,
+                                       const std::string &target_id)
+      -> const target::lattice_target_compiled_t & {
+    const auto it =
+        std::find_if(targets.begin(), targets.end(), [&](const auto &entry) {
+          return entry.lowered_v0.target_id == target_id;
+        });
+    check(it != targets.end(), "compiled target exists for " + target_id);
+    return *it;
+  };
+  for (const std::string target_id :
+       {"set_equivalent_mtf_ready", "set_equivalent_vicreg_ready"}) {
+    const auto &literal =
+        find_compiled_target(literal_requires_targets, target_id);
+    const auto &compact =
+        find_compiled_target(compact_requires_targets, target_id);
+    check(literal.target_spec_fingerprint == compact.target_spec_fingerprint,
+          "LATTICE_REQUIRES_SET lowers to literal LATTICE_REQUIRES "
+          "fingerprint for " +
+              target_id);
+    check(literal.requirements.size() == compact.requirements.size() &&
+              literal.requirements.size() == 1 &&
+              literal.requirements.front().fields.size() ==
+                  compact.requirements.front().fields.size(),
+          "LATTICE_REQUIRES_SET preserves lowered requirement fields for " +
+              target_id);
+  }
+  expect_decode_error(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = invalid_requires_set_target;
+  TARGET_KIND = vicreg_ready;
+  SOURCE_RANGE = anchor_index;
+};
+
+LATTICE_REQUIRES_SET {
+  TARGET_IDS = invalid_requires_set_target, another_target;
+  REQUIREMENT_IDS = one_requirement;
+  KIND = exposure_coverage;
+  USE = observed_input;
+  CURSOR_EPOCHS = 0.95;
+};
+)DSL",
+                      "TARGET_IDS and REQUIREMENT_IDS counts must match",
+                      "requires-set target and requirement lists must pair");
+
+  const auto literal_warn_specs = target::decode_lattice_targets_from_dsl(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = warn_set_equivalent_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = forecast_eval;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+};
+
+LATTICE_WARN {
+  TARGET_ID = warn_set_equivalent_artifact_ready;
+  WARNING_ID = warn_set_calibration_low;
+  KIND = forecast_eval;
+  USE = evaluation_metric;
+  METRIC = calibration_coverage;
+  BELOW = 0.95;
+};
+
+LATTICE_WARN {
+  TARGET_ID = warn_set_equivalent_artifact_ready;
+  WARNING_ID = warn_set_support_low;
+  KIND = forecast_eval;
+  USE = evaluation_metric;
+  METRIC = weakest_horizon_support_rows;
+  BELOW = 10;
+};
+)DSL");
+  const auto compact_warn_specs = target::decode_lattice_targets_from_dsl(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = warn_set_equivalent_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = forecast_eval;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+};
+
+LATTICE_WARN_SET {
+  TARGET_ID = warn_set_equivalent_artifact_ready;
+  WARNING_IDS = warn_set_calibration_low, warn_set_support_low;
+  METRICS = calibration_coverage, weakest_horizon_support_rows;
+  BELOW_VALUES = 0.95, 10;
+};
+)DSL");
+  check(literal_warn_specs.size() == 1 && compact_warn_specs.size() == 1 &&
+            literal_warn_specs.front().warning_specs.size() == 2 &&
+            compact_warn_specs.front().warning_specs.size() == 2,
+        "LATTICE_WARN_SET decodes the expected warning count");
+  for (std::size_t i = 0; i < 2; ++i) {
+    const auto &literal = literal_warn_specs.front().warning_specs[i];
+    const auto &compact = compact_warn_specs.front().warning_specs[i];
+    check(literal.warning_id == compact.warning_id &&
+              literal.kind == compact.kind &&
+              literal.metric == compact.metric &&
+              literal.below == compact.below && literal.use == compact.use &&
+              literal.require_mutated_component ==
+                  compact.require_mutated_component,
+          "LATTICE_WARN_SET preserves artifact warning semantics");
+  }
+  expect_decode_error(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = invalid_warn_set_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = forecast_eval;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+};
+
+LATTICE_WARN_SET {
+  TARGET_ID = invalid_warn_set_artifact_ready;
+  WARNING_IDS = first_warning, second_warning;
+  METRICS = calibration_coverage;
+  BELOW_VALUES = 0.95, 10;
+};
+)DSL",
+                      "WARNING_IDS and METRICS counts must match",
+                      "warn-set warning and metric lists must pair");
   const auto find_active_spec = [&](const std::string &target_id)
       -> const target::lattice_target_spec_t & {
     const auto it = std::find_if(
@@ -3146,6 +4283,30 @@ LATTICE_TARGET {
           policy_training_eval.proof_certificate.artifacts.front()
               .lineage_bound &&
           policy_training_eval.proof_certificate.artifacts.front()
+              .label_or_reward_availability_frontier_checked &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .label_or_reward_availability_frontier_complete &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .label_or_reward_availability_frontier_admissible &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .label_or_reward_availability_end_exclusive_max_bound &&
+          policy_training_eval.proof_certificate.artifacts.front()
+                  .label_or_reward_availability_end_exclusive_max == 0 &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .embargo_purged_window_checked &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .embargo_purged_window_complete &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .embargo_purged_window_admissible &&
+          policy_training_eval.proof_certificate.artifacts.front()
+                  .embargo_policy_fingerprint == "embargo_policy_anchor_v1" &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .embargo_purged_window_anchor_range_bound &&
+          policy_training_eval.proof_certificate.artifacts.front()
+                  .embargo_purged_window_anchor_begin == 0 &&
+          policy_training_eval.proof_certificate.artifacts.front()
+                  .embargo_purged_window_anchor_end_exclusive == 0 &&
+          policy_training_eval.proof_certificate.artifacts.front()
               .proof_template_bound &&
           policy_training_eval.proof_certificate_check.passed &&
           policy_training_eval.warning_results.empty() &&
@@ -3154,10 +4315,380 @@ LATTICE_TARGET {
       "range separation, training-only normalizers/replay buffers, selector "
       "policy, sealed test access, environment/action/reward/execution "
       "profile identity, and parent replay evidence without training or "
-      "selection authority");
+      "selection authority: " +
+          describe_evaluation(policy_training_eval));
   check_artifact_proof_no_decision_authority(
       policy_training_eval.proof_certificate.artifacts.front(),
       "policy_training_artifact_ready");
+  check(policy_training_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_checked &&
+            policy_training_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_complete &&
+            policy_training_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_admissible &&
+            policy_training_eval.proof_certificate.artifacts.front()
+                .influence_anchor_end_exclusive_max_bound &&
+            policy_training_eval.proof_certificate.artifacts.front()
+                    .influence_anchor_end_exclusive_max == 0,
+        "policy training artifact readiness carries a passing "
+        "no_lookahead_artifact_provenance.v1 proof for prior-bundle replay");
+  check(!policy_training_eval.proof_certificate.artifacts.front()
+             .consumed_generation_vector_digests.empty(),
+        "passing no-lookahead proof exposes consumed generation-vector "
+        "digests");
+  check(
+      policy_training_eval.proof_certificate.artifacts.front()
+              .snapshot_bundle_publishability_checked &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .snapshot_bundle_publishability_complete &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .snapshot_bundle_publishability_admissible &&
+          policy_training_eval.proof_certificate.artifacts.front()
+                  .snapshot_bundle_id == "snapshot_bundle_policy_ready_1" &&
+          !policy_training_eval.proof_certificate.artifacts.front()
+               .snapshot_bundle_generation_vector_digest.empty() &&
+          policy_training_eval.proof_certificate.artifacts.front()
+                  .snapshot_bundle_component_generation_vector_digests.size() ==
+              3,
+      "policy training artifact readiness carries a passing "
+      "snapshot_bundle_publishability.v1 proof for the coherent "
+      "representation/MDN/policy generation vector");
+  check(policy_training_eval.proof_certificate.artifacts.front()
+                .causal_provenance_checked &&
+            policy_training_eval.proof_certificate.artifacts.front()
+                .causal_provenance_complete &&
+            policy_training_eval.proof_certificate.artifacts.front()
+                .causal_provenance_admissible &&
+            policy_training_eval.proof_certificate.artifacts.front()
+                    .causal_provenance_certificate_schema ==
+                "causal_provenance_generalization.v1" &&
+            policy_training_eval.proof_certificate.artifacts.front()
+                    .causal_artifact_production_closure_digest ==
+                policy_training_eval.proof_certificate.artifacts.front()
+                    .provenance_closure_digest &&
+            !policy_training_eval.proof_certificate.artifacts.front()
+                 .causal_interface_stability_contract_digest.empty(),
+        "policy training artifact readiness carries a passing "
+        "causal_provenance_generalization.v1 aggregate over no-lookahead, "
+        "availability, embargo, artifact-production, interface, and bundle "
+        "subproofs");
+
+  const auto same_slice_influence_ledger = artifact_readiness_ledger(
+      no_lookahead_fixture_mode_t::same_slice_forecast_influence);
+  target::lattice_target_evaluator_t same_slice_influence_evaluator(
+      artifact_specs, artifact_eval_options(same_slice_influence_ledger));
+  const auto same_slice_influence_eval =
+      same_slice_influence_evaluator.evaluate("policy_training_artifact_ready");
+  check(same_slice_influence_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            same_slice_influence_eval.proof_certificate.artifacts.size() == 1 &&
+            same_slice_influence_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_checked &&
+            !same_slice_influence_eval.proof_certificate.artifacts.front()
+                 .no_lookahead_provenance_admissible &&
+            has_reason_containing(
+                same_slice_influence_eval.reasons,
+                "no_lookahead_influence_overlaps_policy_target_anchor_range"),
+        "policy training artifact readiness rejects replay generated from a "
+        "same-slice-updated forecast state");
+
+  const auto missing_replay_inheritance_ledger = artifact_readiness_ledger(
+      no_lookahead_fixture_mode_t::missing_replay_inherited_influence);
+  target::lattice_target_evaluator_t missing_replay_inheritance_evaluator(
+      artifact_specs, artifact_eval_options(missing_replay_inheritance_ledger));
+  const auto missing_replay_inheritance_eval =
+      missing_replay_inheritance_evaluator.evaluate(
+          "policy_training_artifact_ready");
+  check(
+      missing_replay_inheritance_eval.status !=
+              target::lattice_target_status_t::satisfied &&
+          missing_replay_inheritance_eval.proof_certificate.artifacts.size() ==
+              1 &&
+          missing_replay_inheritance_eval.proof_certificate.artifacts.front()
+              .no_lookahead_provenance_checked &&
+          !missing_replay_inheritance_eval.proof_certificate.artifacts.front()
+               .no_lookahead_provenance_complete &&
+          has_reason_containing(missing_replay_inheritance_eval.reasons,
+                                "no_lookahead_replay_influence_incomplete"),
+      "policy training artifact readiness fails closed when replay evidence "
+      "does not inherit forecast influence");
+
+  const auto expect_no_lookahead_failure =
+      [&](no_lookahead_fixture_mode_t mode, const std::string &expected_issue,
+          const std::string &message) {
+        const auto ledger = artifact_readiness_ledger(mode);
+        target::lattice_target_evaluator_t evaluator(
+            artifact_specs, artifact_eval_options(ledger));
+        const auto evaluation =
+            evaluator.evaluate("policy_training_artifact_ready");
+        check(evaluation.status != target::lattice_target_status_t::satisfied &&
+                  evaluation.proof_certificate.artifacts.size() == 1 &&
+                  evaluation.proof_certificate.artifacts.front()
+                      .no_lookahead_provenance_checked &&
+                  !evaluation.proof_certificate.artifacts.front()
+                       .no_lookahead_provenance_complete &&
+                  has_reason_containing(evaluation.reasons, expected_issue),
+              message + ": " + join_issue_tokens(evaluation.reasons));
+      };
+  const auto expect_policy_training_binding_failure =
+      [&](no_lookahead_fixture_mode_t mode, const std::string &expected_issue,
+          const std::string &message) {
+        const auto ledger = artifact_readiness_ledger(mode);
+        target::lattice_target_evaluator_t evaluator(
+            artifact_specs, artifact_eval_options(ledger));
+        const auto evaluation =
+            evaluator.evaluate("policy_training_artifact_ready");
+        check(evaluation.status != target::lattice_target_status_t::satisfied &&
+                  evaluation.proof_certificate.artifacts.size() == 1 &&
+                  evaluation.proof_certificate.artifacts.front()
+                      .no_lookahead_provenance_checked &&
+                  evaluation.proof_certificate.artifacts.front()
+                      .no_lookahead_provenance_complete &&
+                  has_reason_containing(evaluation.reasons, expected_issue),
+              message + ": " + join_issue_tokens(evaluation.reasons));
+      };
+  const auto expect_policy_training_target_failure =
+      [&](no_lookahead_fixture_mode_t mode, const std::string &expected_issue,
+          const std::string &message) {
+        const auto ledger = artifact_readiness_ledger(mode);
+        target::lattice_target_evaluator_t evaluator(
+            artifact_specs, artifact_eval_options(ledger));
+        const auto evaluation =
+            evaluator.evaluate("policy_training_artifact_ready");
+        check(evaluation.status != target::lattice_target_status_t::satisfied &&
+                  has_reason_containing(evaluation.reasons, expected_issue),
+              message + ": " + join_issue_tokens(evaluation.reasons));
+      };
+
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::replay_understates_parent_influence,
+      "no_lookahead_replay_influence_understates_parent",
+      "policy training artifact readiness rejects replay influence "
+      "understatement relative to parent forecast influence");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::replay_understates_parent_availability,
+      "no_lookahead_replay_availability_understates_parent",
+      "policy training artifact readiness rejects replay availability "
+      "understatement relative to parent forecast availability");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::availability_frontier_one_past_target_begin,
+      "no_lookahead_label_or_reward_availability_overlaps_policy_target_"
+      "anchor_range",
+      "policy training artifact readiness rejects parent artifacts whose "
+      "label/reward availability overlaps the policy target");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::missing_availability_frontier,
+      "no_lookahead_missing_forecast_label_or_reward_availability_end_"
+      "exclusive_max",
+      "policy training artifact readiness fails closed when label/reward "
+      "availability frontier is missing");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::missing_embargo_purged_window,
+      "no_lookahead_embargo_purged_window_missing",
+      "policy training artifact readiness fails closed when embargo/purged "
+      "window metadata is missing");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::embargo_purged_window_overlap,
+      "no_lookahead_influence_overlaps_embargo_purged_window",
+      "policy training artifact readiness rejects parent influence inside the "
+      "purged window before the policy target");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::split_brain_replay_forecast_parent,
+      "no_lookahead_policy_parent_chain_mismatch",
+      "policy training artifact readiness rejects split-brain forecast/replay "
+      "parent chains");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::replay_forecast_artifact_digest_mismatch,
+      "no_lookahead_forecast_artifact_digest_mismatch",
+      "policy training artifact readiness rejects replay forecast-artifact "
+      "digest mismatch");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::contract_digest_mismatch,
+      "no_lookahead_contract_digest_mismatch",
+      "policy training artifact readiness rejects no-lookahead contract digest "
+      "mismatch");
+  expect_policy_training_binding_failure(
+      no_lookahead_fixture_mode_t::policy_jkimyei_contract_missing,
+      "policy_jkimyei_no_lookahead_contract_digest_missing",
+      "policy training artifact readiness rejects missing policy .jkimyei "
+      "no-lookahead contract refs");
+  expect_policy_training_binding_failure(
+      no_lookahead_fixture_mode_t::policy_jkimyei_contract_mismatch,
+      "policy_jkimyei_no_lookahead_contract_digest_mismatch",
+      "policy training artifact readiness rejects policy .jkimyei contract "
+      "digest drift");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::replay_identity_mismatch,
+      "no_lookahead_parent_replay_fact_not_found",
+      "policy training artifact readiness rejects replay graph/source/split "
+      "identity mismatch");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::forecast_coverage_miss,
+      "no_lookahead_forecast_coverage_does_not_cover_policy_target",
+      "policy training artifact readiness rejects unrelated artifact coverage");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::influence_frontier_one_past_target_begin,
+      "no_lookahead_influence_overlaps_policy_target_anchor_range",
+      "policy training artifact readiness treats half-open influence frontier "
+      "target_begin plus one as leaking");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::missing_influence_frontier,
+      "no_lookahead_missing_forecast_influence_anchor_end_exclusive_max",
+      "policy training artifact readiness fails closed when the influence "
+      "frontier is missing");
+  expect_policy_training_target_failure(
+      no_lookahead_fixture_mode_t::target_anchor_range_missing,
+      "no policy_training artifact facts matched the target identity",
+      "policy training artifact readiness fails closed when the target anchor "
+      "range is missing");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::missing_generation_vector_closure,
+      "no_lookahead_generation_vector_not_in_closure",
+      "policy training artifact readiness rejects replay closure without the "
+      "parent forecast generation vector");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::checkpoint_generation_manifest_missing,
+      "checkpoint_generation_manifest_missing",
+      "policy training artifact readiness fails closed when forecast "
+      "checkpoint generation manifests are missing");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::checkpoint_generation_influence_understates,
+      "checkpoint_generation_influence_understates_parents",
+      "policy training artifact readiness rejects checkpoints whose declared "
+      "influence understates the recomputed generation influence");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::checkpoint_generation_lane_smoke,
+      "checkpoint_generation_lane_not_readiness_grade",
+      "policy training artifact readiness rejects smoke/research checkpoints "
+      "as readiness-grade forecast parents");
+  expect_policy_training_binding_failure(
+      no_lookahead_fixture_mode_t::causal_provenance_metadata_missing,
+      "causal_provenance_schema_mismatch",
+      "policy training artifact readiness fails closed when generalized "
+      "causal-provenance metadata is missing");
+  expect_policy_training_binding_failure(
+      no_lookahead_fixture_mode_t::causal_artifact_production_closure_mismatch,
+      "causal_artifact_production_closure_mismatch",
+      "policy training artifact readiness rejects inline artifact-production "
+      "closure that does not match the recomputed no-lookahead closure");
+
+  const auto expect_policy_execution_failure =
+      [&](no_lookahead_fixture_mode_t mode, const std::string &expected_issue,
+          const std::string &message) {
+        const auto ledger = artifact_readiness_ledger(mode);
+        target::lattice_target_evaluator_t evaluator(
+            artifact_specs, artifact_eval_options(ledger));
+        const auto evaluation =
+            evaluator.evaluate("policy_training_artifact_ready");
+        check(evaluation.status != target::lattice_target_status_t::satisfied &&
+                  evaluation.proof_certificate.artifacts.size() == 1 &&
+                  has_reason_containing(evaluation.reasons, expected_issue),
+              message + ": " + join_issue_tokens(evaluation.reasons));
+      };
+
+  expect_policy_execution_failure(
+      no_lookahead_fixture_mode_t::policy_execution_input_lock_missing,
+      "policy_execution_no_lookahead_input_lock_missing",
+      "policy runtime execution readiness rejects PPO facts without a "
+      "claim-bound input certificate lock");
+  expect_policy_execution_failure(
+      no_lookahead_fixture_mode_t::policy_execution_replay_mismatch,
+      "bundle_trained_against_generation_mismatch",
+      "policy runtime execution readiness rejects replay inputs that differ "
+      "from the certified lock");
+  expect_policy_execution_failure(
+      no_lookahead_fixture_mode_t::
+          policy_execution_parent_policy_influence_overlaps_target,
+      "policy_execution_parent_policy_influence_overlaps_target",
+      "policy runtime execution readiness rejects parent policy checkpoints "
+      "whose influence overlaps the target slice");
+  expect_policy_execution_failure(
+      no_lookahead_fixture_mode_t::
+          policy_output_generation_provenance_incomplete,
+      "policy_output_generation_provenance_incomplete",
+      "policy runtime execution readiness rejects final policy outputs that "
+      "lack fit/valid-from provenance");
+  expect_policy_execution_failure(
+      no_lookahead_fixture_mode_t::policy_parent_checkpoint_manifest_missing,
+      "policy_execution_parent_policy_generation_missing",
+      "policy runtime execution readiness rejects loaded parent policy "
+      "checkpoints without generation manifests");
+  expect_policy_execution_failure(
+      no_lookahead_fixture_mode_t::policy_output_checkpoint_manifest_missing,
+      "policy_output_generation_provenance_incomplete",
+      "policy runtime execution readiness rejects output policy checkpoints "
+      "without generation manifests");
+
+  const auto expect_bundle_failure = [&](no_lookahead_fixture_mode_t mode,
+                                         const std::string &expected_issue,
+                                         const std::string &message) {
+    const auto ledger = artifact_readiness_ledger(mode);
+    target::lattice_target_evaluator_t evaluator(artifact_specs,
+                                                 artifact_eval_options(ledger));
+    const auto evaluation =
+        evaluator.evaluate("policy_training_artifact_ready");
+    check(evaluation.status != target::lattice_target_status_t::satisfied &&
+              evaluation.proof_certificate.artifacts.size() == 1 &&
+              evaluation.proof_certificate.artifacts.front()
+                  .snapshot_bundle_publishability_checked &&
+              !evaluation.proof_certificate.artifacts.front()
+                   .snapshot_bundle_publishability_complete &&
+              has_reason_containing(evaluation.reasons, expected_issue),
+          message + ": " + join_issue_tokens(evaluation.reasons));
+  };
+
+  expect_bundle_failure(
+      no_lookahead_fixture_mode_t::bundle_manifest_missing,
+      "bundle_manifest_missing",
+      "snapshot bundle publishability fails closed without a bundle manifest");
+  expect_bundle_failure(
+      no_lookahead_fixture_mode_t::bundle_latest_selector_unresolved,
+      "bundle_latest_selector_unresolved",
+      "snapshot bundle publishability rejects unresolved latest_satisfying "
+      "selection");
+  expect_bundle_failure(
+      no_lookahead_fixture_mode_t::bundle_mdn_representation_mismatch,
+      "bundle_trained_against_generation_mismatch",
+      "snapshot bundle publishability rejects an MDN bundled with a "
+      "representation generation it was not trained against");
+  expect_bundle_failure(
+      no_lookahead_fixture_mode_t::bundle_policy_mdn_mismatch,
+      "bundle_trained_against_generation_mismatch",
+      "snapshot bundle publishability rejects a policy bundled with an MDN "
+      "generation outside its certified replay closure");
+  expect_no_lookahead_failure(
+      no_lookahead_fixture_mode_t::bundle_smoke_component,
+      "no_lookahead_checkpoint_generation_lane_not_readiness_grade",
+      "policy training artifact readiness rejects smoke/research component "
+      "generations before readiness bundle publishability");
+  expect_bundle_failure(
+      no_lookahead_fixture_mode_t::bundle_valid_from_too_early,
+      "bundle_valid_from_before_member_valid_from",
+      "snapshot bundle publishability rejects bundles published before member "
+      "valid_from anchors");
+  expect_bundle_failure(
+      no_lookahead_fixture_mode_t::bundle_generation_vector_mismatch,
+      "bundle_generation_vector_mismatch",
+      "snapshot bundle publishability recomputes the bundle generation-vector "
+      "digest");
+  expect_bundle_failure(
+      no_lookahead_fixture_mode_t::bundle_policy_certificate_missing,
+      "bundle_no_lookahead_certificate_missing",
+      "snapshot bundle publishability requires the policy execution "
+      "no-lookahead certificate in the compatibility closure");
+
+  const auto coverage_superset_ledger = artifact_readiness_ledger(
+      no_lookahead_fixture_mode_t::forecast_coverage_superset);
+  target::lattice_target_evaluator_t coverage_superset_evaluator(
+      artifact_specs, artifact_eval_options(coverage_superset_ledger));
+  const auto coverage_superset_eval =
+      coverage_superset_evaluator.evaluate("policy_training_artifact_ready");
+  check(coverage_superset_eval.status ==
+                target::lattice_target_status_t::satisfied &&
+            coverage_superset_eval.proof_certificate_check.passed,
+        "policy training artifact readiness accepts superset artifact coverage "
+        "when inherited influence remains clean: " +
+            join_issue_tokens(coverage_superset_eval.reasons));
 
   const auto tsodao_ledger = artifact_readiness_ledger_with_tsodao();
   target::lattice_target_evaluator_t tsodao_evaluator(

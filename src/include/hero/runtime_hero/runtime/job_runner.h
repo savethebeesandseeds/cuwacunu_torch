@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/runtime_hero/runtime/job_manifest.h"
@@ -96,8 +97,8 @@ inline void ensure_job_dir(const std::filesystem::path &path) {
 
 [[nodiscard]] inline std::filesystem::path
 default_job_root_for_config(const std::string &config_path) {
-  (void)config_path;
-  return std::filesystem::path("/cuwacunu/.runtime/cuwacunu_exec");
+  return cuwacunu::hero::config_paths::default_runtime_root_path(
+      std::filesystem::path(config_path));
 }
 
 [[nodiscard]] inline std::filesystem::path
@@ -271,7 +272,8 @@ inline void prepare_explicit_job_dir(const std::filesystem::path &job_dir,
     return runtime_job_kind_t::channel_representation_mtf_jepa_mae_vicreg;
   case cuwacunu::hero::runtime::settings::wave_target_t::inference_channel_mdn:
     return runtime_job_kind_t::channel_inference_mdn;
-  case cuwacunu::hero::runtime::settings::wave_target_t::graph_node_allocation_policy:
+  case cuwacunu::hero::runtime::settings::wave_target_t::
+      graph_node_allocation_policy:
     return runtime_job_kind_t::policy_training;
   }
   throw std::runtime_error("[kikijyeba_job_runner] unknown wave target");
@@ -585,8 +587,23 @@ inline void write_lattice_fact_sidecars(const std::filesystem::path &job_dir,
         std::filesystem::exists(fact.output_checkpoint)) {
       auto checkpoint_fact =
           exposure::make_checkpoint_fact_from_exposure_fact(fact);
+      exposure::bind_checkpoint_generation_parents_from_sidecars(
+          checkpoint_fact);
+      auto update_fact =
+          exposure::make_component_training_update_fact_from_checkpoint_fact(
+              checkpoint_fact, fact.model_state_mutated ? std::string("train")
+                                                        : std::string("smoke"));
+      update_fact.split_role =
+          exposure::exposure_split_role_name(fact.split_role);
+      update_fact.optimizer_update_count = fact.optimizer_steps;
+      update_fact.optimizer_update_count_bound = fact.optimizer_steps > 0;
+      checkpoint_fact.producer_component_update_fact_digest =
+          exposure::component_training_update_fact_digest(update_fact);
       const auto checkpoint_path =
           exposure::checkpoint_fact_path_for_job_dir(job_dir);
+      exposure::write_component_training_update_fact_sidecar(
+          exposure::component_training_update_fact_path_for_job_dir(job_dir),
+          update_fact);
       exposure::write_checkpoint_fact_sidecar(checkpoint_path,
                                               std::move(checkpoint_fact));
       state->lattice_checkpoint_fact_written = true;
@@ -624,7 +641,8 @@ component_assembly_fingerprint_for_manifest(const job_manifest_t &manifest) {
       "wikimyei.inference.expected_value.mdn") {
     return manifest.mdn_assembly_fingerprint;
   }
-  if (manifest.target_component_family_id == "wikimyei.policy.portfolio.graph_node_allocation") {
+  if (manifest.target_component_family_id ==
+      "wikimyei.policy.portfolio.graph_node_allocation") {
     if (!manifest.policy_operator_surface_digest.empty()) {
       return manifest.policy_operator_surface_digest;
     }

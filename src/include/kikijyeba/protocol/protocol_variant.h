@@ -13,6 +13,21 @@ enum class protocol_representation_family_t {
   mtf_jepa_mae_vicreg,
 };
 
+struct protocol_no_lookahead_contract_t {
+  std::string contract_id{};
+  std::string contract_digest{};
+  std::string certificate_schema{};
+  std::string influence_schema{};
+  std::string frontier_unit{};
+  std::string serving_order{};
+  std::string visibility_policy{};
+  std::string derived_artifact_rule{};
+  std::string checkpoint_rule{};
+  std::string publish_rule{};
+  std::string bootstrap_policy{};
+  std::string research_policy{};
+};
+
 struct protocol_variant_t {
   std::string protocol_id{"cwu_01v"};
   std::string protocol_kind{"channel_graph_first"};
@@ -31,6 +46,7 @@ struct protocol_variant_t {
       "wikimyei.policy.portfolio.graph_node_allocation"};
   std::string representation_contract{
       "graph_order.channel_node_representation.v1"};
+  protocol_no_lookahead_contract_t no_lookahead_contract{};
 };
 
 namespace protocol_variant_detail {
@@ -55,6 +71,70 @@ parse_representation_family(std::string value) {
 }
 
 } // namespace protocol_variant_detail
+
+[[nodiscard]] inline bool protocol_no_lookahead_contract_declared(
+    const protocol_no_lookahead_contract_t &contract) {
+  return !contract.contract_id.empty() || !contract.contract_digest.empty() ||
+         !contract.certificate_schema.empty() ||
+         !contract.influence_schema.empty() || !contract.frontier_unit.empty() ||
+         !contract.serving_order.empty() || !contract.visibility_policy.empty() ||
+         !contract.derived_artifact_rule.empty() ||
+         !contract.checkpoint_rule.empty() || !contract.publish_rule.empty() ||
+         !contract.bootstrap_policy.empty() || !contract.research_policy.empty();
+}
+
+inline void validate_protocol_no_lookahead_contract(
+    const protocol_no_lookahead_contract_t &contract) {
+  namespace kv = protocol_variant_detail::kv;
+  if (kv::trim(contract.contract_id).empty()) {
+    throw std::runtime_error(
+        "[protocol_variant] NO_LOOKAHEAD_CONTRACT CONTRACT_ID is required");
+  }
+  if (kv::trim(contract.contract_digest).empty()) {
+    throw std::runtime_error(
+        "[protocol_variant] NO_LOOKAHEAD_CONTRACT CONTRACT_DIGEST is required");
+  }
+  if (kv::trim(contract.certificate_schema).empty()) {
+    throw std::runtime_error("[protocol_variant] NO_LOOKAHEAD_CONTRACT "
+                             "CERTIFICATE_SCHEMA is required");
+  }
+  if (kv::trim(contract.influence_schema).empty()) {
+    throw std::runtime_error(
+        "[protocol_variant] NO_LOOKAHEAD_CONTRACT INFLUENCE_SCHEMA is required");
+  }
+  if (kv::trim(contract.frontier_unit).empty()) {
+    throw std::runtime_error(
+        "[protocol_variant] NO_LOOKAHEAD_CONTRACT FRONTIER_UNIT is required");
+  }
+  if (kv::trim(contract.serving_order).empty()) {
+    throw std::runtime_error(
+        "[protocol_variant] NO_LOOKAHEAD_CONTRACT SERVING_ORDER is required");
+  }
+  if (kv::trim(contract.visibility_policy).empty()) {
+    throw std::runtime_error("[protocol_variant] NO_LOOKAHEAD_CONTRACT "
+                             "VISIBILITY_POLICY is required");
+  }
+  if (kv::trim(contract.derived_artifact_rule).empty()) {
+    throw std::runtime_error("[protocol_variant] NO_LOOKAHEAD_CONTRACT "
+                             "DERIVED_ARTIFACT_RULE is required");
+  }
+  if (kv::trim(contract.checkpoint_rule).empty()) {
+    throw std::runtime_error(
+        "[protocol_variant] NO_LOOKAHEAD_CONTRACT CHECKPOINT_RULE is required");
+  }
+  if (kv::trim(contract.publish_rule).empty()) {
+    throw std::runtime_error(
+        "[protocol_variant] NO_LOOKAHEAD_CONTRACT PUBLISH_RULE is required");
+  }
+  if (kv::trim(contract.bootstrap_policy).empty()) {
+    throw std::runtime_error(
+        "[protocol_variant] NO_LOOKAHEAD_CONTRACT BOOTSTRAP_POLICY is required");
+  }
+  if (kv::trim(contract.research_policy).empty()) {
+    throw std::runtime_error(
+        "[protocol_variant] NO_LOOKAHEAD_CONTRACT RESEARCH_POLICY is required");
+  }
+}
 
 [[nodiscard]] inline const char *
 protocol_representation_family_name(protocol_representation_family_t family) {
@@ -113,6 +193,10 @@ inline void validate_protocol_variant(const protocol_variant_t &variant) {
     throw std::runtime_error(
         "[protocol_variant] REPRESENTATION_CONTRACT is required");
   }
+  if (protocol_no_lookahead_contract_declared(
+          variant.no_lookahead_contract)) {
+    validate_protocol_no_lookahead_contract(variant.no_lookahead_contract);
+  }
   if (variant.representation_family ==
           protocol_representation_family_t::vicreg &&
       variant.representation_contract !=
@@ -149,6 +233,44 @@ decode_protocol_variant_from_dsl(const std::string &dsl_text) {
   out.policy_component_family = kv::required(block, "POLICY_COMPONENT");
   out.representation_contract = kv::optional(block, "REPRESENTATION_CONTRACT",
                                              out.representation_contract);
+  const auto blocks = kv::parse_blocks(dsl_text);
+  const kv::block_t *no_lookahead_block = nullptr;
+  for (const auto &candidate : blocks) {
+    if (candidate.name != "NO_LOOKAHEAD_CONTRACT") {
+      continue;
+    }
+    if (no_lookahead_block != nullptr) {
+      throw std::runtime_error(
+          "[protocol_variant] duplicate NO_LOOKAHEAD_CONTRACT block");
+    }
+    no_lookahead_block = &candidate;
+  }
+  if (no_lookahead_block != nullptr) {
+    auto &contract = out.no_lookahead_contract;
+    contract.contract_id = kv::optional(*no_lookahead_block, "CONTRACT_ID", "");
+    contract.contract_digest =
+        kv::optional(*no_lookahead_block, "CONTRACT_DIGEST", "");
+    contract.certificate_schema =
+        kv::optional(*no_lookahead_block, "CERTIFICATE_SCHEMA", "");
+    contract.influence_schema =
+        kv::optional(*no_lookahead_block, "INFLUENCE_SCHEMA", "");
+    contract.frontier_unit =
+        kv::optional(*no_lookahead_block, "FRONTIER_UNIT", "");
+    contract.serving_order =
+        kv::optional(*no_lookahead_block, "SERVING_ORDER", "");
+    contract.visibility_policy =
+        kv::optional(*no_lookahead_block, "VISIBILITY_POLICY", "");
+    contract.derived_artifact_rule =
+        kv::optional(*no_lookahead_block, "DERIVED_ARTIFACT_RULE", "");
+    contract.checkpoint_rule =
+        kv::optional(*no_lookahead_block, "CHECKPOINT_RULE", "");
+    contract.publish_rule =
+        kv::optional(*no_lookahead_block, "PUBLISH_RULE", "");
+    contract.bootstrap_policy =
+        kv::optional(*no_lookahead_block, "BOOTSTRAP_POLICY", "");
+    contract.research_policy =
+        kv::optional(*no_lookahead_block, "RESEARCH_POLICY", "");
+  }
   validate_protocol_variant(out);
   return out;
 }

@@ -4,7 +4,7 @@
 <selection_assignment> ::= [<whitespace>] <selection_key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
 <assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
 <selection_key> ::= "ACTIVE_WAVE_ID" ;
-<key>         ::= "WAVE_ID" | "PROTOCOL" | "TARGET" | "MODE" | "JOB_KIND" | "POLICY_ID" | "POLICY_KIND" | "TRAINING_SCHEDULE_MODE" | "LIVE_EXECUTION_ALLOWED" | "SOURCE_CURSOR_ID" | "SOURCE_ORDER" ;
+<key>         ::= "WAVE_ID" | "PROTOCOL" | "TARGET" | "MODE" | "JOB_KIND" | "POLICY_ID" | "POLICY_KIND" | "TRAINING_SCHEDULE_MODE" | "CAUSAL_SCHEDULE_DIGEST" | "SNAPSHOT_FAMILY_DIGEST" | "EARLY_STOPPING_POLICY_DIGEST" | "HYPERPARAMETER_SELECTION_POLICY_DIGEST" | "SELECTOR_POLICY_DIGEST" | "TRAIN_SPLIT" | "VALIDATION_SPLIT" | "TEST_SPLIT" | "LIVE_EXECUTION_ALLOWED" | "SOURCE_CURSOR_ID" | "SOURCE_ORDER" ;
 <value>       ::= <value_char> {<value_char>} ;
 <value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "|" | "," | "+" ;
 <line_end>    ::= [<whitespace>] <break_block> ;

@@ -28,6 +28,107 @@ Cajtucu owns execution, paper fills, ledgers, and execution traces.
 Tsodao later protects approved settings and promotion contracts.
 ```
 
+### Non-Anticipative Provenance Status
+
+```text
+The first anchor-v1 enforcement chain now exists for:
+
+  checkpoint generation influence
+    -> forecast_eval
+    -> replay_environment
+    -> policy_training / PPO execution proof
+    -> Marshal readiness gate
+
+Do not promote smoke/research evidence into policy acceptance, paper-online
+readiness, deployment readiness, or "complete training" unless the relevant
+Lattice no-lookahead proof passes and Marshal observes the structured passing
+certificate state for the exact claim/evidence snapshot.
+
+Contract-source ownership now has an anchor-v1 home. The rule comes from
+the `NO_LOOKAHEAD_CONTRACT` block in
+`src/config/kikijyeba.protocol.cwu_02v.dsl`, and the
+representation, MDN, and policy `.jkimyei` files reference that canonical
+contract by id and digest instead of restating independent local copies. The
+rule remains: every artifact consumed by a training, replay, evaluation,
+readiness, or publish claim must have transitive influence that excludes
+information forbidden for that claim.
+
+The serving architecture is:
+
+  component `.jkimyei` order / serving dependency:
+    representation -> MDN -> policy
+
+  possible implementation schedule:
+    consume prior approved bundle for slice S
+    train/update new state from S
+    publish new bundle only for future admissible slices
+
+The original concern was same-slice upstream checkpoint leakage and artifact
+laundering: a leaky checkpoint can flow through forecasts, replay outputs,
+policy-training inputs, and readiness claims even if the final consumer does not
+read that checkpoint directly. Anchor-v1 now enforces that concrete path over
+accepted anchor frontiers and fails readiness-grade policy facts when the
+transitive parent proof is incomplete, stale, drifted, or inconsistent with
+Runtime/Lattice evidence. Snapshot-bundle publishability adds the promotion
+guard above that: readiness-grade policy facts must expose a Lattice-approved
+`snapshot_bundle_manifest.v1` generation vector for representation, MDN, and
+policy rather than loose latest checkpoint paths. Anchor-v1 also carries a
+scalar label/reward availability frontier through checkpoint, forecast, replay,
+policy-training, and Marshal certificate state. Anchor-v1 policy readiness also
+binds an explicit embargo/purged-window policy fingerprint and half-open anchor
+window; consumed parent influence and label/reward availability must clear the
+window begin. `causal_provenance_generalization.v1` is the current aggregate
+state over those checked subproofs: no-lookahead artifact provenance, scalar
+label/reward availability, scalar embargo/purged-window admissibility, inline
+artifact-production closure, trained-against interface stability, and snapshot
+bundle publishability. It is an anchor-v1 aggregate, not proof of full
+interval-set/fold/horizon algebra. Remaining broader work includes full
+label/reward horizon semantics beyond the scalar frontier, interval-set/fold
+embargo generalization, bundle interface-stability generalization, and
+generalized artifact-production provenance.
+
+Coordination document: `not_forward_leaking_problem.md`.
+
+Range-expression follow-up: the anchor-v1 examples and current operator
+fixtures still use raw accepted-anchor index intervals such as `[0,1600)` and
+`[1800,2050)`. Those concrete intervals are useful for deterministic tests but
+are brittle as the source corpus grows. Add a stable range-expression layer
+before broader performance work: named split windows, percentage/quantile ranges
+over an immutable cursor snapshot, source-time boundaries, or another durable
+range spec that materializes to half-open anchor intervals for Runtime/Lattice.
+Lattice should prove against both the materialized interval and the range-spec
+digest, not ad hoc integers alone.
+
+Known issue: `missing_ranges_exposure.v1`. No-lookahead proves that a learner
+did not know forbidden information; missing-ranges exposure asks whether the
+learner used enough admissible information. The clean anchor-v1 protocol creates
+a real data-efficiency/staleness tradeoff: representation and MDN can be fit on
+historical ranges before the policy target, while policy trains on later
+certified replay artifacts. For every target slice, first compute the latest
+admissible upstream fit frontier. A range gap should be classified as
+`usable_but_unused`, `forbidden_by_embargo_or_label_availability`, or
+`unknown_availability`, not merely reported as missing. If `[1600,1800)` is
+admissible before target `[1800,2050)`, representation/MDN should normally train
+through it; if it is blocked by horizon, embargo, split policy, or unknown label
+availability, it should not be counted as usable exposure. Future approach:
+expanding walk-forward upstream training, a certified replay bank, rolling
+policy experience over many certified chunks, bootstrap lanes for cold start,
+and temporal out-of-fold/cross-fit only after richer label/reward and embargo
+semantics exist. Do not solve this by letting upstream models train on the same
+target slice before producing same-slice policy inputs.
+
+Performance notes: the current hardening mostly adds evidence emission, digest
+binding, manifest lookup, and Lattice proof evaluation at job/artifact
+boundaries. It should not materially slow the inner PPO/MDN/representation math,
+but it can make readiness checks slower if the catalog scan is broad or digests
+are recomputed too often. Runtime now writes
+`policy_training_anchor_v1_performance_profile.v1` as diagnostic evidence beside
+the PPO update, validation, and policy-quality reports. Early policy-quality
+numbers from small windows are exploratory only; apparent performance may drop
+versus old runs because anchor-v1 removes future-corpus leakage and forces causal
+exposure discipline.
+```
+
 Boundary rules:
 
 ```text
@@ -43,6 +144,175 @@ Tsodao is not implemented as a full authority yet. Its current surface is
 ```
 
 ## Current Stable Baseline
+
+Current completed baseline stack:
+
+```text
+policy_training_anchor_v1_performance_profile.v1
+  Runtime emits a durable diagnostic report at
+  `policy_training_anchor_v1_performance_profile.report` and binds the report
+  path/digest in `policy_training.report` and the Runtime execution packet.
+  The first profile pass identified update instability:
+  `sample_count_low=true`, `ppo_kl_target_exceeded=true`, and
+  `ppo_clip_fraction_high=true`.
+
+ppo_update_stability.v1
+  Runtime now accepts a durable `ppo_learning_rate` contract field and the
+  repo policy-training contract pins the PPO V0 update at `0.00002`. The fresh
+  CUDA-backed run
+  `policy_training_ppo_v0_caa36cdf586d3e35.attempt_caa36cdf586d3e35_1781850941430403_61014`
+  reports `ppo_approx_kl=0.0107564`, `ppo_kl_target_exceeded=false`,
+  `ppo_clip_fraction=0.08`, and `ppo_clip_fraction_high=false`. The remaining
+  profile warning is `sample_count_low=true`; the next performance tag is
+  `increase_certified_replay_exposure`. This remains diagnostic evidence only,
+  not a policy selector, market-readiness claim, deployment-readiness claim, or
+  live authority.
+
+certified_replay_exposure_greenpath.v1
+  Runtime now derives a `certified_replay_bank_manifest.v1` from the completed
+  source replay job used by PPO V0 execution, binds the bank manifest digest,
+  policy experience-set digest, chunk count, sample count, and coverage range in
+  the rollout report, policy report, performance profile, execution packet, and
+  `runtime.policy_training.fact`, and Lattice parses those fields as structured
+  policy-training exposure evidence. The fresh CUDA-backed run
+  `policy_training_ppo_v0_efb4ccf407674ffb.attempt_efb4ccf407674ffb_1781839605640527_47522`
+  writes certified replay bank digest
+  `07bef592e2978e4c5d9b1c2af59e6f0d5740bacc53bc7e0999f8eafcba250ff9`, with 4
+  chunks, 250 certified samples, and coverage `[1800,2050)`. It reports
+  `ppo_approx_kl=0.0216163`, `ppo_clip_fraction=0.196`,
+  `ppo_clip_fraction_high=false`, and still flags `sample_count_low=true`; the
+  next performance tag remains `increase_certified_replay_exposure`. This is an
+  exposure-accounting greenpath, not a relaxation of no-lookahead and not a
+  policy-quality or readiness claim.
+
+certified_replay_scaling_performance_profile.v1
+  Runtime now classifies whether low PPO sample count is caused by a rollout
+  cap, missing replay-bank binding, certified replay source capacity, or PPO
+  update instability. The fresh CUDA-backed run
+  `policy_training_ppo_v0_efb4ccf407674ffb.attempt_efb4ccf407674ffb_1781842241525735_75051`
+  consumed all 250 certified replay samples from 4 chunks over `[1800,2050)`,
+  reports `certified_replay_sample_count_low=true`,
+  `certified_replay_source_capacity_limited=true`,
+  `policy_training_uses_all_certified_replay=true`, and a 774-sample deficit
+  to the 1024-sample diagnostic threshold. It also reports
+  `ppo_approx_kl=0.0424796`, `ppo_kl_target_exceeded=true`, and
+  `ppo_clip_fraction_high=false`, which correctly tagged
+  `ppo_update_stability`. The follow-up stable run
+  `policy_training_ppo_v0_caa36cdf586d3e35.attempt_caa36cdf586d3e35_1781850941430403_61014`
+  lowers PPO learning rate to `0.00002`, reports
+  `ppo_approx_kl=0.0107564`, `ppo_kl_target_exceeded=false`,
+  `ppo_clip_fraction=0.08`, and moves the bottleneck to
+  `certified_replay_source_capacity` with recommendation
+  `generate_broader_certified_replay_source`.
+
+policy_training_anchor_v1_readiness_greenpath.v1
+  Completed closeout target before performance exploration. The green path is a
+  fresh post-dev_nuke Runtime PPO execution that satisfies
+  `policy_training_artifact_ready` with a passing no-lookahead certificate,
+  complete/admissible provenance, matching causal closure, generation-backed
+  checkpoint facts, replay lineage, snapshot-bundle state, and zero target
+  deficits. This is still not policy acceptance, paper-online readiness,
+  deployment readiness, complete training, or live authority.
+
+policy_training_anchor_v1_performance_baseline.v1
+  Completed diagnostic baseline after the green anchor-v1 policy-training path
+  and refreshed after `increase_certified_replay_exposure.v2`. The selected
+  policy-training fact is now `517fb94fec140323`, the Lattice certificate
+  digest is `8f85723bd45b674f`, and the baseline report lives at
+  `policy_training_anchor_v1_performance_baseline.md`. The current PPO run
+  `policy_training_ppo_v0_fd91f7620c46632a.attempt_fd91f7620c46632a_1781988984173151_44435`
+  consumed 17 certified replay chunks and 1047 certified replay samples over
+  `[1200,2247)`, writes policy generation
+  `policy_generation_50be38004d0880cc`, and is valid from anchor `2247`.
+  The update is not obviously unstable (`ppo_approx_kl=0.0141982`,
+  `ppo_clip_fraction=0.0706781`), and the profile now reports
+  `sample_count_low=false`, `certified_replay_source_capacity_limited=false`,
+  and zero sample deficit to the 1024-sample diagnostic threshold. The next
+  performance tag moved to `policy_quality_comparison`. This remains
+  diagnostic evidence only, not policy acceptance or deployment readiness.
+
+increase_certified_replay_exposure.v1
+  First bounded increment completed. Durable config now selects the wider
+  existing certified replay source
+  `cwu_02v_channel_validation_eval_mdn_1600_2247.run.channel_inference_mdn.attempt_000011`.
+  Runtime binds the replay job-dir digest, certified replay bank manifest
+  digest, and policy experience-set digest into the policy-execution consumed
+  artifact closure; Lattice accepts that bank-backed replay input as the replay
+  identity for `policy_training_artifact_ready`. The result is a fresh green
+  proof over 647 samples instead of the earlier 617-sample baseline. The
+  remaining bottleneck is still certified replay source capacity, so the next
+  bounded increment should generate broader no-lookahead-clean replay evidence
+  rather than tune PPO first.
+
+increase_certified_replay_exposure.v2
+  Completed bounded exposure milestone. Durable config trains the upstream
+  representation and MDN on `[0,1170)`, leaves the `[1170,1200)` context/purge
+  gap, and generates forecast/replay over `[1200,2247)` from generation-backed
+  upstream checkpoints. Runtime then executes the policy contract against the
+  broader certified replay source, producing 17 replay chunks and 1047 policy
+  samples. A narrow combined Lattice evidence root satisfies
+  `policy_training_artifact_ready` with `proof_certificate_check_passed=true`,
+  `deficits=[]`, no-lookahead provenance complete/admissible, embargo complete,
+  causal provenance complete/admissible, and
+  `snapshot_bundle_publishability.v1` complete/admissible. This closes the
+  certified-replay source-capacity bottleneck for the 1024-sample diagnostic
+  threshold; the next performance work should compare policy quality and PPO
+  behavior rather than expand replay exposure first. This remains
+  exposure/performance evidence only, not a policy-quality gate or
+  paper-online/deployment readiness claim.
+
+training_order_lattice_correctness.v1
+  Anchor-v1 now proves non-anticipative artifact provenance over the concrete
+  checkpoint -> forecast_eval -> replay_environment -> policy execution path,
+  including Runtime evidence, Lattice recomputation, checkpoint generation
+  manifests, and Marshal certificate-state gating.
+
+canonical_jkimyei_no_lookahead_contract_refs.v1
+  Complete for anchor-v1. Representation, MDN, and policy `.jkimyei` metadata
+  reference one canonical no-lookahead/order contract by id and digest; Runtime
+  policy facts carry the policy `.jkimyei` contract refs; Lattice rejects
+  readiness-grade policy facts when those refs are missing, drifted, or
+  inconsistent with the contract digest carried by Runtime evidence.
+
+snapshot_bundle_publishability.v1
+  Gate implemented for the anchor-v1 policy-training readiness path. Marshal
+  consumes the structured
+  `snapshot_bundle_publishability.v1` state alongside
+  `no_lookahead_artifact_provenance.v1`; certificate refs or unresolved
+  `latest_satisfying` selectors are not sufficient.
+
+label_reward_availability_frontier.v1
+  Gate implemented for anchor-v1 policy-training readiness. Lattice treats
+  accepted-anchor influence and label/reward availability as separate frontiers:
+  both must be present, recomputable or inherited from parent evidence, and no
+  later than the policy target begin. Runtime emits parent-policy and output
+  policy availability state; Marshal refuses readiness-grade handoff when the
+  Lattice certificate state is missing, unchecked, incomplete, unbound, or not
+  admissible. This is a scalar anchor-v1 frontier, not full label/reward horizon
+  algebra.
+
+embargo_purged_window_correctness.v1
+  Gate implemented for anchor-v1 policy-training readiness. Policy facts carry
+  an `embargo_policy_fingerprint` plus a half-open
+  `embargo_purged_window_anchor_range`; Lattice includes both in the
+  no-lookahead closure digest and fails readiness-grade proof when the window is
+  missing, not claim-bound, or parent influence/availability overlaps the
+  window begin. Runtime emits the fields in policy-training sidecars and Marshal
+  gates on the structured Lattice state. This is still scalar anchor-v1
+  protection, not full interval-set, fold/out-of-fold, horizon-group, or
+  purged-CV correctness.
+
+causal_provenance_generalization.v1
+  Gate implemented for the policy-training readiness path as an aggregate over
+  the anchor-v1 subproofs above. Runtime policy-training facts carry a
+  `causal_provenance_schema`, causal atom/interval schema ids, scalar
+  label/reward and embargo policy fingerprints, inline artifact-production
+  closure digest, trained-against interface-stability contract digest, and a
+  causal provenance closure digest. Lattice requires those fields to agree with
+  the recomputed no-lookahead closure and snapshot-bundle state. Marshal treats
+  the parsed causal state as readiness-grade gate material; a passing
+  no-lookahead certificate without this aggregate state is not enough.
+```
 
 Hero public surfaces are intentionally small:
 
@@ -163,20 +433,28 @@ fresh_ppo_v0_end_to_end_evidence_run.v1
   policy_training_artifact_ready without promotional claims.
 
 ppo_policy_training_activation.v1
-  The current learned-policy path uses
-  `src/config/policy_training_ppo_v0.contract` and the
-  `policy_training_ppo_v0` Runtime wave. Runtime completed a non-noop
-  `policy_kind=ppo_policy_adapter.v1` run from fresh representation, MDN,
-  replay, observer, and causal-schedule evidence; wrote actor/critic
-  checkpoints, optimizer state and Torch optimizer archive, rollout/update/
-  validation/policy-quality reports, and `runtime.policy_training.fact`; and
-  Lattice satisfied `policy_training_artifact_ready` for PPO fact
-  `1095cf66c1a0c48b` with certificate `cert_070bdb168a73`. Live-capital
-  authority remains disabled.
+  The learned-policy path uses the `policy_training_ppo_v0` Runtime wave.
+  Runtime derives sparse dry-run activation from the selected wave, configured
+  policy `.jkimyei`, split policy, and completed compatible replay artifacts
+  instead of keeping a checked-in activation contract. Historical pre-anchor-v1 PPO
+  evidence proved that Runtime could run non-noop
+  `policy_kind=ppo_policy_adapter.v1` training and write actor/critic
+  checkpoints, optimizer state, rollout/update/validation/policy-quality
+  reports, and `runtime.policy_training.fact`. That historical satisfied-target
+  result is no longer a current readiness claim. Under the stricter anchor-v1
+  gates, the latest closeout run
+  `policy_training_ppo_v0_4853702313be2dbf.attempt_4853702313be2dbf_1781707121886925_59037`
+  is inspectable performance evidence only: Lattice blocks
+  `policy_training_artifact_ready` because upstream forecast/replay provenance,
+  generation-vector closure, snapshot bundle publishability, and causal closure
+  agreement are incomplete. Live-capital authority remains disabled.
 
 policy_network_architecture_review.v1
-  The policy remains downstream of representation/MDN/observer and consumes
-  AllocationBelief-derived policy_input_t, not raw MDN tensors.
+  BLOCKED FOR REVIEW: this milestone recorded the downstream-policy path:
+  policy remains downstream of representation/MDN/observer and consumes
+  AllocationBelief-derived policy_input_t. That may be correct for serving-time
+  dependency, but it is not a Lattice-enforced training-order proof. Revisit it
+  under `training_order_lattice_correctness.v1`.
 
 graph_node_allocation_network_v0_contract.v1
   The V0 network contract is named and feature-manifest-bound:

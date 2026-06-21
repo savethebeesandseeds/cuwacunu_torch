@@ -19,6 +19,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
+
 namespace cuwacunu::hero::mcp_cli {
 
 struct process_result_t {
@@ -59,12 +61,59 @@ struct tool_call_result_t {
          result_json.find("\"isError\": true") != std::string_view::npos;
 }
 
+[[nodiscard]] inline std::string
+extract_json_object_from_output(std::string_view text) {
+  for (std::size_t begin = 0; begin < text.size(); ++begin) {
+    if (text[begin] != '{') {
+      continue;
+    }
+    std::size_t depth = 0;
+    bool in_string = false;
+    bool escaped = false;
+    for (std::size_t pos = begin; pos < text.size(); ++pos) {
+      const char c = text[pos];
+      if (in_string) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (c == '\\') {
+          escaped = true;
+          continue;
+        }
+        if (c == '"') {
+          in_string = false;
+        }
+        continue;
+      }
+      if (c == '"') {
+        in_string = true;
+        continue;
+      }
+      if (c == '{') {
+        ++depth;
+        continue;
+      }
+      if (c == '}') {
+        if (depth == 0) {
+          break;
+        }
+        --depth;
+        if (depth == 0) {
+          return std::string(text.substr(begin, pos - begin + 1U));
+        }
+      }
+    }
+  }
+  return trim_ascii(text);
+}
+
 [[nodiscard]] inline std::filesystem::path default_runtime_mcp_path() {
-  return "/cuwacunu/.build/hero/hero_runtime.mcp";
+  return cuwacunu::hero::config_paths::default_hero_runtime_mcp_path();
 }
 
 [[nodiscard]] inline std::filesystem::path default_environment_mcp_path() {
-  return "/cuwacunu/.build/hero/hero_environment.mcp";
+  return cuwacunu::hero::config_paths::default_hero_environment_mcp_path();
 }
 
 namespace detail {
@@ -281,7 +330,7 @@ call_tool(const std::filesystem::path &mcp_path,
   argv.push_back("--args-json");
   argv.push_back(arguments_json.empty() ? "{}" : arguments_json);
   out.process = run_process(argv, timeout_seconds, capture_cap);
-  out.result_json = trim_ascii(out.process.stdout_text);
+  out.result_json = extract_json_object_from_output(out.process.stdout_text);
   out.process_ok = out.process.exit_code == 0 && !out.process.timed_out &&
                    !out.process.signaled && !out.result_json.empty();
   out.error_message = trim_ascii(out.process.stderr_text);
@@ -335,7 +384,7 @@ call_runtime_tool(const std::filesystem::path &global_config_path,
   argv.push_back("--args-json");
   argv.push_back(arguments_json.empty() ? "{}" : arguments_json);
   out.process = run_process(argv, timeout_seconds, capture_cap);
-  out.result_json = trim_ascii(out.process.stdout_text);
+  out.result_json = extract_json_object_from_output(out.process.stdout_text);
   out.process_ok = out.process.exit_code == 0 && !out.process.timed_out &&
                    !out.process.signaled && !out.result_json.empty();
   out.error_message = trim_ascii(out.process.stderr_text);

@@ -28,8 +28,14 @@ Source rows carry `source_kind` provenance (`real`, `synthetic`, or `derived`);
 graph/NodeLift validation uses this to prove real reverse-edge pairs. Ujcamei
 retrieval-channel rows declare active temporal sampling and window lengths.
 Current runtime execution supports only active `kline` retrieval channels;
-non-kline source rows can remain authored in the source registry, but active
-non-kline retrieval channels are rejected at decode time. Kikijyeba graph
+repeated kline source families can use `KLINE_SOURCE_SET`, which expands to
+ordinary source rows during registry decode; shared kline roots can be declared
+once with `SOURCE_DEFAULTS.SOURCE_ROOT`, and shared kline interval lists can be
+declared once with `SOURCE_DEFAULTS.KLINE_INTERVALS`. Repeated retrieval
+channels can use `CHANNEL_SET`, which expands to ordinary channel rows during
+retrieval-channel decode. Non-kline source rows can remain authored in the
+source registry table, but active non-kline retrieval channels are rejected at
+decode time. Kikijyeba graph
 topology rows declare active nodes and directed instrument edges. Kikijyeba
 protocol resolves topology against the Ujcamei source and channel universe
 before constructing dataloaders.

@@ -9,7 +9,20 @@ HERO_CONFIG_OBJS := \
   $(OUTPUT_PATH)/common/hero_config_tools.o
 
 HERO_RUNTIME_OBJS := \
-  $(OUTPUT_PATH)/common/hero_runtime_tools.o
+  $(OUTPUT_PATH)/common/hero_runtime_tools.o \
+  $(OUTPUT_PATH)/common/source_contract.o \
+  $(OUTPUT_PATH)/common/source_contract_decode.o \
+  $(OUTPUT_PATH)/common/source_registry_decoder.o \
+  $(OUTPUT_PATH)/common/retrieval_channel_decoder.o \
+  $(OUTPUT_PATH)/common/graph_topology_decoder.o \
+  $(OUTPUT_PATH)/common/core/utils.o \
+  $(OUTPUT_PATH)/common/io/files.o \
+  $(OUTPUT_PATH)/common/parser_types.o \
+  $(OUTPUT_PATH)/common/ast.o \
+  $(OUTPUT_PATH)/common/grammar_lexer.o \
+  $(OUTPUT_PATH)/common/grammar_parser.o \
+  $(OUTPUT_PATH)/common/instruction_lexer.o \
+  $(OUTPUT_PATH)/common/instruction_parser.o
 
 HERO_ENVIRONMENT_TOOL_OBJ := \
   $(OUTPUT_PATH)/common/hero_environment_tools.o
@@ -49,6 +62,31 @@ $(OUTPUT_PATH)/common/hero_runtime_tools.o: \
 	$(SRC_ROOT)/Makefile.config
 	$(CC_RULE)
 $(OUTPUT_PATH)/common/hero_runtime_tools.o: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+
+$(OUTPUT_PATH)/common/source_contract.o: \
+	$(IMPL_PATH)/ujcamei/source/contract/contract.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/source_contract_decode.o: \
+	$(IMPL_PATH)/ujcamei/source/contract/runtime/decode.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/source_registry_decoder.o: \
+	$(IMPL_PATH)/ujcamei/source/registry/source_registry_decoder.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/retrieval_channel_decoder.o: \
+	$(IMPL_PATH)/ujcamei/source/retrieval/retrieval_channel_decoder.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/graph_topology_decoder.o: \
+	$(IMPL_PATH)/kikijyeba/topology/graph/graph_topology_decoder.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
 
 $(OUTPUT_PATH)/common/hero_environment_tools.o: \
 	$(IMPL_PATH)/hero/environment_hero/hero_environment_tools.cpp \

@@ -47,13 +47,14 @@ PREPARE_ARGUMENTS
   are target_id, mode, optional profile, and optional include_machine_payload.
   Target-pursuit driver controls such as drive_mode, max_waves, wall-clock
   budget, Runtime execution gates, warning stop rules, plan-input
-  materialization, timeout, and Lattice/Runtime validation context belong in a
-  MARSHAL_PREPARE_PROFILE block in hero.marshal.dsl. Marshal derives current
-  Lattice advice, Runtime policy, active Runtime wave, source timestamps,
-  recommendation attempt counts, identity fingerprints, and concrete handoff
-  inputs at call time. Prepare does not accept args_path, args_digest,
-  driver_policy, context, resume_ledger, runtime_policy, or runtime_wave as
-  public arguments.
+  materialization, timeout, required_lattice_certificate_schemas,
+  required_lattice_certificate_contract_digests, and Lattice/Runtime validation
+  context belong in a MARSHAL_PREPARE_PROFILE block in hero.marshal.dsl.
+  Marshal derives current Lattice advice, Runtime policy, active Runtime wave,
+  source timestamps, recommendation attempt counts, identity fingerprints, and
+  concrete handoff inputs at call time. Prepare does not accept args_path,
+  args_digest, driver_policy, context, resume_ledger, runtime_policy, or
+  runtime_wave as public arguments.
 
 INSPECT_ARGUMENTS
   hero.marshal.inspect.* tools expose direct selectors on the concrete tool.
@@ -75,9 +76,10 @@ INSPECT_ARGUMENTS
 ROLLOUT_ARGUMENTS
   hero.marshal.rollout public arguments are mode, runtime_job_dir, rollout_id,
   rollout_attempt_id, target_node_ids, profile, and include_machine_payload.
-  The rollout profile supplies policy_set, finite limits, runtime_exec_path,
-  timeout_seconds, and the Cajtucu execution profile. Marshal reads replay
-  index and graph fingerprint from the completed Runtime job, derives
+  The selected Environment rollout profile supplies the canonical policy_set,
+  finite limits, runtime_exec_path, timeout_seconds, and Cajtucu execution
+  profile; MARSHAL_ROLLOUT_PROFILE fields are explicit overrides. Marshal reads
+  replay index and graph fingerprint from the completed Runtime job, derives
   idempotency_key, experiment_id, and asset_universe_digest, and materializes
   the digest-bound Environment rollout packet internally for mode=execute.
 

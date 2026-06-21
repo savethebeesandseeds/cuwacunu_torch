@@ -18,6 +18,7 @@
 #include <string_view>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/marshal_hero/marshal/digest.h"
 #include "hero/marshal_hero/marshal/runtime_hero_handoff.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
@@ -87,8 +88,10 @@ struct marshal_lattice_target_status_t {
 };
 
 struct marshal_operational_report_options_t {
-  std::filesystem::path runtime_root{"/cuwacunu/.runtime/cuwacunu_exec"};
-  std::filesystem::path config_path{"/cuwacunu/src/config/.config"};
+  std::filesystem::path runtime_root{
+      cuwacunu::hero::config_paths::default_runtime_root_path()};
+  std::filesystem::path config_path{
+      cuwacunu::hero::config_paths::default_global_config_path()};
   std::vector<std::string> job_ids{};
   std::vector<std::string> target_ids{};
   std::vector<marshal_lattice_target_status_t> target_statuses{};
@@ -1320,8 +1323,7 @@ inline void append_artifact_boundary_context_json(
     } else {
       out << ",\"artifact_fact_preview_digests_require_machine_payload\":true";
     }
-    out
-        << ",\"artifact_fact_preview_tools\":"
+    out << ",\"artifact_fact_preview_tools\":"
         << json_string_array(statuses[i].artifact_fact_preview_tools)
         << ",\"artifact_fact_preview_marshal_tools\":"
         << json_string_array(statuses[i].artifact_fact_preview_marshal_tools)
@@ -1480,8 +1482,7 @@ target_next_safe_action(const marshal_lattice_target_status_t &status) {
     } else {
       out << ",\"artifact_fact_preview_digests_require_machine_payload\":true";
     }
-    out
-        << ",\"artifact_fact_preview_tools\":"
+    out << ",\"artifact_fact_preview_tools\":"
         << json_string_array(statuses[i].artifact_fact_preview_tools)
         << ",\"artifact_fact_preview_marshal_tools\":"
         << json_string_array(statuses[i].artifact_fact_preview_marshal_tools)

@@ -63,12 +63,14 @@ Use the direct CLI when checking behavior from a shell:
 ```bash
 /cuwacunu/.build/hero/hero_marshal.mcp --help
 /cuwacunu/.build/hero/hero_marshal.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --list-tools
 /cuwacunu/.build/hero/hero_marshal.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --list-tools-json
 ```
+
+When `--global-config` is omitted, Marshal discovers `src/config/.config` from
+the executable location or current working directory. Use `--global-config
+<path>` only to point at a non-default config bundle.
 
 Use `--help` for the human runbook. Use `--list-tools-json` when an MCP client
 needs exact tool schemas.
@@ -81,7 +83,6 @@ whether Marshal is still denying execution/proof/deployment authority.
 
 ```bash
 /cuwacunu/.build/hero/hero_marshal.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --tool hero.marshal.status \
   --args-json '{}'
 ```
@@ -101,15 +102,15 @@ not become the trainer, optimizer, or Lattice proof authority.
 ```bash
 ARGS='{"target_id":"channel_mdn_train_core_ready","mode":"plan","profile":"single_wave_operator"}'
 /cuwacunu/.build/hero/hero_marshal.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --tool hero.marshal.prepare.train \
   --args-json "$ARGS"
 ```
 
 `hero.marshal.rollout` is for environment replay. It starts from an already
 completed Runtime job directory, binds a policy set and Cajtucu paper execution
-profile, then prepares or delegates a bounded historical replay through Runtime
-Hero.
+profile from the active Environment rollout profile unless explicitly
+overridden by the Marshal rollout profile, then prepares or delegates a bounded
+historical replay through Runtime Hero.
 
 ```bash
 ARGS='{
@@ -120,7 +121,6 @@ ARGS='{
   "target_node_ids":["USDT","BTC","ETH"]
 }'
 /cuwacunu/.build/hero/hero_marshal.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --tool hero.marshal.rollout \
   --args-json "$ARGS"
 ```
@@ -139,7 +139,6 @@ ARGS='{
   "include_machine_payload":true
 }'
 /cuwacunu/.build/hero/hero_marshal.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --tool hero.marshal.paper_online.session_handoff \
   --args-json "$ARGS"
 ```
@@ -151,7 +150,6 @@ reports, or fact sidecars.
 ```bash
 ARGS='{"runtime_root":"/tmp/cuwacunu_runtime"}'
 /cuwacunu/.build/hero/hero_marshal.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --tool hero.marshal.inspect.run.latest_chain \
   --args-json "$ARGS"
 ```
@@ -484,9 +482,10 @@ Marshal derives `idempotency_key` from `rollout_attempt_id`, derives
 `accounting_numeraire_node_id` from the active global config, and computes
 `asset_universe_digest` from the numeraire plus `target_node_ids`.
 
-The rollout profile supplies the non-empty policy list, positive finite step
-cap, positive finite worker cap, runtime executable, timeout, and Cajtucu paper
-execution profile. In `mode=execute`, Marshal delegates to the direct
+The active Environment rollout profile supplies the non-empty policy list,
+positive finite step cap, positive finite worker cap, runtime executable,
+timeout, and Cajtucu paper execution profile. Marshal rollout profile fields are
+overrides. In `mode=execute`, Marshal delegates to the direct
 Environment rollout surface and reports the canonical Environment request
 digest for audit.
 
@@ -649,6 +648,42 @@ unproven_lattice_advice
 stale_lattice_advice
 dry_run_receipt_missing
 dry_run_receipt_mismatch
+missing_lattice_certificate_ref
+no_lookahead_certificate_state_missing
+no_lookahead_certificate_schema_mismatch
+no_lookahead_certificate_not_checked
+no_lookahead_certificate_incomplete
+no_lookahead_certificate_not_admissible
+no_lookahead_certificate_check_failed
+no_lookahead_certificate_target_mismatch
+no_lookahead_certificate_anchor_range_mismatch
+no_lookahead_certificate_contract_digest_mismatch
+no_lookahead_certificate_artifact_digest_mismatch
+no_lookahead_certificate_generation_closure_mismatch
+no_lookahead_certificate_state_stale_or_unbound
+label_reward_availability_frontier_not_checked
+label_reward_availability_frontier_incomplete
+label_reward_availability_frontier_not_admissible
+label_reward_availability_frontier_missing
+embargo_purged_window_not_checked
+embargo_purged_window_incomplete
+embargo_purged_window_not_admissible
+embargo_purged_window_missing
+snapshot_bundle_certificate_state_missing
+snapshot_bundle_certificate_schema_mismatch
+snapshot_bundle_certificate_not_checked
+snapshot_bundle_certificate_incomplete
+snapshot_bundle_certificate_not_admissible
+snapshot_bundle_id_missing
+snapshot_bundle_generation_vector_missing
+snapshot_bundle_compatibility_closure_missing
+causal_provenance_certificate_state_missing
+causal_provenance_certificate_schema_mismatch
+causal_provenance_certificate_not_checked
+causal_provenance_certificate_incomplete
+causal_provenance_certificate_not_admissible
+causal_artifact_production_closure_missing
+causal_interface_stability_contract_missing
 ```
 
 `PLAN_INPUT_*` values must be resolved runtime model-state paths by the time
@@ -681,6 +716,33 @@ replace the signing primitive without changing the advice gate.
 Marshal computes 256-bit SHA-256 digests for advice, requests, confirmation
 tokens, handoff arguments, and receipt ids. These digests are local integrity
 and replay aids; they do not make Marshal a proof authority.
+
+When a readiness-grade profile requires
+`no_lookahead_artifact_provenance.v1`, Marshal validates a structured Lattice
+certificate state carried by the Lattice-derived advice. A request-side
+certificate ref is audit metadata only and cannot satisfy this gate. The state
+must be checked, complete, admissible, proof-certificate-passed, bound to the
+same target id and target anchor range as the advice, carry the required
+no-lookahead contract digest when configured, include consumed artifact and
+generation-vector closures, and be bound to a Lattice certificate/evidence
+snapshot digest. The same state also carries the anchor-v1 label/reward
+availability frontier; Marshal refuses readiness-grade handoff if the frontier
+is unchecked, incomplete, missing, or not admissible. It also carries the
+anchor-v1 embargo/purged-window fingerprint and half-open anchor window; Marshal
+refuses readiness-grade handoff if Lattice did not check it, the window metadata
+is missing, or the state is not admissible. For readiness-grade policy handoff
+the same parsed state must also expose
+`snapshot_bundle_publishability.v1`: checked, complete,
+admissible, and bound to a bundle id, bundle generation-vector digest, component
+generation-vector closure, and compatibility-closure digest. Marshal still does
+not recompute either proof; Lattice proves and Marshal refuses readiness-grade
+handoff when the state is missing, failed, or unbound.
+The parsed state must also expose the
+`causal_provenance_generalization.v1` aggregate over the anchor-v1 subproofs,
+including inline artifact-production closure and trained-against
+interface-stability contract fields. Marshal treats missing, unchecked,
+incomplete, inadmissible, or unbound aggregate state as a readiness-grade
+refusal; smoke/report inspection remains separate.
 
 ## Non-Authority Rule
 
@@ -758,8 +820,9 @@ surface when it is promoted to the operator path.
 job evidence through the Kikijyeba environment and Cajtucu paper execution
 backend. It starts from a completed Runtime job directory, rollout identity,
 ordered target graph nodes, and a Marshal rollout profile that supplies the
-policy set, finite replay limits, runtime executable, timeout, and execution
-profile. In `mode=plan` it returns a rollout plan. In `mode=execute` it
+profile name and optional overrides; canonical policy set, finite replay
+limits, runtime executable, timeout, and execution profile come from
+Environment. In `mode=plan` it returns a rollout plan. In `mode=execute` it
 delegates through Environment and Runtime replay execution, and records the
 handoff state and digests. Its current execute path calls
 `hero.environment.rollout mode=replay`, which then calls Runtime.
@@ -1039,6 +1102,17 @@ The requested mode controls whether Runtime dry-run is requested.
 Marshal reports desired wave differences but does not edit wave config, select
 checkpoints, or claim target satisfaction.
 
+Profiles may require `required_lattice_certificate_schemas`. For
+`no_lookahead_artifact_provenance.v1`, prepare validation consumes the
+claim-bound certificate state parsed from the live Lattice result. For
+readiness-grade policy handoff this state also carries
+`snapshot_bundle_publishability.v1`, so a request cannot promote loose latest
+component checkpoints or a certificate ref alone. The operator packet exposes
+this under `lattice_panel.lattice_certificate_states`. If the target is still an
+artifact-readiness surface, Marshal remains read-only and non-dispatchable; the
+no-lookahead and bundle states can pass while the dispatch path is still blocked
+by `non_dispatchable_artifact_readiness`.
+
 Every target-driver run emits a ledger with the driver policy digest,
 per-iteration Lattice target-deficit digest, suggested-wave digest, Runtime
 handoff/request digests, terminal Runtime evidence digests, terminal state, and
@@ -1138,8 +1212,10 @@ The public execution handoff takes an accepted `marshal_execution_gate_result_t`
 It cannot be called from a plain dry-run decision. Immediately before calling
 `hero.runtime.run mode=execute`, Marshal asks Runtime
 Hero to decode the active wave and compares target, mode, source range, and
-anchor bounds against the derived request, including concrete `PLAN_INPUT_*`
-model-state inputs. The Runtime Hero run-wave schema accepts a canonical
+anchor bounds against the derived request. Concrete `PLAN_INPUT_*`
+model-state inputs come from the resolved Runtime handoff; static active-wave
+inputs are optional and, when present, must match the handoff. The Runtime Hero
+run-wave schema accepts a canonical
 `runtime_handoff_path` artifact binding. The object carries
 handoff schema/id/digest, creator/timestamp, target id, base config path/digest,
 concrete wave fields, concrete checkpoint inputs, Runtime policy path/digest,

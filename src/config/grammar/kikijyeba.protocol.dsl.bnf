@@ -1,6 +1,10 @@
-<instruction> ::= "PROTOCOL" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
-<assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" [<line_end>] ;
-<key>         ::= "PROTOCOL_ID" | "PROTOCOL_KIND" | "GRAPH_TOPOLOGY" | "NODELIFT" | "REPRESENTATION" | "INFERENCE" | "OBSERVER" | "ALLOCATION_POLICY" | "POLICY_COMPONENT" | "REPRESENTATION_CONTRACT" | "PROTOCOL_STATUS" | "SUCCESSOR_PROTOCOL" | "PROTOCOL_WARNING" ;
+<instruction> ::= <protocol_block> [<whitespace>] [<no_lookahead_contract_block>] ;
+<protocol_block> ::= "PROTOCOL" [<whitespace>] "{" <line_end> {<protocol_assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<no_lookahead_contract_block> ::= "NO_LOOKAHEAD_CONTRACT" [<whitespace>] "{" <line_end> {<no_lookahead_contract_assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<protocol_assignment> ::= [<whitespace>] <protocol_key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" [<line_end>] ;
+<no_lookahead_contract_assignment> ::= [<whitespace>] <no_lookahead_contract_key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" [<line_end>] ;
+<protocol_key> ::= "PROTOCOL_ID" | "PROTOCOL_KIND" | "GRAPH_TOPOLOGY" | "NODELIFT" | "REPRESENTATION" | "INFERENCE" | "OBSERVER" | "ALLOCATION_POLICY" | "POLICY_COMPONENT" | "REPRESENTATION_CONTRACT" | "PROTOCOL_STATUS" | "SUCCESSOR_PROTOCOL" | "PROTOCOL_WARNING" ;
+<no_lookahead_contract_key> ::= "CONTRACT_ID" | "CONTRACT_DIGEST" | "CERTIFICATE_SCHEMA" | "INFLUENCE_SCHEMA" | "FRONTIER_UNIT" | "SERVING_ORDER" | "VISIBILITY_POLICY" | "DERIVED_ARTIFACT_RULE" | "CHECKPOINT_RULE" | "PUBLISH_RULE" | "BOOTSTRAP_POLICY" | "RESEARCH_POLICY" ;
 <value>       ::= { ? any character except ';' ? } ;
 <whitespace>  ::= " " | "\t" | "\r" | "\n" ;
 <line_end>    ::= "\n" | "\r\n" ;

@@ -6,6 +6,7 @@
 #include "hero/runtime_hero/runtime/policy_training_causal_schedule.h"
 #include "hero/runtime_hero/runtime/policy_training_job_contract.h"
 #include "hero/runtime_hero/runtime/wave_settings.h"
+#include "tests/bench/kikijyeba/test_support/canonical_protocol_fixture.h"
 #include "wikimyei/assembly.h"
 
 #include <algorithm>
@@ -13,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <sstream>
 #include <stdexcept>
@@ -27,6 +29,7 @@ namespace hero_runtime = cuwacunu::hero::runtime;
 namespace hero_environment = cuwacunu::hero::environment;
 namespace lattice_exposure = cuwacunu::hero::lattice::exposure;
 namespace lattice_target = cuwacunu::hero::lattice::target;
+namespace protocol_fixture = cuwacunu::tests::kikijyeba::protocol_fixture;
 namespace wave_settings = cuwacunu::hero::runtime::settings;
 
 namespace {
@@ -56,6 +59,27 @@ void replace_all(std::string &text, const std::string &from,
     text.replace(pos, from.size(), to);
     pos += to.size();
   }
+}
+
+void erase_assignment_line(std::string &text, const std::string &key) {
+  const std::string prefix = key + "=";
+  std::size_t pos = 0;
+  while (pos < text.size()) {
+    const std::size_t line_end = text.find('\n', pos);
+    const std::size_t next =
+        line_end == std::string::npos ? text.size() : line_end + 1;
+    if (text.compare(pos, prefix.size(), prefix) == 0) {
+      text.erase(pos, next - pos);
+      continue;
+    }
+    pos = next;
+  }
+}
+
+void set_assignment_line(std::string &text, const std::string &key,
+                         const std::string &value) {
+  erase_assignment_line(text, key);
+  text += key + "=" + value + "\n";
 }
 
 std::filesystem::path make_tmp_dir(const std::string &label) {
@@ -462,20 +486,21 @@ std::string materialize_policy_training_contract_text(
     }
   }
 
-  bool config_path_bound = false;
+  std::string config_path_value;
   for (const auto &field : fields) {
-    if (field.key == "config_path" &&
-        !request_assignment_value(field.raw).empty()) {
-      config_path_bound = true;
+    if (field.key == "config_path") {
+      config_path_value = request_assignment_value(field.raw);
       break;
     }
   }
-  if (config_path_bound) {
+  if (!config_path_value.empty()) {
+    set_default_contract_field(&contract_fields, "config_path",
+                               config_path_value);
     set_default_contract_field(
         &contract_fields, "policy_id",
-        "wikimyei.policy.portfolio.graph_node_allocation.noop_pre_ppo");
+        "wikimyei.policy.portfolio.graph_node_allocation.ppo_v0");
     set_default_contract_field(&contract_fields, "policy_kind",
-                               "noop_policy_training.v1");
+                               "ppo_policy_adapter.v1");
     set_default_contract_field(&contract_fields, "training_schedule_mode",
                                "causal_walk_forward_training.v1");
     set_default_contract_field(&contract_fields, "live_execution_allowed",
@@ -497,6 +522,28 @@ std::string materialize_policy_training_contract_text(
   set_default_contract_field(
       &contract_fields, "causal_schedule_no_future_snapshot_use_source",
       hero_runtime::k_policy_training_schedule_no_future_snapshot_source_v1);
+  set_default_contract_field(
+      &contract_fields, "causal_provenance_schema",
+      hero_runtime::k_causal_provenance_generalization_v1);
+  set_default_contract_field(&contract_fields, "causal_atom_schema",
+                             hero_runtime::k_causal_atom_anchor_interval_v1);
+  set_default_contract_field(
+      &contract_fields, "causal_interval_set_schema",
+      hero_runtime::k_causal_interval_set_anchor_half_open_v1);
+  set_default_contract_field(&contract_fields,
+                             "causal_label_reward_horizon_policy_fingerprint",
+                             "label_reward_horizon.anchor_scalar_v1");
+  set_default_contract_field(&contract_fields, "causal_fold_policy_fingerprint",
+                             "fold_policy.single_time_split_v1");
+  set_default_contract_field(&contract_fields,
+                             "causal_purged_embargo_policy_fingerprint",
+                             "embargo_policy_anchor_v1");
+  set_default_contract_field(
+      &contract_fields, "causal_artifact_production_schema",
+      hero_runtime::k_runtime_artifact_production_inline_policy_v1);
+  set_default_contract_field(
+      &contract_fields, "causal_interface_stability_contract_digest",
+      hero_runtime::k_interface_stability_trained_against_generation_vector_v1);
 
   const auto policy_kind_it = contract_fields.find("policy_kind");
   const bool ppo_contract =
@@ -729,6 +776,148 @@ std::string replay_report_digest_for_text(const std::string &text) {
   return cuwacunu::wikimyei::assembly::assembly_detail::hash_hex(hash);
 }
 
+std::string join_policy_execution_keys(std::vector<std::string> keys) {
+  std::sort(keys.begin(), keys.end());
+  std::ostringstream out;
+  for (std::size_t i = 0; i < keys.size(); ++i) {
+    if (i != 0) {
+      out << ", ";
+    }
+    out << keys[i];
+  }
+  return out.str();
+}
+
+std::string csv_policy_execution_keys(const std::vector<std::string> &keys) {
+  std::ostringstream out;
+  bool first = true;
+  for (const auto &key : keys) {
+    if (key.empty()) {
+      continue;
+    }
+    if (!first) {
+      out << ",";
+    }
+    first = false;
+    out << key;
+  }
+  return out.str();
+}
+
+std::string expected_policy_no_lookahead_closure_digest(
+    const std::string &contract_digest,
+    std::vector<std::string> artifact_digests,
+    std::vector<std::string> checkpoint_digests,
+    std::vector<std::string> generation_digests, std::int64_t influence_end,
+    bool influence_end_bound, std::int64_t availability_end,
+    bool availability_end_bound, const std::string &embargo_policy_fingerprint,
+    std::int64_t embargo_purged_window_anchor_begin,
+    std::int64_t embargo_purged_window_anchor_end_exclusive,
+    bool embargo_purged_window_anchor_range_bound) {
+  std::ostringstream closure;
+  closure << "policy_no_lookahead_provenance_closure.v1|" << contract_digest
+          << "|" << join_policy_execution_keys(std::move(artifact_digests))
+          << "|" << join_policy_execution_keys(std::move(checkpoint_digests))
+          << "|" << join_policy_execution_keys(std::move(generation_digests))
+          << "|" << influence_end << "|" << (influence_end_bound ? "1" : "0")
+          << "|" << availability_end << "|"
+          << (availability_end_bound ? "1" : "0") << "|"
+          << embargo_policy_fingerprint << "|"
+          << embargo_purged_window_anchor_begin << "|"
+          << embargo_purged_window_anchor_end_exclusive << "|"
+          << (embargo_purged_window_anchor_range_bound ? "1" : "0");
+  return lattice_exposure::exposure_digest_for_text(closure.str());
+}
+
+lattice_exposure::lattice_checkpoint_fact_t make_checkpoint_generation_fact(
+    const std::string &component, const std::string &checkpoint_digest,
+    const std::string &generation_id,
+    const std::string &generation_vector_digest, std::int64_t fit_begin,
+    std::int64_t fit_end, const std::string &graph_order_fingerprint,
+    const std::string &source_cursor_token,
+    const std::string &split_policy_fingerprint,
+    const std::string &no_lookahead_contract_digest,
+    const std::string &generation_lane = "readiness_grade",
+    std::vector<std::string> read_checkpoint_digests = {},
+    std::vector<std::string> read_generation_ids = {},
+    std::vector<std::string> parent_generation_ids = {},
+    std::vector<std::string> parent_generation_vector_digests = {}) {
+  lattice_exposure::lattice_checkpoint_fact_t fact{};
+  fact.checkpoint_path = std::filesystem::path("/runtime/checkpoints") /
+                         (generation_id + ".checkpoint");
+  fact.checkpoint_file_digest = checkpoint_digest;
+  fact.component = component;
+  fact.component_role =
+      lattice_exposure::component_role_from_component_id(component);
+  fact.created_by_job_id = "job_" + generation_id;
+  fact.created_by_wave_id = "wave_" + generation_id;
+  fact.direct_exposure_digest =
+      lattice_exposure::exposure_digest_for_text("producer|" + generation_id);
+  fact.checkpoint_id = lattice_exposure::exposure_digest_for_text(
+      "checkpoint|" + fact.checkpoint_path.string() + "|" +
+      fact.checkpoint_file_digest + "|" + fact.direct_exposure_digest);
+  fact.generation_id = generation_id;
+  fact.generation_vector_member_digest = generation_vector_digest;
+  fact.parent_generation_ids = std::move(parent_generation_ids);
+  fact.parent_generation_vector_digests =
+      std::move(parent_generation_vector_digests);
+  fact.read_checkpoint_digests = std::move(read_checkpoint_digests);
+  fact.read_generation_ids = std::move(read_generation_ids);
+  fact.fit_anchor_range = {.begin = fit_begin, .end = fit_end};
+  fact.fit_anchor_range_bound = true;
+  fact.valid_from_anchor = fit_end;
+  fact.valid_from_anchor_bound = true;
+  fact.no_lookahead_contract_digest = no_lookahead_contract_digest;
+  fact.generation_lane = generation_lane;
+  fact.graph_order_fingerprint = graph_order_fingerprint;
+  fact.source_cursor_token = source_cursor_token;
+  fact.influence_summary.complete = true;
+  fact.influence_summary.graph_order_fingerprint = graph_order_fingerprint;
+  fact.influence_summary.source_cursor_token = source_cursor_token;
+  fact.influence_summary.split_policy_fingerprint = split_policy_fingerprint;
+  fact.influence_summary.coverage_anchor_range = fact.fit_anchor_range;
+  fact.influence_summary.coverage_anchor_range_bound = true;
+  fact.influence_summary.influence_anchor_begin_min = fit_begin;
+  fact.influence_summary.influence_anchor_begin_min_bound = true;
+  fact.influence_summary.influence_anchor_end_exclusive_max = fit_end;
+  fact.influence_summary.influence_anchor_end_exclusive_max_bound = true;
+  fact.influence_summary.label_or_reward_availability_end_exclusive_max =
+      fit_end;
+  fact.influence_summary.label_or_reward_availability_end_exclusive_max_bound =
+      true;
+  fact.influence_summary.producer_generation_vector_digest =
+      generation_vector_digest;
+  fact.influence_summary.parent_checkpoint_digests =
+      fact.read_checkpoint_digests;
+  fact.influence_summary.parent_generation_vector_digests =
+      fact.parent_generation_vector_digests;
+  fact.influence_summary.provenance_closure_digest =
+      lattice_exposure::exposure_digest_for_text(
+          "checkpoint_generation_closure|" + generation_id);
+  fact.influence_summary.no_lookahead_contract_digest =
+      no_lookahead_contract_digest;
+  if (generation_lane == "readiness_grade") {
+    auto update = lattice_exposure::
+        make_component_training_update_fact_from_checkpoint_fact(fact);
+    update.split_role = "train";
+    fact.producer_component_update_fact_digest =
+        lattice_exposure::component_training_update_fact_digest(update);
+  }
+  return fact;
+}
+
+void add_checkpoint_generation_with_update(
+    lattice_exposure::lattice_exposure_ledger_t &ledger,
+    lattice_exposure::lattice_checkpoint_fact_t fact) {
+  if (!fact.producer_component_update_fact_digest.empty()) {
+    auto update = lattice_exposure::
+        make_component_training_update_fact_from_checkpoint_fact(fact);
+    update.split_role = "train";
+    ledger.add_component_training_update(std::move(update));
+  }
+  ledger.add_checkpoint(std::move(fact));
+}
+
 struct ppo_rehearsal_parent_fact_bundle_t {
   lattice_exposure::lattice_exposure_ledger_t ledger{};
   lattice_exposure::lattice_exposure_fact_t parent_fact{};
@@ -809,6 +998,51 @@ ppo_rehearsal_parent_fact_bundle_t make_ppo_rehearsal_parent_fact_bundle() {
       "representation_checkpoint_digest_v1";
   forecast.evaluated_mdn_checkpoint_digest = "mdn_checkpoint_digest_v1";
   forecast.target_transform_fact_digest = "target_transform_digest_v1";
+  forecast.influence_summary.complete = true;
+  forecast.influence_summary.graph_order_fingerprint =
+      forecast.graph_order_fingerprint;
+  forecast.influence_summary.source_cursor_token = forecast.source_cursor_token;
+  forecast.influence_summary.split_policy_fingerprint =
+      forecast.split_policy_fingerprint;
+  forecast.influence_summary.coverage_anchor_range = rehearsal_range;
+  forecast.influence_summary.coverage_anchor_range_bound = true;
+  forecast.influence_summary.influence_anchor_begin_min = 0;
+  forecast.influence_summary.influence_anchor_begin_min_bound = true;
+  forecast.influence_summary.influence_anchor_end_exclusive_max = 0;
+  forecast.influence_summary.influence_anchor_end_exclusive_max_bound = true;
+  forecast.influence_summary.label_or_reward_availability_end_exclusive_max = 0;
+  forecast.influence_summary
+      .label_or_reward_availability_end_exclusive_max_bound = true;
+  forecast.influence_summary.horizon = forecast.horizon;
+  forecast.influence_summary.horizon_bound = true;
+  forecast.influence_summary.producer_generation_vector_digest =
+      "generation_vector_prior_rep_mdn_v1";
+  forecast.influence_summary.parent_checkpoint_digests = {
+      forecast.evaluated_representation_checkpoint_digest,
+      forecast.evaluated_mdn_checkpoint_digest};
+  forecast.influence_summary.provenance_closure_digest =
+      "forecast_provenance_closure_digest_v1";
+  forecast.influence_summary.no_lookahead_contract_digest =
+      protocol_fixture::canonical_cwu_02v_no_lookahead_contract_digest();
+  add_checkpoint_generation_with_update(
+      bundle.ledger,
+      make_checkpoint_generation_fact(
+          "wikimyei.representation.encoding.mtf_jepa_mae_vicreg",
+          forecast.evaluated_representation_checkpoint_digest,
+          "rep_generation_prior_v1",
+          forecast.influence_summary.producer_generation_vector_digest, 0, 0,
+          forecast.graph_order_fingerprint, forecast.source_cursor_token,
+          forecast.split_policy_fingerprint,
+          forecast.influence_summary.no_lookahead_contract_digest));
+  add_checkpoint_generation_with_update(
+      bundle.ledger,
+      make_checkpoint_generation_fact(
+          "wikimyei.inference.expected_value.mdn",
+          forecast.evaluated_mdn_checkpoint_digest, "mdn_generation_prior_v1",
+          forecast.influence_summary.producer_generation_vector_digest, 0, 0,
+          forecast.graph_order_fingerprint, forecast.source_cursor_token,
+          forecast.split_policy_fingerprint,
+          forecast.influence_summary.no_lookahead_contract_digest));
   bundle.ledger.add_forecast_eval(forecast);
   bundle.forecast_eval_digest =
       lattice_exposure::forecast_eval_fact_digest(forecast);
@@ -976,6 +1210,42 @@ ppo_rehearsal_parent_fact_bundle_t make_ppo_rehearsal_parent_fact_bundle() {
   replay.mean_projection_signed_bias = 0.001;
   replay.mean_projection_directional_accuracy = 0.60;
   replay.mean_projection_interval_coverage = 0.80;
+  replay.parent_forecast_eval_fact_digest = bundle.forecast_eval_digest;
+  replay.parent_forecast_artifact_digest = forecast.forecast_artifact_digest;
+  replay.influence_summary.complete = true;
+  replay.influence_summary.graph_order_fingerprint =
+      replay.graph_order_fingerprint;
+  replay.influence_summary.source_cursor_token = replay.source_cursor_token;
+  replay.influence_summary.split_policy_fingerprint =
+      replay.split_policy_fingerprint;
+  replay.influence_summary.coverage_anchor_range = rehearsal_range;
+  replay.influence_summary.coverage_anchor_range_bound = true;
+  replay.influence_summary.influence_anchor_begin_min =
+      forecast.influence_summary.influence_anchor_begin_min;
+  replay.influence_summary.influence_anchor_begin_min_bound = true;
+  replay.influence_summary.influence_anchor_end_exclusive_max =
+      forecast.influence_summary.influence_anchor_end_exclusive_max;
+  replay.influence_summary.influence_anchor_end_exclusive_max_bound = true;
+  replay.influence_summary.label_or_reward_availability_end_exclusive_max =
+      forecast.influence_summary.label_or_reward_availability_end_exclusive_max;
+  replay.influence_summary
+      .label_or_reward_availability_end_exclusive_max_bound =
+      forecast.influence_summary
+          .label_or_reward_availability_end_exclusive_max_bound;
+  replay.influence_summary.horizon = forecast.horizon;
+  replay.influence_summary.horizon_bound = true;
+  replay.influence_summary.producer_generation_vector_digest =
+      "generation_vector_replay_v1";
+  replay.influence_summary.parent_artifact_digests = {
+      bundle.forecast_eval_digest, forecast.forecast_artifact_digest};
+  replay.influence_summary.parent_checkpoint_digests =
+      forecast.influence_summary.parent_checkpoint_digests;
+  replay.influence_summary.parent_generation_vector_digests = {
+      forecast.influence_summary.producer_generation_vector_digest};
+  replay.influence_summary.provenance_closure_digest =
+      "replay_provenance_closure_digest_v1";
+  replay.influence_summary.no_lookahead_contract_digest =
+      forecast.influence_summary.no_lookahead_contract_digest;
   bundle.ledger.add_replay_environment(replay);
   bundle.replay_environment_digest =
       lattice_exposure::replay_environment_fact_digest(replay);
@@ -1070,22 +1340,7 @@ std::string cwu01_vicreg_protocol_text() {
 }
 
 std::string cwu02_mtf_protocol_text() {
-  return std::string("PROTOCOL {\n"
-                     "  PROTOCOL_ID = cwu_02v;\n"
-                     "  PROTOCOL_KIND = channel_graph_first;\n"
-                     "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
-                     "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
-                     "  REPRESENTATION = "
-                     "wikimyei.representation.encoding.mtf_jepa_mae_vicreg;\n"
-                     "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
-                     "  OBSERVER = wikimyei.observer.belief;\n"
-                     "  ALLOCATION_POLICY = "
-                     "wikimyei.policy.portfolio.spot_distributional_utility;\n"
-                     "  POLICY_COMPONENT = "
-                     "wikimyei.policy.portfolio.graph_node_allocation;\n"
-                     "  REPRESENTATION_CONTRACT = "
-                     "graph_order.channel_node_representation.v1;\n"
-                     "};\n");
+  return protocol_fixture::canonical_cwu_02v_protocol_text();
 }
 
 std::string protocol_id_from_text(const std::string &protocol_text) {
@@ -2770,6 +3025,14 @@ void test_mdn_wave_preview_reads_jkimyei_model_state_inputs() {
                            "  BATCH_SIZE = 64;\n"
                            "  INPUT_REPRESENTATION_CHECKPOINT = /tmp/rep.pt;\n"
                            "  INPUT_MDN_CHECKPOINT = /tmp/mdn.pt;\n"
+                           "  TRAINING_VISIBILITY_POLICY = "
+                           "prior_generation_per_slice;\n"
+                           "  GENERATION_LANE_POLICY = "
+                           "readiness_grade_bootstrap_frozen_init_only;\n"
+                           "  VALID_FROM_POLICY = "
+                           "valid_from_anchor_gte_fit_end;\n"
+                           "  ARTIFACT_PROVENANCE_POLICY = "
+                           "transitive_influence_required;\n"
                            "};\n");
   write_text(config_path, "[UJCAMEI]\n"
                           "ujcamei_source_cursor_dsl_path = " +
@@ -2996,8 +3259,13 @@ void test_policy_training_causal_schedule_contract() {
 
 std::string valid_policy_training_args(
     std::string requested_mode = "dry_run", std::string policy_kind = "ppo",
-    std::string policy_id = "wikimyei.policy.rl.ppo_portfolio.v0",
-    std::string config_path = {}, bool include_wave_identity_fields = true) {
+    std::string policy_id =
+        "wikimyei.policy.portfolio.graph_node_allocation.ppo_v0",
+    std::string config_path = {}, bool include_wave_identity_fields = true,
+    std::string split_policy_fingerprint = "split_policy_1",
+    std::string training_range_digest = "range_train_digest",
+    std::string validation_range_digest = "range_validation_digest",
+    std::string test_range_digest = "range_test_digest") {
   std::ostringstream out;
   out << "{\"subject\":\"wave\",\"mode\":\"" << requested_mode << "\"";
   if (!config_path.empty()) {
@@ -3007,7 +3275,9 @@ std::string valid_policy_training_args(
          "\"protocol_contract_fingerprint\":\"contract_1\","
          "\"graph_order_fingerprint\":\"graph_1\","
          "\"source_cursor_token\":\"cursor_1\","
-         "\"split_policy_fingerprint\":\"split_policy_1\","
+         "\"split_policy_fingerprint\":\""
+      << split_policy_fingerprint
+      << "\","
          "\"component_assembly_fingerprint\":\"graph_node_allocation_1\",";
   if (include_wave_identity_fields) {
     out << "\"policy_id\":\"" << policy_id << "\","
@@ -3015,9 +3285,15 @@ std::string valid_policy_training_args(
   }
   out << "\"policy_architecture_digest\":\"arch_digest_v0\","
          "\"training_config_digest\":\"train_config_digest_v0\","
-         "\"training_range_digest\":\"range_train_digest\","
-         "\"validation_range_digest\":\"range_validation_digest\","
-         "\"test_range_digest\":\"range_test_digest\","
+         "\"training_range_digest\":\""
+      << training_range_digest
+      << "\","
+         "\"validation_range_digest\":\""
+      << validation_range_digest
+      << "\","
+         "\"test_range_digest\":\""
+      << test_range_digest
+      << "\","
          "\"observation_schema_digest\":\"kikijyeba.environment.policy_input."
          "v1\","
          "\"reward_contract_digest\":\"kikijyeba.environment.reward."
@@ -3031,22 +3307,24 @@ std::string valid_policy_training_args(
            "\"policy_input_feature_manifest_digest\":\"policy_input_manifest_"
            "digest_v1\","
            "\"policy_jkimyei_digest\":\"policy_jkimyei_digest_v1\","
+           "\"policy_jkimyei_no_lookahead_contract_id\":\"cwu_02v_"
+           "no_lookahead_artifact_provenance.anchor_v1\","
+           "\"policy_jkimyei_no_lookahead_contract_digest\":\"cwu_02v_"
+           "no_lookahead_artifact_provenance.anchor_v1\","
+           "\"policy_jkimyei_component_order_contract_id\":\"cwu_02v_"
+           "no_lookahead_artifact_provenance.anchor_v1\","
+           "\"policy_jkimyei_component_order_contract_digest\":\"cwu_02v_"
+           "no_lookahead_artifact_provenance.anchor_v1\","
            "\"target_node_universe_digest\":\"target_node_universe_digest_v1\","
            "\"action_distribution_config_digest\":\"action_distribution_config_"
            "digest_v1\","
            "\"snapshot_family_digest\":\"snapshot_family_digest_v1\","
            "\"actor_architecture_digest\":\"actor_arch_digest_v1\","
            "\"critic_architecture_digest\":\"critic_arch_digest_v1\","
-           "\"actor_checkpoint_digest\":\"actor_checkpoint_digest_v1\","
-           "\"critic_checkpoint_digest\":\"critic_checkpoint_digest_v1\","
-           "\"optimizer_state_digest\":\"optimizer_state_digest_v1\","
            "\"ppo_config_digest\":\"ppo_config_digest_v1\","
            "\"resume_mode\":\"fresh_spawn\","
-           "\"advantage_normalization_policy\":\"per_rollout_standardize_v1\","
-           "\"rollout_collection_digest\":\"rollout_collection_digest_v1\","
-           "\"ppo_update_report_digest\":\"ppo_update_report_digest_v1\","
-           "\"validation_rollout_report_digest\":\"validation_rollout_report_"
-           "digest_v1\","
+           "\"advantage_normalization_policy\":\"batch_center_scale_advantages."
+           "v1\","
            "\"ppo_gamma\":0.99,"
            "\"ppo_gae_lambda\":0.95,"
            "\"ppo_clip_epsilon\":0.2,"
@@ -3062,13 +3340,16 @@ std::string valid_policy_training_args(
   }
   out << "\"causal_schedule_digest\":\"causal_schedule_digest_v1\","
          "\"causal_schedule_cursor_key_kind\":\"numeric_anchor_index\","
-         "\"normalization_fit_range_digest\":\"range_train_digest\","
-         "\"replay_buffer_source_range_digest\":\"range_train_digest\","
+         "\"normalization_fit_range_digest\":\""
+      << training_range_digest
+      << "\","
+         "\"replay_buffer_source_range_digest\":\""
+      << training_range_digest
+      << "\","
          "\"early_stopping_policy_digest\":\"early_stop_digest_v1\","
          "\"hyperparameter_selection_policy_digest\":\"selector_digest_v1\","
          "\"selector_split\":\"validation\","
          "\"selector_policy_digest\":\"selector_policy_digest_v1\","
-         "\"parent_checkpoint_digest\":\"parent_policy_checkpoint_digest\","
          "\"parent_forecast_eval_fact_digest\":\"forecast_eval_fact_digest\","
          "\"parent_observer_belief_fact_digest\":\"observer_belief_fact_"
          "digest\","
@@ -3090,7 +3371,7 @@ std::string valid_policy_training_args(
   return out.str();
 }
 
-void test_policy_training_contract_and_pre_ppo_execute() {
+void test_policy_training_contract_and_ppo_execute() {
   hero_runtime::runtime_context_t ctx{};
   std::string result;
   std::string error;
@@ -3110,8 +3391,8 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       result, "\"policy_training_execution_supported\":true",
       "PPO policy-training dry-run is executable through Runtime V0");
   require_contains(result,
-                   "\"supported_execute_policy_kinds\":[\"noop_policy_"
-                   "training.v1\",\"ppo_policy_adapter.v1\"]",
+                   "\"supported_execute_policy_kinds\":[\"ppo_policy_adapter."
+                   "v1\"]",
                    "policy-training dry-run reports PPO V0 execute support");
   require_contains(result,
                    "\"normalization_fit_range_digest\":\"range_train_digest\"",
@@ -3157,16 +3438,27 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "PPO policy-training dry-run binds critic architecture digest");
   require_contains(result, "\"ppo_config_digest\":\"ppo_config_digest_v1\"",
                    "PPO policy-training dry-run binds PPO config digest");
-  require_contains(
-      result,
-      "\"rollout_collection_digest\":\"rollout_collection_digest_"
-      "v1\"",
-      "PPO policy-training dry-run binds rollout collection digest");
-  require_contains(
-      result,
-      "\"ppo_update_report_digest\":\"ppo_update_report_digest_"
-      "v1\"",
-      "PPO policy-training dry-run binds PPO update report digest");
+  require_contains(result, "\"actor_checkpoint_digest\":\"\"",
+                   "PPO policy-training dry-run leaves Runtime-emitted actor "
+                   "checkpoint digest unbound");
+  require_contains(result, "\"critic_checkpoint_digest\":\"\"",
+                   "PPO policy-training dry-run leaves Runtime-emitted critic "
+                   "checkpoint digest unbound");
+  require_contains(result, "\"optimizer_state_digest\":\"\"",
+                   "PPO policy-training dry-run leaves Runtime-emitted "
+                   "optimizer state digest unbound");
+  require_contains(result, "\"rollout_collection_digest\":\"\"",
+                   "PPO policy-training dry-run leaves Runtime-emitted rollout "
+                   "collection digest unbound");
+  require_contains(result, "\"ppo_update_report_digest\":\"\"",
+                   "PPO policy-training dry-run leaves Runtime-emitted PPO "
+                   "update report digest unbound");
+  require_contains(result, "\"validation_rollout_report_digest\":\"\"",
+                   "PPO policy-training dry-run leaves Runtime-emitted "
+                   "validation rollout digest unbound");
+  require_contains(result, "\"policy_quality_report_digest\":\"\"",
+                   "PPO policy-training dry-run leaves Runtime-emitted policy "
+                   "quality report digest unbound");
   require_contains(
       result,
       "\"reward_contract_id\":\"kikijyeba.environment.reward."
@@ -3180,6 +3472,22 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "\"causal_schedule_no_future_snapshot_use_source\":"
       "\"derived_from_artifact_fit_use_ledgers\"",
       "policy-training dry-run binds derived no-future proof source");
+  require_contains(
+      result,
+      "\"causal_provenance_schema\":\"causal_provenance_generalization.v1\"",
+      "policy-training dry-run binds generalized causal provenance schema");
+  require_contains(
+      result,
+      "\"causal_artifact_production_schema\":\"runtime.artifact_production."
+      "inline_policy_training.v1\"",
+      "policy-training dry-run binds inline artifact-production provenance "
+      "schema");
+  require_contains(
+      result,
+      "\"causal_purged_embargo_policy_fingerprint\":\"embargo_policy_anchor_"
+      "v1\"",
+      "policy-training dry-run binds generalized purged/embargo policy "
+      "fingerprint");
   require_contains(
       result, "\"runtime_trains_policy\":true",
       "policy-training dry-run exposes Runtime train authority for "
@@ -3214,44 +3522,464 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   const auto wave_defaults_root = make_tmp_dir("policy_training_wave_defaults");
   const auto wave_path = wave_defaults_root / "hero.runtime.wave.dsl";
   const auto protocol_path = wave_defaults_root / "kikijyeba.protocol.dsl";
+  const auto graph_path = wave_defaults_root / "kikijyeba.topology.graph.dsl";
+  const auto graph_allocation_path =
+      wave_defaults_root /
+      "wikimyei.policy.portfolio.graph_node_allocation.dsl";
+  const auto graph_allocation_features_path = std::filesystem::path(
+      "/cuwacunu/src/config/"
+      "wikimyei.policy.portfolio.graph_node_allocation.features.dsl");
+  const auto graph_allocation_net_path = std::filesystem::path(
+      "/cuwacunu/src/config/"
+      "wikimyei.policy.portfolio.graph_node_allocation.net");
+  const auto graph_allocation_jkimyei_path = std::filesystem::path(
+      "/cuwacunu/src/config/"
+      "wikimyei.policy.portfolio.graph_node_allocation.jkimyei");
   const auto cursor_path = wave_defaults_root / "ujcamei.source.cursor.dsl";
+  const auto environment_path = wave_defaults_root / "hero.environment.dsl";
+  const auto splits_path = wave_defaults_root / "hero.lattice.splits.dsl";
+  const auto replay_environment_path =
+      wave_defaults_root / "kikijyeba.environment.replay.dsl";
   const auto config_path = wave_defaults_root / ".config";
+  const auto runtime_policy_path = wave_defaults_root / "hero.runtime.dsl";
   write_text(wave_path,
              "WAVE_SELECTION {\n"
-             "  ACTIVE_WAVE_ID = policy_training_pre_ppo_noop;\n"
+             "  ACTIVE_WAVE_ID = policy_training_ppo_v0;\n"
              "};\n"
              "WAVE_SETTINGS {\n"
-             "  WAVE_ID = policy_training_pre_ppo_noop;\n"
+             "  WAVE_ID = eval_wave;\n"
+             "  PROTOCOL = cwu_02v;\n"
+             "  TARGET = wikimyei.inference.expected_value;\n"
+             "  MODE = run|debug;\n"
+             "  SOURCE_CURSOR_ID = policy_cursor;\n"
+             "};\n"
+             "WAVE_SETTINGS {\n"
+             "  WAVE_ID = policy_training_ppo_v0;\n"
              "  PROTOCOL = cwu_02v;\n"
              "  TARGET = wikimyei.policy.portfolio;\n"
              "  MODE = train;\n"
              "  JOB_KIND = policy_training;\n"
              "  POLICY_ID = "
-             "wikimyei.policy.portfolio.graph_node_allocation.noop_pre_ppo;\n"
-             "  POLICY_KIND = noop_policy_training.v1;\n"
+             "wikimyei.policy.portfolio.graph_node_allocation.ppo_v0;\n"
+             "  POLICY_KIND = ppo_policy_adapter.v1;\n"
              "  TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1;\n"
+             "  CAUSAL_SCHEDULE_DIGEST = "
+             "policy_training_causal_walk_forward_all_v1;\n"
+             "  SNAPSHOT_FAMILY_DIGEST = "
+             "policy_training_causal_snapshots.cwu_02v.graph_anchor.v1;\n"
+             "  EARLY_STOPPING_POLICY_DIGEST = "
+             "validation_only_patience_ppo_v0_v1;\n"
+             "  HYPERPARAMETER_SELECTION_POLICY_DIGEST = "
+             "validation_only_grid_ppo_v0_v1;\n"
+             "  SELECTOR_POLICY_DIGEST = "
+             "validation_selector_no_test_access_ppo_v0_v1;\n"
+             "  TRAIN_SPLIT = train_core;\n"
+             "  VALIDATION_SPLIT = certified_replay_expansion_eval;\n"
+             "  TEST_SPLIT = test_holdout;\n"
              "  LIVE_EXECUTION_ALLOWED = false;\n"
              "  SOURCE_CURSOR_ID = policy_cursor;\n"
              "  SOURCE_ORDER = random_per_epoch;\n"
              "};\n");
   write_text(protocol_path, cwu02_mtf_protocol_text());
+  write_text(graph_path, "GRAPH_POLICY {\n"
+                         "  EDGE_RESOLUTION_POLICY = edge_discovery;\n"
+                         "  EDGE_SOURCE_KIND = real;\n"
+                         "  FETCH_MODE = parallel_by_edge;\n"
+                         "  MAX_FETCH_WORKERS = 0;\n"
+                         "  PARALLEL_MIN_WORK_ITEMS = 16;\n"
+                         "};\n"
+                         "/------------------------------------\\\n"
+                         "|  node_id  |  node_kind  |  active  |\n"
+                         "|------------------------------------|\n"
+                         "|   BTC     |    asset    |   true   |\n"
+                         "|   USDT    |    asset    |   true   |\n"
+                         "|   ETH     |    asset    |   true   |\n"
+                         "\\------------------------------------/\n");
+  write_text(environment_path,
+             "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+             "environment_profile:enum = operator_default\n"
+             "rollout_max_parallel_jobs:int = 2\n"
+             "rollout_linear_transaction_cost_rate:number = 0.002\n"
+             "ENVIRONMENT_PROFILE operator_default {\n"
+             "  rollout_max_parallel_jobs:int = 4\n"
+             "  rollout_linear_transaction_cost_rate:number = 0.001\n"
+             "}\n");
+  write_text(runtime_policy_path,
+             "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+             "runtime_profile:enum = operator_default\n"
+             "runtime_root:path = " +
+                 wave_defaults_root.string() +
+                 "\n"
+                 "allowed_job_roots:path_list = " +
+                 wave_defaults_root.string() +
+                 "\n"
+                 "default_config_path:path = " +
+                 config_path.string() + "\n");
+  write_text(
+      replay_environment_path,
+      "REPLAY_ENVIRONMENT {\n"
+      "  VERSION = kikijyeba.environment.replay.v1;\n"
+      "  COMPONENT_ASSEMBLY_ID = replay_environment_v1;\n"
+      "  WORLD_MODE = historical_replay;\n"
+      "  API_CONTRACT = rl_compatible_reset_step;\n"
+      "  SPAWN_MODEL = episode_parallel_step_sequential;\n"
+      "  RANGE_SOURCE = ujcamei_component_stream_cursor;\n"
+      "  SOURCE_RANGE_POLICY = anchor_index_or_source_key;\n"
+      "  SOURCE_ORDER_POLICY = sequential;\n"
+      "  RANGE_RESOLUTION = runtime_resolved_cursor_identity;\n"
+      "  OBSERVATION_TIME_LAW = time_t_only;\n"
+      "  REALIZATION_REVEAL = after_action_execution;\n"
+      "  REALIZATION_KEY_POLICY = shared_key_per_frame;\n"
+      "  ACTION_KIND = target_node_weights;\n"
+      "  ACTION_SCHEMA_ID = "
+      "kikijyeba.environment.action.target_node_weights.v1;\n"
+      "  ACTION_TIME_POLICY = "
+      "decision_timestamp_after_knowledge_before_realization;\n"
+      "  GRAPH_NODE_UNIVERSE_POLICY = episode_spec_graph_node_ids;\n"
+      "  REWARD_POLICY = "
+      "post_execution_ledger_log_growth_drawdown_cost_turnover_invalid;\n"
+      "  PROJECTION_VALIDATION = "
+      "projected_log_return_vs_realized_asset_numeraire_return;\n"
+      "  REALIZED_RETURN_TRUTH = direct_edge_realized_return_truth_v1;\n"
+      "  POLICY_SURFACE = policy_adapter;\n"
+      "  ACTION_POLICY_IDENTITY = policy_adapter_must_match_action;\n"
+      "  INITIAL_POLICY_KIND = deterministic_allocator_or_baseline;\n"
+      "  EXPERIMENT_TASK_IDENTITY = bundle_policy_task_indices;\n"
+      "  EXPERIMENT_RUN_IDENTITY = single_runtime_environment_run;\n"
+      "  STEP_ARTIFACT_IDENTITY = episode_run_policy_cursor;\n"
+      "  EXPERIMENT_REPORT_COUNT_POLICY = counts_match_evidence;\n"
+      "  ARTIFACT_SCHEMA = cajtucu_ready_replay_artifacts;\n"
+      "  LATTICE_FACT_FAMILY = replay_environment;\n"
+      "  LATTICE_TARGET = replay_environment_artifact_ready;\n"
+      "  REQUIRE_RESOLVED_CURSOR = true;\n"
+      "  REQUIRE_NO_FUTURE_LEAKAGE = true;\n"
+      "  REQUIRE_PROJECTION_VALIDATION = true;\n"
+      "  REPLAY_EXECUTOR = false;\n"
+      "  ALLOCATION_AUTHORITY = false;\n"
+      "  EXECUTION_AUTHORITY = false;\n"
+      "  LIVE_CAPITAL_ALLOWED = false;\n"
+      "  INITIAL_EQUITY_NUMERAIRE = 10000;\n"
+      "  MAX_NODE_WEIGHT = 0.95;\n"
+      "  MAX_TURNOVER_L1 = 1;\n"
+      "  DEFAULT_MAX_PARALLEL_JOBS = 1;\n"
+      "};\n");
+  write_text(graph_allocation_path,
+             "GRAPH_NODE_ALLOCATION {\n"
+             "  VERSION = wikimyei.policy.portfolio.graph_node_allocation.v1;\n"
+             "  COMPONENT_ASSEMBLY_ID = graph_node_allocation_v1;\n"
+             "  POLICY_KIND = trainable_graph_node_allocation;\n"
+             "  POLICY_INPUT_SCHEMA = kikijyeba.environment.policy_input.v1;\n"
+             "  ACTION_ADAPTER = target_node_weights_simplex.v1;\n"
+             "  ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1;\n"
+             "  ACTION_SCHEMA = "
+             "kikijyeba.environment.action.target_node_weights.v1;\n"
+             "  REWARD_CONTRACT = kikijyeba.environment.reward."
+             "post_execution_ledger_log_growth_cost_drawdown.v1;\n"
+             "  GRAPH_NODE_UNIVERSE_POLICY = "
+             "fixed_ordered_target_node_universe;\n"
+             "  SCENARIO_INPUT_POLICY = "
+             "allocation_belief_distributional_summaries_v1;\n"
+             "  RAW_MDN_INPUT_ALLOWED = false;\n"
+             "  PPO_IMPLEMENTED = true;\n"
+             "  LIVE_CAPITAL_ALLOWED = false;\n"
+             "};\n");
   write_text(cursor_path, cursor_catalog_text("policy_cursor", "all"));
-  write_text(config_path,
-             "[UJCAMEI]\n"
-             "ujcamei_source_cursor_dsl_path = " +
-                 cursor_path.string() +
-                 "\n"
-                 "[KIKIJYEBA]\n"
-                 "kikijyeba_protocol_dsl_path = " +
-                 protocol_path.string() +
-                 "\n"
-                 "[HERO]\n"
-                 "runtime_wave_dsl_path = " +
-                 wave_path.string() +
-                 "\n"
-                 "runtime_wave_id = policy_training_pre_ppo_noop\n");
+  write_text(splits_path,
+             "LATTICE_SPLIT_POLICY {\n"
+             "  POLICY_ID = graph_anchor_holdout_v1;\n"
+             "  CURSOR_DOMAIN = ujcamei.graph_anchor;\n"
+             "  PURGE_LEFT_CONTEXT = auto_from_Hx;\n"
+             "  PURGE_RIGHT_FUTURE = auto_from_Hf;\n"
+             "};\n"
+             "LATTICE_SPLIT {\n"
+             "  SPLIT_ID = train_core;\n"
+             "  ROLE = train;\n"
+             "  ANCHOR_INDEX_BEGIN = 0;\n"
+             "  ANCHOR_INDEX_END = 1600;\n"
+             "};\n"
+             "LATTICE_SPLIT {\n"
+             "  SPLIT_ID = acceptance_smoke;\n"
+             "  ROLE = train;\n"
+             "  ANCHOR_INDEX_BEGIN = 29;\n"
+             "  ANCHOR_INDEX_END = 31;\n"
+             "};\n"
+             "LATTICE_SPLIT {\n"
+             "  SPLIT_ID = validation_holdout;\n"
+             "  ROLE = validation;\n"
+             "  ANCHOR_INDEX_BEGIN = 1800;\n"
+             "  ANCHOR_INDEX_END = 2050;\n"
+             "  ALLOW_USES = evaluation_metric;\n"
+             "  PROTECT_FROM_USES = "
+             "observed_input|target_supervision|selection_signal;\n"
+             "  PROTECT_REQUIRES_MUTATED_COMPONENT = true;\n"
+             "};\n"
+             "LATTICE_SPLIT {\n"
+             "  SPLIT_ID = certified_replay_expansion_eval;\n"
+             "  ROLE = validation;\n"
+             "  ANCHOR_INDEX_BEGIN = 1630;\n"
+             "  ANCHOR_INDEX_END = 2247;\n"
+             "  ALLOW_USES = evaluation_metric;\n"
+             "  PROTECT_FROM_USES = "
+             "observed_input|target_supervision|selection_signal;\n"
+             "  PROTECT_REQUIRES_MUTATED_COMPONENT = true;\n"
+             "};\n"
+             "LATTICE_SPLIT {\n"
+             "  SPLIT_ID = test_holdout;\n"
+             "  ROLE = test;\n"
+             "  ANCHOR_INDEX_BEGIN = 2100;\n"
+             "  ANCHOR_INDEX_END = 2247;\n"
+             "  ALLOW_USES = evaluation_metric;\n"
+             "  PROTECT_FROM_USES = "
+             "observed_input|target_supervision|selection_signal;\n"
+             "  PROTECT_REQUIRES_MUTATED_COMPONENT = true;\n"
+             "};\n");
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_registry_dsl_bnf_path = "
+                          "/cuwacunu/src/config/grammar/"
+                          "ujcamei.source.registry.dsl.bnf\n"
+                          "ujcamei_source_registry_dsl_path = "
+                          "/cuwacunu/src/config/ujcamei.source.registry.dsl\n"
+                          "ujcamei_source_retrieval_channels_dsl_bnf_path = "
+                          "/cuwacunu/src/config/grammar/"
+                          "ujcamei.source.retrieval.channels.dsl.bnf\n"
+                          "ujcamei_source_retrieval_channels_dsl_path = "
+                          "/cuwacunu/src/config/"
+                          "ujcamei.source.retrieval.channels.dsl\n"
+                          "ujcamei_source_cursor_dsl_bnf_path = "
+                          "/cuwacunu/src/config/grammar/"
+                          "ujcamei.source.cursor.dsl.bnf\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[ACCOUNTING]\n"
+                              "accounting_numeraire_node_id = USDT\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "kikijyeba.protocol.dsl.bnf\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "kikijyeba_topology_graph_dsl_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "kikijyeba.topology.graph.dsl.bnf\n"
+                              "kikijyeba_topology_graph_dsl_path = " +
+                              graph_path.string() +
+                              "\n"
+                              "kikijyeba_environment_replay_dsl_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "kikijyeba.environment.replay.dsl.bnf\n"
+                              "kikijyeba_environment_replay_dsl_path = " +
+                              replay_environment_path.string() +
+                              "\n"
+                              "[WIKIMYEI]\n"
+                              "wikimyei_expression_nodelift_srl_dsl_bnf_path "
+                              "= /cuwacunu/src/config/grammar/"
+                              "wikimyei.expression.nodelift.srl.dsl.bnf\n"
+                              "wikimyei_expression_nodelift_srl_dsl_path = "
+                              "/cuwacunu/src/config/"
+                              "wikimyei.expression.nodelift.srl.dsl\n"
+                              "wikimyei_representation_vicreg_dsl_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "wikimyei.representation.vicreg.dsl.bnf\n"
+                              "wikimyei_representation_vicreg_dsl_path = "
+                              "/cuwacunu/src/config/"
+                              "wikimyei.representation.vicreg.dsl\n"
+                              "wikimyei_representation_vicreg_net_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "wikimyei.representation.vicreg.net.bnf\n"
+                              "wikimyei_representation_vicreg_net_path = "
+                              "/cuwacunu/src/config/"
+                              "wikimyei.representation.vicreg.net\n"
+                              "wikimyei_representation_mtf_jepa_mae_vicreg_"
+                              "dsl_bnf_path = /cuwacunu/src/config/grammar/"
+                              "wikimyei.representation.mtf_jepa_mae_vicreg."
+                              "dsl.bnf\n"
+                              "wikimyei_representation_mtf_jepa_mae_vicreg_"
+                              "dsl_path = /cuwacunu/src/config/"
+                              "wikimyei.representation.mtf_jepa_mae_vicreg."
+                              "dsl\n"
+                              "wikimyei_representation_mtf_jepa_mae_vicreg_"
+                              "net_bnf_path = /cuwacunu/src/config/grammar/"
+                              "wikimyei.representation.mtf_jepa_mae_vicreg."
+                              "net.bnf\n"
+                              "wikimyei_representation_mtf_jepa_mae_vicreg_"
+                              "net_path = /cuwacunu/src/config/"
+                              "wikimyei.representation.mtf_jepa_mae_vicreg."
+                              "net\n"
+                              "wikimyei_inference_expected_value_mdn_dsl_bnf_"
+                              "path = /cuwacunu/src/config/grammar/"
+                              "wikimyei.inference.expected_value.mdn.dsl.bnf\n"
+                              "wikimyei_inference_expected_value_mdn_dsl_path "
+                              "= /cuwacunu/src/config/"
+                              "wikimyei.inference.expected_value.mdn.dsl\n"
+                              "wikimyei_inference_expected_value_mdn_net_bnf_"
+                              "path = /cuwacunu/src/config/grammar/"
+                              "wikimyei.inference.expected_value.mdn.net.bnf\n"
+                              "wikimyei_inference_expected_value_mdn_net_path "
+                              "= /cuwacunu/src/config/"
+                              "wikimyei.inference.expected_value.mdn.net\n"
+                              "wikimyei_observer_belief_dsl_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "wikimyei.observer.belief.dsl.bnf\n"
+                              "wikimyei_observer_belief_dsl_path = "
+                              "/cuwacunu/src/config/"
+                              "wikimyei.observer.belief.dsl\n"
+                              "wikimyei_policy_portfolio_spot_distributional_"
+                              "utility_dsl_bnf_path = /cuwacunu/src/config/"
+                              "grammar/wikimyei.policy.portfolio."
+                              "spot_distributional_utility.dsl.bnf\n"
+                              "wikimyei_policy_portfolio_spot_distributional_"
+                              "utility_dsl_path = /cuwacunu/src/config/"
+                              "wikimyei.policy.portfolio."
+                              "spot_distributional_utility.dsl\n"
+                              "wikimyei_policy_portfolio_graph_node_"
+                              "allocation_dsl_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "wikimyei.policy.portfolio.graph_node_"
+                              "allocation.dsl.bnf\n"
+                              "wikimyei_policy_portfolio_graph_node_"
+                              "allocation_dsl_path = " +
+                              graph_allocation_path.string() +
+                              "\n"
+                              "wikimyei_policy_portfolio_graph_node_"
+                              "allocation_features_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "wikimyei.policy.portfolio.graph_node_"
+                              "allocation.features.dsl.bnf\n"
+                              "wikimyei_policy_portfolio_graph_node_"
+                              "allocation_features_path = " +
+                              graph_allocation_features_path.string() +
+                              "\n"
+                              "wikimyei_policy_portfolio_graph_node_"
+                              "allocation_net_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "wikimyei.policy.portfolio.graph_node_"
+                              "allocation.net.bnf\n"
+                              "wikimyei_policy_portfolio_graph_node_"
+                              "allocation_net_path = " +
+                              graph_allocation_net_path.string() +
+                              "\n"
+                              "[JKIMYEI]\n"
+                              "wikimyei_representation_vicreg_jkimyei_bnf_"
+                              "path = /cuwacunu/src/config/grammar/"
+                              "wikimyei.representation.vicreg.jkimyei.bnf\n"
+                              "wikimyei_representation_vicreg_jkimyei_path = "
+                              "/cuwacunu/src/config/"
+                              "wikimyei.representation.vicreg.jkimyei\n"
+                              "wikimyei_representation_mtf_jepa_mae_vicreg_"
+                              "jkimyei_bnf_path = /cuwacunu/src/config/"
+                              "grammar/wikimyei.representation."
+                              "mtf_jepa_mae_vicreg.jkimyei.bnf\n"
+                              "wikimyei_representation_mtf_jepa_mae_vicreg_"
+                              "jkimyei_path = /cuwacunu/src/config/"
+                              "wikimyei.representation.mtf_jepa_mae_vicreg."
+                              "jkimyei\n"
+                              "wikimyei_inference_expected_value_mdn_jkimyei_"
+                              "bnf_path = /cuwacunu/src/config/grammar/"
+                              "wikimyei.inference.expected_value.mdn.jkimyei."
+                              "bnf\n"
+                              "wikimyei_inference_expected_value_mdn_jkimyei_"
+                              "path = /cuwacunu/src/config/"
+                              "wikimyei.inference.expected_value.mdn.jkimyei\n"
+                              "wikimyei_policy_portfolio_graph_node_"
+                              "allocation_jkimyei_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "wikimyei.policy.portfolio.graph_node_"
+                              "allocation.jkimyei.bnf\n"
+                              "wikimyei_policy_portfolio_graph_node_"
+                              "allocation_jkimyei_path = " +
+                              graph_allocation_jkimyei_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_hero_dsl_path = " +
+                              runtime_policy_path.string() +
+                              "\n"
+                              "runtime_wave_dsl_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "hero.runtime.wave.dsl.bnf\n"
+                              "runtime_wave_dsl_path = " +
+                              wave_path.string() +
+                              "\n"
+                              "lattice_splits_dsl_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "hero.lattice.splits.dsl.bnf\n"
+                              "lattice_splits_dsl_path = " +
+                              splits_path.string() +
+                              "\n"
+                              "environment_hero_dsl_path = " +
+                              environment_path.string() +
+                              "\n"
+                              "runtime_wave_id = policy_training_ppo_v0\n");
   hero_runtime::runtime_context_t wave_ctx{};
   wave_ctx.global_config_path = config_path;
+  const auto policy_wave_replay_job_dir =
+      wave_defaults_root / "components" /
+      "wikimyei.inference.expected_value.mdn" / "spawns" / "fixture" / "jobs" /
+      "run" /
+      "cwu_02v_channel_validation_eval_mdn_1630_2247.run."
+      "channel_inference_mdn.attempt_000002";
+  const auto policy_wave_replay_artifact_dir =
+      policy_wave_replay_job_dir / "artifacts" /
+      "kikijyeba.environment.replay.v1";
+  std::filesystem::create_directories(policy_wave_replay_artifact_dir);
+  write_text(policy_wave_replay_job_dir / "job.manifest",
+             "job_id=cwu_02v_channel_validation_eval_mdn_1630_2247.run."
+             "channel_inference_mdn.attempt_000002\n"
+             "job_attempt_index=2\n"
+             "protocol_id=cwu_02v\n"
+             "target_component_family_id=wikimyei.inference.expected_value."
+             "mdn\n"
+             "wave_action=run\n");
+  write_text(policy_wave_replay_job_dir / "job.state",
+             "status=completed\n"
+             "job_attempt_index=2\n"
+             "target_component_family_id=wikimyei.inference.expected_value."
+             "mdn\n"
+             "wave_action=run\n"
+             "resolved_anchor_index_begin=1630\n"
+             "resolved_anchor_index_end=2247\n"
+             "source_cursor_token=replay_cursor_token_v1\n");
+  write_text(policy_wave_replay_job_dir / "lattice.forecast_eval.fact",
+             "source_cursor_token=replay_cursor_token_v1\n"
+             "fact_digest=policy_wave_replay_forecast_fact_digest_v1\n"
+             "forecast_artifact_digest=policy_wave_replay_forecast_artifact_"
+             "digest_v1\n"
+             "evaluated_representation_checkpoint_digest="
+             "policy_wave_replay_rep_checkpoint_digest_v1\n"
+             "evaluated_mdn_checkpoint_digest="
+             "policy_wave_replay_mdn_checkpoint_digest_v1\n"
+             "influence_parent_generation_vector_digests="
+             "policy_wave_replay_rep_generation_vector_v1,"
+             "policy_wave_replay_mdn_generation_vector_v1\n");
+  write_text(policy_wave_replay_job_dir / "lattice.observer_belief.fact",
+             "source_cursor_token=replay_cursor_token_v1\n"
+             "fact_digest=policy_wave_replay_observer_fact_digest_v1\n");
+  write_text(policy_wave_replay_artifact_dir / "runtime_replay_batches.index",
+             "schema=kikijyeba.environment.replay.runtime_batch_index.v1\n"
+             "entry_count=1\n"
+             "entry_0_begin_anchor_index=1630\n"
+             "entry_0_end_anchor_index=2247\n");
+  const std::string policy_wave_replay_report_text =
+      "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
+      "artifact.v1\n"
+      "experiment_id=policy_wave_replay_source\n"
+      "completed_count=1\n"
+      "execution_profile_digest=policy_wave_replay_execution_profile_"
+      "digest_v1\n"
+      "policy_set_digest=policy_wave_replay_policy_set_digest_v1\n"
+      "cajtucu_invalid_trace_count=0\n"
+      "cajtucu_numeraire_fallback_pair_count=0\n"
+      "cajtucu_synthetic_market_step_count=0\n";
+  const std::string policy_wave_replay_report_digest =
+      replay_report_digest_for_text(policy_wave_replay_report_text);
+  write_text(policy_wave_replay_job_dir / "lattice.replay_environment.fact",
+             "fact_digest=policy_wave_replay_environment_fact_digest_v1\n"
+             "experiment_report_digest=" +
+                 policy_wave_replay_report_digest + "\n");
+  write_text(policy_wave_replay_artifact_dir /
+                 "runtime_replay_experiment.report",
+             policy_wave_replay_report_text);
   result.clear();
   error.clear();
   check(
@@ -3263,51 +3991,301 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "policy-training wave exposes policy_training job kind");
   require_contains(result, "\"policy_training_wave\":true",
                    "policy-training wave is recognized by Runtime");
-  require_contains(result, "\"policy_kind\":\"noop_policy_training.v1\"",
+  require_contains(result, "\"policy_kind\":\"ppo_policy_adapter.v1\"",
                    "policy-training wave exposes policy kind");
+  require_contains(
+      result,
+      "\"causal_schedule_digest\":\"policy_training_causal_walk_forward_all_"
+      "v1\"",
+      "policy-training wave exposes causal schedule digest");
+  require_contains(
+      result,
+      "\"early_stopping_policy_digest\":\"validation_only_patience_ppo_v0_"
+      "v1\"",
+      "policy-training wave exposes early-stopping policy");
+  require_contains(
+      result,
+      "\"hyperparameter_selection_policy_digest\":\"validation_only_grid_ppo_"
+      "v0_v1\"",
+      "policy-training wave exposes hyperparameter selector policy");
+  require_contains(
+      result,
+      "\"selector_policy_digest\":\"validation_selector_no_test_access_ppo_v0_"
+      "v1\"",
+      "policy-training wave exposes selector policy");
+  require_contains(result, "\"train_split_id\":\"train_core\"",
+                   "policy-training wave exposes train split binding");
+  require_contains(
+      result, "\"validation_split_id\":\"certified_replay_expansion_eval\"",
+      "policy-training wave exposes validation split binding");
+  require_contains(result, "\"test_split_id\":\"test_holdout\"",
+                   "policy-training wave exposes test split binding");
   result.clear();
   error.clear();
-  check(execute_runtime_run_json("{\"subject\":\"wave\",\"mode\":\"dry_run\"}",
-                                 &wave_ctx, &result, &error),
+  const bool policy_wave_dry_run_ok =
+      execute_runtime_run_json("{\"subject\":\"wave\",\"mode\":\"dry_run\"}",
+                               &wave_ctx, &result, &error);
+  check(policy_wave_dry_run_ok,
         "policy component wave dry-run failed: " + error + " result=" + result);
-  require_contains(result,
-                   "\"target_component_family_id\":\"wikimyei.policy."
-                   "portfolio.graph_node_allocation\"",
-                   "policy component wave plan exposes graph-node allocation "
-                   "target");
-  require_contains(result,
-                   "\"component_driver_kind\":\"contract_backed_policy_"
-                   "training\"",
-                   "policy component wave uses contract-backed component "
-                   "driver through hero.runtime.run");
-  require_contains(result, "\"contract_required\":true",
-                   "policy component wave plan requires persisted contract");
+  require_contains(
+      result,
+      "\"schema_version\":\"kikijyeba.runtime.policy_training_job_contract_"
+      "packet.v1\"",
+      "policy component wave dry-run synthesizes a policy-training contract "
+      "packet");
+  require_contains(
+      result,
+      "\"policy_family_id\":\"wikimyei.policy.portfolio.graph_node_"
+      "allocation\"",
+      "policy component wave dry-run exposes graph-node allocation policy "
+      "family");
+  require_contains(
+      result,
+      std::string("\"replay_job_dir\":\"") +
+          policy_wave_replay_job_dir.string() + "\"",
+      "policy component wave dry-run derives replay source from Runtime state");
+  require_contains(result, "\"parent_checkpoint_digest\":",
+                   "policy component wave dry-run derives fresh-spawn parent "
+                   "checkpoint identity");
   result.clear();
   error.clear();
-  check(execute_runtime_run_json(
-            valid_policy_training_args("dry_run", "unused", "unused",
-                                       config_path.string(), false),
-            &wave_ctx, &result, &error),
+  check(!execute_runtime_run_json("{\"subject\":\"wave\",\"mode\":\"execute\"}",
+                                  &wave_ctx, &result, &error),
+        "policy component wave execute without materialized contract should "
+        "fail");
+  require_contains(
+      error, "E_RUNTIME_POLICY_COMPONENT_DRIVER_MATERIALIZED_CONTRACT_REQUIRED",
+      "policy component wave execute keeps materialized proof contract "
+      "requirement");
+  std::string wave_policy_training_args = valid_policy_training_args(
+      "dry_run", "ppo", "unused", config_path.string(), false,
+      "b3c817006238874d", "policy_training_range_train_anchor_0_1600_v1",
+      "policy_training_range_validation_anchor_1630_2247_v1",
+      "policy_training_range_test_anchor_2100_2247_v1");
+  replace_all(wave_policy_training_args,
+              "\"policy_architecture_digest\":\"arch_digest_v0\",", "");
+  replace_all(wave_policy_training_args,
+              "\"policy_dsl_digest\":\"policy_dsl_digest_v1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"policy_net_digest\":\"policy_net_digest_v1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"policy_input_feature_manifest_digest\":\"policy_input_"
+              "manifest_digest_v1\",",
+              "");
+  replace_all(wave_policy_training_args,
+              "\"training_config_digest\":\"train_config_digest_v0\",", "");
+  replace_all(wave_policy_training_args,
+              "\"policy_jkimyei_digest\":\"policy_jkimyei_digest_v1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"action_distribution_config_digest\":\"action_distribution_"
+              "config_digest_v1\",",
+              "");
+  replace_all(wave_policy_training_args,
+              "\"actor_architecture_digest\":\"actor_arch_digest_v1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"critic_architecture_digest\":\"critic_arch_digest_v1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"ppo_config_digest\":\"ppo_config_digest_v1\",", "");
+  replace_all(wave_policy_training_args, "\"ppo_target_kl\":0.02,",
+              "\"ppo_target_kl\":0.03,");
+  replace_all(wave_policy_training_args, "\"ppo_entropy_coeff\":0.01,",
+              "\"ppo_learning_rate\":0.00002,\"ppo_entropy_coeff\":0.01,");
+  replace_all(wave_policy_training_args, "\"ppo_epochs_per_rollout\":4,",
+              "\"ppo_epochs_per_rollout\":2,");
+  replace_all(wave_policy_training_args,
+              "\"target_node_universe_digest\":\"target_node_universe_"
+              "digest_v1\",",
+              "");
+  replace_all(wave_policy_training_args,
+              "\"snapshot_family_digest\":\"snapshot_family_digest_v1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"component_assembly_fingerprint\":\"graph_node_allocation_1\",",
+              "");
+  replace_all(wave_policy_training_args,
+              "\"protocol_contract_fingerprint\":\"contract_1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"graph_order_fingerprint\":\"graph_1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"source_cursor_token\":\"cursor_1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"execution_profile_digest\":\"execution_profile_digest_v1\",",
+              "");
+  replace_all(
+      wave_policy_training_args,
+      "\"parent_forecast_eval_fact_digest\":\"forecast_eval_fact_digest\",",
+      "");
+  replace_all(wave_policy_training_args,
+              "\"parent_observer_belief_fact_digest\":\"observer_belief_fact_"
+              "digest\",",
+              "");
+  replace_all(wave_policy_training_args,
+              "\"parent_allocation_engine_fact_digest\":\"allocation_engine_"
+              "fact_digest\",",
+              "");
+  replace_all(wave_policy_training_args,
+              "\"parent_replay_environment_fact_digest\":\"replay_env_fact_"
+              "digest\",",
+              "");
+  replace_all(wave_policy_training_args,
+              "\"causal_schedule_digest\":\"causal_schedule_digest_v1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"early_stopping_policy_digest\":\"early_stop_digest_v1\",", "");
+  replace_all(wave_policy_training_args,
+              "\"hyperparameter_selection_policy_digest\":\"selector_digest_"
+              "v1\",",
+              "");
+  replace_all(wave_policy_training_args,
+              "\"selector_policy_digest\":\"selector_policy_digest_v1\",", "");
+  replace_all(wave_policy_training_args, "\"random_seed\":0,", "");
+  replace_all(wave_policy_training_args, "\"max_parallel_jobs\":1,", "");
+  result.clear();
+  error.clear();
+  const bool wave_default_dry_run_ok = execute_runtime_run_json(
+      wave_policy_training_args, &wave_ctx, &result, &error);
+  check(wave_default_dry_run_ok,
         "policy-training wave-default dry-run failed: " + error +
             " result=" + result);
   require_contains(result,
                    "\"policy_id\":\"wikimyei.policy.portfolio.graph_node_"
-                   "allocation.noop_pre_ppo\"",
+                   "allocation.ppo_v0\"",
                    "policy-training contract should take policy_id from wave");
   require_contains(
-      result, "\"policy_kind\":\"noop_policy_training.v1\"",
+      result, "\"policy_kind\":\"ppo_policy_adapter.v1\"",
       "policy-training contract should take policy_kind from wave");
+  require_contains(result, "\"accounting_numeraire_node_id\":\"USDT\"",
+                   "policy-training contract should derive accounting "
+                   "numeraire from config");
+  require_contains(result, "\"target_node_ids\":\"BTC,USDT,ETH\"",
+                   "policy-training contract should derive target nodes from "
+                   "the graph DSL");
+  require_contains(
+      result,
+      "\"target_node_universe_digest\":\"b74fcdf542df32cb862b0f0ac7efb20b"
+      "732cae303a9e36a976a69be70d4747b3\"",
+      "policy-training contract should derive target-node universe digest "
+      "from graph DSL and accounting numeraire");
+  const std::string expected_policy_dsl_digest =
+      cuwacunu::hero::marshal::digest_detail::sha256_hex(
+          read_text(graph_allocation_path));
+  const std::string expected_policy_features_digest =
+      cuwacunu::hero::marshal::digest_detail::sha256_hex(
+          read_text(graph_allocation_features_path));
+  const std::string expected_policy_net_digest =
+      cuwacunu::hero::marshal::digest_detail::sha256_hex(
+          read_text(graph_allocation_net_path));
+  const std::string expected_policy_jkimyei_digest =
+      cuwacunu::hero::marshal::digest_detail::sha256_hex(
+          read_text(graph_allocation_jkimyei_path));
+  const std::string expected_policy_architecture_digest = "ad7fc3ef8146888e";
+  require_contains(
+      result, "\"policy_dsl_digest\":\"" + expected_policy_dsl_digest + "\"",
+      "policy-training contract should derive policy DSL digest "
+      "from configured policy source");
+  require_contains(
+      result,
+      "\"policy_input_feature_manifest_digest\":\"" +
+          expected_policy_features_digest + "\"",
+      "policy-training contract should derive feature manifest digest from "
+      "configured policy source");
+  require_contains(
+      result, "\"policy_net_digest\":\"" + expected_policy_net_digest + "\"",
+      "policy-training contract should derive policy net digest from "
+      "configured policy net");
+  require_contains(
+      result,
+      "\"policy_jkimyei_digest\":\"" + expected_policy_jkimyei_digest + "\"",
+      "policy-training contract should derive policy jkimyei digest from "
+      "configured policy source");
+  require_contains(
+      result,
+      "\"training_config_digest\":\"" + expected_policy_jkimyei_digest + "\"",
+      "policy-training contract should derive training config digest from "
+      "configured policy jkimyei source");
+  require_contains(result,
+                   "\"action_distribution_config_digest\":\"masked_dirichlet_"
+                   "simplex.graph_node_allocation.v1\"",
+                   "policy-training contract should derive action "
+                   "distribution config digest from configured policy net");
+  require_contains(
+      result,
+      "\"policy_architecture_digest\":\"" +
+          expected_policy_architecture_digest + "\"",
+      "policy-training contract should derive policy architecture digest from "
+      "configured policy net");
+  require_contains(
+      result,
+      "\"actor_architecture_digest\":\"graph_node_allocation_actor.net.v1." +
+          expected_policy_architecture_digest + "\"",
+      "policy-training contract should derive actor architecture digest from "
+      "configured policy net");
+  require_contains(
+      result,
+      "\"critic_architecture_digest\":\"graph_node_allocation_critic.net.v1." +
+          expected_policy_architecture_digest + "\"",
+      "policy-training contract should derive critic architecture digest from "
+      "configured policy net");
+  require_contains(
+      result,
+      "\"ppo_config_digest\":\"ppo_clip_gae.v1.gamma_0_99.lambda_0_95.clip_0_"
+      "20.target_kl_0_03.lr_0_00002.minibatch_32.epochs_2\"",
+      "policy-training contract should derive PPO config digest from bound "
+      "hyperparameters");
+  require_contains(
+      result, "\"linear_transaction_cost_rate\":0.001",
+      "policy-training contract should derive execution cost rate from "
+      "Environment policy");
+  require_contains(
+      result, "\"max_parallel_jobs\":4",
+      "policy-training contract should derive replay worker cap from "
+      "Environment policy");
+  require_contains(result,
+                   "\"observation_schema_digest\":\"kikijyeba.environment."
+                   "policy_input.v1\"",
+                   "policy-training contract should derive observation schema "
+                   "from graph-node allocation DSL");
+  require_contains(
+      result,
+      "\"reward_contract_digest\":\"kikijyeba.environment.reward."
+      "post_execution_ledger_log_growth_cost_drawdown.v1\"",
+      "policy-training contract should derive reward contract from "
+      "graph-node allocation DSL");
   require_contains(result,
                    "\"training_schedule_mode\":\"causal_walk_forward_"
                    "training.v1\"",
                    "policy-training contract should take schedule mode from "
                    "wave");
+  require_contains(
+      result,
+      "\"causal_schedule_digest\":\"policy_training_causal_walk_forward_all_"
+      "v1\"",
+      "policy-training contract should take causal schedule digest from wave");
+  require_contains(
+      result,
+      "\"snapshot_family_digest\":\"policy_training_causal_snapshots.cwu_02v."
+      "graph_anchor.v1\"",
+      "policy-training contract should take snapshot family digest from wave");
+  require_contains(
+      result,
+      "\"early_stopping_policy_digest\":\"validation_only_patience_ppo_v0_"
+      "v1\"",
+      "policy-training contract should take early-stopping policy from wave");
+  require_contains(
+      result,
+      "\"hyperparameter_selection_policy_digest\":\"validation_only_grid_ppo_"
+      "v0_v1\"",
+      "policy-training contract should take hyperparameter selector from wave");
+  require_contains(
+      result,
+      "\"selector_policy_digest\":\"validation_selector_no_test_access_ppo_v0_"
+      "v1\"",
+      "policy-training contract should take selector policy from wave");
   const auto policy_wave_contract_path =
       wave_defaults_root / "policy_training.contract";
   const std::string policy_wave_contract_digest =
       json_string_field(result, "contract_digest");
-  write_text(policy_wave_contract_path,
-             json_unescaped_string_field(result, "contract_text"));
+  const std::string policy_wave_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  write_text(policy_wave_contract_path, policy_wave_contract_text);
   result.clear();
   error.clear();
   check(execute_runtime_run_json("{\"subject\":\"wave\",\"mode\":\"dry_run\","
@@ -3322,6 +4300,2135 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       result, "\"contract_digest\":\"" + policy_wave_contract_digest + "\"",
       "policy component wave delegates persisted contract to "
       "policy-training driver");
+  check(policy_wave_contract_text.find(
+            "linear_transaction_cost_rate=0.001\n") != std::string::npos,
+        "policy wave fixture should contain Environment-derived cost rate");
+  check(policy_wave_contract_text.find(
+            "linear_transaction_cost_rate_bound=true\n") != std::string::npos,
+        "policy wave fixture should bind Environment-derived cost rate");
+  check(policy_wave_contract_text.find("max_parallel_jobs=4\n") !=
+            std::string::npos,
+        "policy wave fixture should contain Environment-derived worker cap");
+  check(policy_wave_contract_text.find("initial_equity_numeraire=10000\n") !=
+            std::string::npos,
+        "policy wave fixture should contain Environment replay initial "
+        "equity");
+  check(policy_wave_contract_text.find("max_node_weight=0.95\n") !=
+            std::string::npos,
+        "policy wave fixture should contain Environment replay node-weight "
+        "bound");
+  check(policy_wave_contract_text.find("max_turnover_l1=1\n") !=
+            std::string::npos,
+        "policy wave fixture should contain Environment replay turnover "
+        "bound");
+  check(policy_wave_contract_text.find(
+            "causal_purged_embargo_policy_fingerprint=embargo_policy_anchor_"
+            "v1\n") != std::string::npos,
+        "policy wave fixture should contain Runtime-owned causal embargo "
+        "policy");
+  check(policy_wave_contract_text.find(
+            "embargo_policy_fingerprint=embargo_policy_anchor_v1\n") !=
+            std::string::npos,
+        "policy wave fixture should contain Runtime-owned legacy embargo "
+        "mirror");
+  auto omitted_split_range_contract_text = policy_wave_contract_text;
+  replace_all(omitted_split_range_contract_text,
+              "split_policy_fingerprint=b3c817006238874d\n", "");
+  replace_all(omitted_split_range_contract_text,
+              "training_range_digest="
+              "policy_training_range_train_anchor_0_1600_v1\n",
+              "");
+  replace_all(omitted_split_range_contract_text,
+              "validation_range_digest="
+              "policy_training_range_validation_anchor_1630_2247_v1\n",
+              "");
+  replace_all(omitted_split_range_contract_text,
+              "test_range_digest="
+              "policy_training_range_test_anchor_2100_2247_v1\n",
+              "");
+  const auto omitted_split_range_contract_path =
+      wave_defaults_root / "policy_training.omit_split_ranges.contract";
+  write_text(omitted_split_range_contract_path,
+             omitted_split_range_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_split_range_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted split fingerprint and ranges "
+        "from Runtime wave plus Lattice splits: " +
+            error);
+  require_contains(result, "\"split_policy_fingerprint\":\"b3c817006238874d\"",
+                   "contract file should regain Lattice split policy "
+                   "fingerprint");
+  require_contains(
+      result,
+      "\"training_range_digest\":\"policy_training_range_train_anchor_0_1600_"
+      "v1\"",
+      "contract file should regain train split range digest");
+  require_contains(
+      result,
+      "\"validation_range_digest\":\"policy_training_range_validation_anchor_"
+      "1630_2247_v1\"",
+      "contract file should regain validation split range digest");
+  require_contains(
+      result,
+      "\"test_range_digest\":\"policy_training_range_test_anchor_2100_2247_"
+      "v1\"",
+      "contract file should regain test split range digest");
+  auto bad_split_range_contract_text = policy_wave_contract_text;
+  replace_all(bad_split_range_contract_text,
+              "training_range_digest="
+              "policy_training_range_train_anchor_0_1600_v1\n",
+              "training_range_digest="
+              "policy_training_range_train_anchor_1_1600_v1\n");
+  const auto bad_split_range_contract_path =
+      wave_defaults_root / "policy_training.bad_split_range.contract";
+  write_text(bad_split_range_contract_path, bad_split_range_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_split_range_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject split-owned range drift");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_SPLIT_DEFAULT_MISMATCH",
+                   "split range mismatch should name Runtime wave/Lattice "
+                   "split owners");
+  auto bad_split_fingerprint_contract_text = policy_wave_contract_text;
+  replace_all(bad_split_fingerprint_contract_text,
+              "split_policy_fingerprint=b3c817006238874d\n",
+              "split_policy_fingerprint=stale_split_policy\n");
+  const auto bad_split_fingerprint_contract_path =
+      wave_defaults_root / "policy_training.bad_split_fingerprint.contract";
+  write_text(bad_split_fingerprint_contract_path,
+             bad_split_fingerprint_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_split_fingerprint_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject split policy fingerprint drift");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_SPLIT_DEFAULT_MISMATCH",
+                   "split fingerprint mismatch should name Runtime wave/"
+                   "Lattice split owners");
+  auto omitted_environment_cost_contract_text = policy_wave_contract_text;
+  replace_all(omitted_environment_cost_contract_text,
+              "linear_transaction_cost_rate=0.001\n", "");
+  replace_all(omitted_environment_cost_contract_text,
+              "linear_transaction_cost_rate_bound=true\n", "");
+  replace_all(omitted_environment_cost_contract_text, "max_parallel_jobs=4\n",
+              "");
+  replace_all(omitted_environment_cost_contract_text,
+              "initial_equity_numeraire=10000\n", "");
+  replace_all(omitted_environment_cost_contract_text,
+              "initial_equity_numeraire_bound=true\n", "");
+  replace_all(omitted_environment_cost_contract_text, "max_node_weight=0.95\n",
+              "");
+  replace_all(omitted_environment_cost_contract_text,
+              "max_node_weight_bound=true\n", "");
+  replace_all(omitted_environment_cost_contract_text, "max_turnover_l1=1\n",
+              "");
+  replace_all(omitted_environment_cost_contract_text,
+              "max_turnover_l1_bound=true\n", "");
+  const auto omitted_environment_cost_contract_path =
+      wave_defaults_root / "policy_training.omit_environment_cost.contract";
+  write_text(omitted_environment_cost_contract_path,
+             omitted_environment_cost_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_environment_cost_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted Environment execution cost: " +
+            error);
+  require_contains(
+      result, "\"linear_transaction_cost_rate\":0.001",
+      "contract file should regain Environment-derived execution cost rate");
+  require_contains(result, "\"max_parallel_jobs\":4",
+                   "contract file should regain Environment-derived replay "
+                   "worker cap");
+  require_contains(
+      result, "\"initial_equity_numeraire\":10000",
+      "contract file should regain Environment replay initial equity");
+  require_contains(result, "\"max_node_weight\":0.95",
+                   "contract file should regain Environment replay node-weight "
+                   "bound");
+  require_contains(result, "\"max_turnover_l1\":1",
+                   "contract file should regain Environment replay turnover "
+                   "bound");
+  auto bad_environment_cost_contract_text = policy_wave_contract_text;
+  replace_all(bad_environment_cost_contract_text,
+              "linear_transaction_cost_rate=0.001\n",
+              "linear_transaction_cost_rate=0.002\n");
+  const auto bad_environment_cost_contract_path =
+      wave_defaults_root / "policy_training.bad_environment_cost.contract";
+  write_text(bad_environment_cost_contract_path,
+             bad_environment_cost_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_environment_cost_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject Environment-owned execution cost drift");
+  require_contains(error,
+                   "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_MISMATCH",
+                   "Environment default mismatch should name configured owner");
+  auto bad_environment_constraint_contract_text = policy_wave_contract_text;
+  replace_all(bad_environment_constraint_contract_text,
+              "max_node_weight=0.95\n", "max_node_weight=0.80\n");
+  const auto bad_environment_constraint_contract_path =
+      wave_defaults_root /
+      "policy_training.bad_environment_constraint.contract";
+  write_text(bad_environment_constraint_contract_path,
+             bad_environment_constraint_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_environment_constraint_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject Environment replay action-bound drift");
+  require_contains(error,
+                   "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_MISMATCH",
+                   "Environment replay constraint mismatch should name "
+                   "configured owner");
+  auto bad_environment_parallel_contract_text = policy_wave_contract_text;
+  replace_all(bad_environment_parallel_contract_text, "max_parallel_jobs=4\n",
+              "max_parallel_jobs=2\n");
+  const auto bad_environment_parallel_contract_path =
+      wave_defaults_root / "policy_training.bad_environment_parallel.contract";
+  write_text(bad_environment_parallel_contract_path,
+             bad_environment_parallel_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_environment_parallel_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject Environment-owned replay worker drift");
+  require_contains(error,
+                   "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_MISMATCH",
+                   "Environment replay worker mismatch should name configured "
+                   "owner");
+  auto omitted_embargo_policy_contract_text = policy_wave_contract_text;
+  replace_all(omitted_embargo_policy_contract_text,
+              "causal_purged_embargo_policy_fingerprint=embargo_policy_anchor_"
+              "v1\n",
+              "");
+  replace_all(omitted_embargo_policy_contract_text,
+              "embargo_policy_fingerprint=embargo_policy_anchor_v1\n", "");
+  const auto omitted_embargo_policy_contract_path =
+      wave_defaults_root / "policy_training.omit_embargo_policy.contract";
+  write_text(omitted_embargo_policy_contract_path,
+             omitted_embargo_policy_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_embargo_policy_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted Runtime-owned embargo policy: " +
+            error);
+  require_contains(
+      result,
+      "\"causal_purged_embargo_policy_fingerprint\":\"embargo_policy_anchor_"
+      "v1\"",
+      "contract file should regain Runtime-owned causal embargo policy");
+  require_contains(result,
+                   "\"embargo_policy_fingerprint\":\"embargo_policy_anchor_"
+                   "v1\"",
+                   "contract file should regain Runtime-owned legacy embargo "
+                   "mirror");
+  auto bad_embargo_policy_contract_text = policy_wave_contract_text;
+  replace_all(bad_embargo_policy_contract_text,
+              "embargo_policy_fingerprint=embargo_policy_anchor_v1\n",
+              "embargo_policy_fingerprint=stale_embargo_policy\n");
+  const auto bad_embargo_policy_contract_path =
+      wave_defaults_root / "policy_training.bad_embargo_policy.contract";
+  write_text(bad_embargo_policy_contract_path,
+             bad_embargo_policy_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_embargo_policy_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject Runtime-owned embargo policy drift");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_RUNTIME_DEFAULT_MISMATCH",
+                   "Runtime embargo policy mismatch should name canonical "
+                   "owner");
+  const auto replay_identity_job_dir =
+      wave_defaults_root / "policy_training_replay_identity_job";
+  const auto replay_identity_artifact_dir =
+      replay_identity_job_dir / "artifacts" / "kikijyeba.environment.replay.v1";
+  std::filesystem::create_directories(replay_identity_artifact_dir);
+  write_text(replay_identity_job_dir / "job.manifest",
+             "source_cursor_token=replay_cursor_token_v1\n");
+  write_text(replay_identity_job_dir / "job.state",
+             "status=completed\n"
+             "source_cursor_token=replay_cursor_token_v1\n");
+  write_text(replay_identity_job_dir / "lattice.exposure.fact",
+             "source_cursor_token=replay_cursor_token_v1\n");
+  write_text(replay_identity_job_dir / "lattice.forecast_eval.fact",
+             "source_cursor_token=replay_cursor_token_v1\n"
+             "fact_digest=replay_forecast_fact_digest_v1\n"
+             "forecast_artifact_digest=replay_forecast_artifact_digest_v1\n"
+             "evaluated_representation_checkpoint_digest="
+             "replay_rep_checkpoint_digest_v1\n"
+             "evaluated_mdn_checkpoint_digest="
+             "replay_mdn_checkpoint_digest_v1\n"
+             "influence_parent_generation_vector_digests="
+             "replay_rep_generation_vector_v1,replay_mdn_generation_vector_v1\n"
+             "influence_producer_generation_vector_digest="
+             "replay_forecast_generation_vector_v1\n");
+  write_text(replay_identity_job_dir / "lattice.observer_belief.fact",
+             "source_cursor_token=replay_cursor_token_v1\n"
+             "fact_digest=replay_observer_fact_digest_v1\n");
+  write_text(replay_identity_job_dir / "lattice.allocation_engine.fact",
+             "source_cursor_token=replay_cursor_token_v1\n"
+             "fact_digest=replay_allocation_fact_digest_v1\n");
+  write_text(replay_identity_artifact_dir / "runtime_replay_batches.index",
+             "schema=kikijyeba.environment.replay.runtime_batch_index.v1\n"
+             "entry_count=1\n"
+             "entry_0_begin_anchor_index=0\n"
+             "entry_0_end_anchor_index=10\n");
+  const std::string replay_identity_batch_digest = digest_file_for_handoff(
+      replay_identity_artifact_dir / "runtime_replay_batches.index",
+      "policy_execution_replay_job_dir_anchor.v1");
+  const std::string replay_identity_report_text =
+      "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
+      "artifact.v1\n"
+      "experiment_id=replay_identity_parent\n"
+      "completed_count=1\n"
+      "execution_profile_digest=replay_execution_profile_digest_v1\n"
+      "policy_set_digest=replay_policy_set_digest_v1\n"
+      "cajtucu_invalid_trace_count=0\n"
+      "cajtucu_numeraire_fallback_pair_count=0\n"
+      "cajtucu_synthetic_market_step_count=0\n";
+  const std::string replay_identity_report_digest =
+      replay_report_digest_for_text(replay_identity_report_text);
+  write_text(replay_identity_job_dir / "lattice.replay_environment.fact",
+             "fact_digest=replay_environment_fact_digest_v1\n"
+             "experiment_report_digest=" +
+                 replay_identity_report_digest + "\n");
+  write_text(replay_identity_artifact_dir / "runtime_replay_experiments.index",
+             "schema=kikijyeba.environment.replay.runtime_experiment_index."
+             "v1\n"
+             "entry_count=2\n"
+             "entry_0_experiment_id=replay_identity_parent\n"
+             "entry_0_report_path=replay_identity_parent.report\n"
+             "entry_0_report_digest=" +
+                 replay_identity_report_digest +
+                 "\n"
+                 "entry_1_experiment_id=policy_training_child\n"
+                 "entry_1_report_path=" +
+                 (wave_defaults_root / "outside_child.report").string() + "\n");
+  write_text(replay_identity_artifact_dir / "replay_identity_parent.report",
+             replay_identity_report_text);
+  auto omitted_replay_identity_contract_text = policy_wave_contract_text;
+  set_assignment_line(omitted_replay_identity_contract_text, "replay_job_dir",
+                      replay_identity_job_dir.string());
+  for (const char *key :
+       {"policy_set_digest",
+        "execution_profile_digest",
+        "source_cursor_token",
+        "parent_forecast_eval_fact_digest",
+        "parent_observer_belief_fact_digest",
+        "parent_allocation_engine_fact_digest",
+        "parent_replay_environment_fact_digest",
+        "parent_replay_environment_report_digest",
+        "policy_execution_input_parent_forecast_eval_fact_digest",
+        "policy_execution_input_parent_forecast_artifact_digest",
+        "policy_execution_input_parent_replay_environment_fact_digest",
+        "policy_execution_input_parent_replay_environment_report_digest",
+        "policy_execution_replay_job_dir_digest",
+        "parent_policy_provenance_closure_digest",
+        "bundle_representation_checkpoint_digest",
+        "bundle_mdn_checkpoint_digest",
+        "bundle_representation_generation_vector_digest",
+        "bundle_mdn_generation_vector_digest",
+        "mdn_trained_against_representation_checkpoint_digest",
+        "mdn_trained_against_representation_generation_vector_digest",
+        "policy_trained_against_representation_generation_vector_digest",
+        "policy_trained_against_mdn_generation_vector_digest"}) {
+    erase_assignment_line(omitted_replay_identity_contract_text, key);
+  }
+  const auto omitted_replay_identity_contract_path =
+      wave_defaults_root / "policy_training.omit_replay_identity.contract";
+  write_text(omitted_replay_identity_contract_path,
+             omitted_replay_identity_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_replay_identity_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive replay-artifact identity from "
+        "replay_job_dir: " +
+            error);
+  require_contains(result, "\"source_cursor_token\":\"replay_cursor_token_v1\"",
+                   "contract file should regain replay-owned source cursor");
+  require_contains(
+      result,
+      "\"parent_forecast_eval_fact_digest\":\"replay_forecast_fact_digest_"
+      "v1\"",
+      "contract file should regain replay-owned parent forecast fact digest");
+  require_contains(
+      result,
+      "\"parent_observer_belief_fact_digest\":\"replay_observer_fact_digest_"
+      "v1\"",
+      "contract file should regain replay-owned parent observer fact digest");
+  require_contains(
+      result,
+      "\"parent_allocation_engine_fact_digest\":\"replay_allocation_fact_"
+      "digest_"
+      "v1\"",
+      "contract file should regain replay-owned parent allocation fact digest");
+  require_contains(
+      result,
+      "\"parent_replay_environment_fact_digest\":\"replay_environment_fact_"
+      "digest_v1\"",
+      "contract file should regain replay-owned parent replay environment fact "
+      "digest");
+  require_contains(
+      result,
+      "\"execution_profile_digest\":\"replay_execution_profile_digest_v1\"",
+      "contract file should regain replay report execution-profile digest");
+  require_contains(result,
+                   "\"policy_set_digest\":\"replay_policy_set_digest_v1\"",
+                   "contract file should regain replay report policy-set "
+                   "digest");
+  const std::string derived_replay_identity_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      derived_replay_identity_contract_text,
+      "policy_execution_input_parent_forecast_eval_fact_digest="
+      "replay_forecast_fact_digest_v1",
+      "contract file should regain replay-owned execution forecast fact lock");
+  require_contains(
+      derived_replay_identity_contract_text,
+      "policy_execution_input_parent_forecast_artifact_digest="
+      "replay_forecast_artifact_digest_v1",
+      "contract file should regain replay-owned execution forecast artifact "
+      "lock");
+  require_contains(
+      derived_replay_identity_contract_text,
+      "parent_replay_environment_report_digest=" +
+          replay_identity_report_digest,
+      "contract file should regain replay-owned parent replay report digest");
+  require_contains(
+      derived_replay_identity_contract_text,
+      "policy_execution_input_parent_replay_environment_report_digest=" +
+          replay_identity_report_digest,
+      "contract file should regain replay-owned execution replay report lock");
+  require_contains(
+      derived_replay_identity_contract_text,
+      "policy_execution_input_parent_replay_environment_fact_digest="
+      "replay_environment_fact_digest_v1",
+      "contract file should regain replay-owned execution replay environment "
+      "fact lock");
+  require_contains(
+      derived_replay_identity_contract_text,
+      "bundle_representation_checkpoint_digest="
+      "replay_rep_checkpoint_digest_v1",
+      "contract file should regain replay-owned representation checkpoint "
+      "bundle input");
+  require_contains(
+      derived_replay_identity_contract_text,
+      "bundle_mdn_checkpoint_digest=replay_mdn_checkpoint_digest_v1",
+      "contract file should regain replay-owned MDN checkpoint bundle input");
+  require_contains(
+      derived_replay_identity_contract_text,
+      "bundle_representation_generation_vector_digest="
+      "replay_rep_generation_vector_v1",
+      "contract file should regain replay-owned representation generation "
+      "vector bundle input");
+  require_contains(
+      derived_replay_identity_contract_text,
+      "bundle_mdn_generation_vector_digest=replay_mdn_generation_vector_v1",
+      "contract file should regain replay-owned MDN generation vector bundle "
+      "input");
+  require_contains(derived_replay_identity_contract_text,
+                   "policy_execution_replay_job_dir_digest=" +
+                       replay_identity_batch_digest,
+                   "contract file should regain replay batch-index digest");
+  const auto external_replay_report_job_dir =
+      wave_defaults_root / "policy_training_external_replay_report_job";
+  const auto external_replay_report_artifact_dir =
+      external_replay_report_job_dir / "artifacts" /
+      "kikijyeba.environment.replay.v1";
+  std::filesystem::create_directories(external_replay_report_artifact_dir);
+  write_text(external_replay_report_job_dir / "job.manifest",
+             "source_cursor_token=external_replay_cursor_token_v1\n");
+  write_text(external_replay_report_job_dir / "job.state",
+             "status=completed\n"
+             "source_cursor_token=external_replay_cursor_token_v1\n");
+  write_text(external_replay_report_job_dir / "lattice.exposure.fact",
+             "source_cursor_token=external_replay_cursor_token_v1\n");
+  write_text(external_replay_report_job_dir / "lattice.forecast_eval.fact",
+             "source_cursor_token=external_replay_cursor_token_v1\n"
+             "fact_digest=external_replay_forecast_fact_digest_v1\n"
+             "forecast_artifact_digest=external_replay_forecast_artifact_"
+             "digest_v1\n"
+             "evaluated_representation_checkpoint_digest="
+             "external_replay_rep_checkpoint_digest_v1\n"
+             "evaluated_mdn_checkpoint_digest="
+             "external_replay_mdn_checkpoint_digest_v1\n"
+             "influence_parent_generation_vector_digests="
+             "external_replay_rep_generation_vector_v1,"
+             "external_replay_mdn_generation_vector_v1\n"
+             "influence_producer_generation_vector_digest="
+             "external_replay_forecast_generation_vector_v1\n");
+  write_text(external_replay_report_job_dir / "lattice.observer_belief.fact",
+             "source_cursor_token=external_replay_cursor_token_v1\n"
+             "fact_digest=external_replay_observer_fact_digest_v1\n");
+  write_text(external_replay_report_job_dir / "lattice.allocation_engine.fact",
+             "source_cursor_token=external_replay_cursor_token_v1\n"
+             "fact_digest=external_replay_allocation_fact_digest_v1\n");
+  write_text(external_replay_report_artifact_dir /
+                 "runtime_replay_batches.index",
+             "schema=kikijyeba.environment.replay.runtime_batch_index.v1\n"
+             "entry_count=1\n"
+             "entry_0_begin_anchor_index=0\n"
+             "entry_0_end_anchor_index=10\n");
+  const std::string external_replay_report_text =
+      "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
+      "artifact.v1\n"
+      "experiment_id=external_replay_parent\n"
+      "completed_count=1\n"
+      "execution_profile_digest=external_replay_execution_profile_digest_v1\n"
+      "policy_set_digest=external_replay_policy_set_digest_v1\n"
+      "cajtucu_invalid_trace_count=0\n"
+      "cajtucu_numeraire_fallback_pair_count=0\n"
+      "cajtucu_synthetic_market_step_count=0\n";
+  const std::string external_replay_report_digest =
+      replay_report_digest_for_text(external_replay_report_text);
+  write_text(external_replay_report_job_dir / "lattice.replay_environment.fact",
+             "fact_digest=external_replay_environment_fact_digest_v1\n"
+             "experiment_report_digest=" +
+                 external_replay_report_digest + "\n");
+  const auto external_replay_report_path =
+      wave_defaults_root / "external_replay_parent.report";
+  write_text(external_replay_report_path, external_replay_report_text);
+  write_text(external_replay_report_artifact_dir /
+                 "runtime_replay_experiments.index",
+             "schema=kikijyeba.environment.replay.runtime_experiment_index.v1\n"
+             "entry_count=1\n"
+             "entry_0_experiment_id=external_replay_parent\n"
+             "entry_0_report_path=" +
+                 external_replay_report_path.string() +
+                 "\n"
+                 "entry_0_report_digest=" +
+                 external_replay_report_digest + "\n");
+  auto external_replay_report_contract_text =
+      omitted_replay_identity_contract_text;
+  replace_all(external_replay_report_contract_text,
+              "replay_job_dir=" + replay_identity_job_dir.string() + "\n",
+              "replay_job_dir=" + external_replay_report_job_dir.string() +
+                  "\n");
+  replace_all(external_replay_report_contract_text, "config_path=\n",
+              "config_path=" + config_path.string() + "\n");
+  if (external_replay_report_contract_text.find("config_path=") ==
+      std::string::npos) {
+    external_replay_report_contract_text +=
+        "config_path=" + config_path.string() + "\n";
+  }
+  const auto external_replay_report_contract_path =
+      wave_defaults_root / "policy_training.external_replay_report.contract";
+  write_text(external_replay_report_contract_path,
+             external_replay_report_contract_text);
+  result.clear();
+  error.clear();
+  const std::string external_replay_report_run_args =
+      "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+      external_replay_report_contract_path.string() + "\"}";
+  const bool external_replay_report_ok = execute_runtime_run_json(
+      external_replay_report_run_args, &wave_ctx, &result, &error);
+  check(external_replay_report_ok,
+        "policy contract should derive replay identity from digest-bound "
+        "runtime-root report paths: " +
+            error + " result=" + result);
+  require_contains(
+      result,
+      "\"execution_profile_digest\":\"external_replay_execution_profile_digest_"
+      "v1\"",
+      "contract file should regain execution profile from allowed external "
+      "report");
+  const std::string external_derived_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      external_derived_contract_text,
+      "parent_replay_environment_report_digest=" +
+          external_replay_report_digest,
+      "contract file should bind digest of allowed external replay report");
+  auto omitted_consumed_generation_vectors_contract_text =
+      omitted_replay_identity_contract_text;
+  replace_all(omitted_consumed_generation_vectors_contract_text,
+              "bundle_representation_generation_vector_digest=\n",
+              "bundle_representation_generation_vector_digest="
+              "replay_rep_generation_vector_v1\n");
+  replace_all(omitted_consumed_generation_vectors_contract_text,
+              "bundle_mdn_generation_vector_digest=\n",
+              "bundle_mdn_generation_vector_digest="
+              "replay_mdn_generation_vector_v1\n");
+  replace_all(omitted_consumed_generation_vectors_contract_text,
+              "policy_execution_no_lookahead_certificate_digest=\n",
+              "policy_execution_no_lookahead_certificate_digest="
+              "policy_execution_certificate_digest_v1\n");
+  replace_all(omitted_consumed_generation_vectors_contract_text,
+              "policy_execution_provenance_closure_digest=\n",
+              "policy_execution_provenance_closure_digest="
+              "policy_execution_closure_digest_v1\n");
+  replace_all(omitted_consumed_generation_vectors_contract_text,
+              "policy_execution_consumed_generation_vector_digests=\n", "");
+  const auto omitted_consumed_generation_vectors_contract_path =
+      wave_defaults_root /
+      "policy_training.omit_consumed_generation_vectors.contract";
+  write_text(omitted_consumed_generation_vectors_contract_path,
+             omitted_consumed_generation_vectors_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_consumed_generation_vectors_contract_path.string() +
+                "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted consumed generation-vector "
+        "list from replay forecast lineage: " +
+            error);
+  const std::string derived_consumed_generation_vectors_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      derived_consumed_generation_vectors_contract_text,
+      "policy_execution_consumed_generation_vector_digests="
+      "replay_rep_generation_vector_v1,replay_mdn_generation_vector_v1,"
+      "replay_forecast_generation_vector_v1",
+      "contract file should regain replay consumed generation vectors");
+  auto bad_consumed_generation_vectors_contract_text =
+      omitted_consumed_generation_vectors_contract_text;
+  bad_consumed_generation_vectors_contract_text +=
+      "policy_execution_consumed_generation_vector_digests="
+      "replay_rep_generation_vector_v1,replay_mdn_generation_vector_v1\n";
+  const auto bad_consumed_generation_vectors_contract_path =
+      wave_defaults_root /
+      "policy_training.bad_consumed_generation_vectors.contract";
+  write_text(bad_consumed_generation_vectors_contract_path,
+             bad_consumed_generation_vectors_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_consumed_generation_vectors_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject consumed generation-vector lists "
+        "missing replay forecast lineage");
+  require_contains(
+      error, "E_RUNTIME_POLICY_EXECUTION_CONSUMED_GENERATION_VECTORS_MISMATCH",
+      "consumed generation-vector mismatch should name replay lineage owner");
+  auto bad_replay_bundle_identity_contract_text =
+      omitted_replay_identity_contract_text;
+  set_assignment_line(bad_replay_bundle_identity_contract_text,
+                      "bundle_mdn_generation_vector_digest",
+                      "stale_mdn_generation_vector");
+  const auto bad_replay_bundle_identity_contract_path =
+      wave_defaults_root /
+      "policy_training.bad_replay_bundle_identity.contract";
+  write_text(bad_replay_bundle_identity_contract_path,
+             bad_replay_bundle_identity_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_replay_bundle_identity_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject replay-owned bundle input drift");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_REPLAY_ARTIFACT_IDENTITY_MISMATCH",
+      "replay-owned bundle input mismatch should name replay_job_dir as "
+      "canonical owner");
+  auto bad_parent_replay_report_digest_contract_text =
+      omitted_replay_identity_contract_text;
+  set_assignment_line(bad_parent_replay_report_digest_contract_text,
+                      "parent_replay_environment_report_digest",
+                      "stale_replay_report_digest");
+  const auto bad_parent_replay_report_digest_contract_path =
+      wave_defaults_root /
+      "policy_training.bad_parent_replay_report_digest.contract";
+  write_text(bad_parent_replay_report_digest_contract_path,
+             bad_parent_replay_report_digest_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_parent_replay_report_digest_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject replay-owned report identity drift");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_REPLAY_ARTIFACT_IDENTITY_MISMATCH",
+      "replay-owned report mismatch should name replay_job_dir as canonical "
+      "owner");
+  auto bad_replay_allocation_identity_contract_text =
+      omitted_replay_identity_contract_text;
+  bad_replay_allocation_identity_contract_text +=
+      "parent_allocation_engine_fact_digest=stale_allocation_fact_digest\n";
+  const auto bad_replay_allocation_identity_contract_path =
+      wave_defaults_root /
+      "policy_training.bad_replay_allocation_identity.contract";
+  write_text(bad_replay_allocation_identity_contract_path,
+             bad_replay_allocation_identity_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_replay_allocation_identity_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject replay-owned allocation fact drift");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_REPLAY_ARTIFACT_IDENTITY_MISMATCH",
+      "replay-owned allocation mismatch should name replay_job_dir as "
+      "canonical owner");
+  auto bad_replay_environment_identity_contract_text =
+      omitted_replay_identity_contract_text;
+  bad_replay_environment_identity_contract_text +=
+      "parent_replay_environment_fact_digest=stale_replay_environment_fact_"
+      "digest\n";
+  const auto bad_replay_environment_identity_contract_path =
+      wave_defaults_root /
+      "policy_training.bad_replay_environment_identity.contract";
+  write_text(bad_replay_environment_identity_contract_path,
+             bad_replay_environment_identity_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_replay_environment_identity_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject replay-owned replay environment fact "
+        "drift");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_REPLAY_ARTIFACT_IDENTITY_MISMATCH",
+      "replay-owned replay environment mismatch should name replay_job_dir as "
+      "canonical owner");
+  auto bad_replay_identity_contract_text =
+      omitted_replay_identity_contract_text;
+  replace_all(bad_replay_identity_contract_text,
+              "replay_job_dir=" + replay_identity_job_dir.string() + "\n",
+              "replay_job_dir=" + replay_identity_job_dir.string() +
+                  "\nsource_cursor_token=stale_cursor_token\n");
+  const auto bad_replay_identity_contract_path =
+      wave_defaults_root / "policy_training.bad_replay_identity.contract";
+  write_text(bad_replay_identity_contract_path,
+             bad_replay_identity_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_replay_identity_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject replay-artifact identity drift");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_REPLAY_ARTIFACT_IDENTITY_MISMATCH",
+      "replay-artifact mismatch should name replay_job_dir as canonical "
+      "owner");
+  auto bad_replay_report_identity_contract_text =
+      omitted_replay_identity_contract_text;
+  replace_all(bad_replay_report_identity_contract_text,
+              "replay_job_dir=" + replay_identity_job_dir.string() + "\n",
+              "replay_job_dir=" + replay_identity_job_dir.string() +
+                  "\nexecution_profile_digest=stale_profile_digest\n");
+  const auto bad_replay_report_identity_contract_path =
+      wave_defaults_root /
+      "policy_training.bad_replay_report_identity.contract";
+  write_text(bad_replay_report_identity_contract_path,
+             bad_replay_report_identity_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_replay_report_identity_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject replay-report identity drift");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_REPLAY_ARTIFACT_IDENTITY_MISMATCH",
+      "replay-report identity mismatch should name replay_job_dir as canonical "
+      "owner");
+  require_contains(error, "execution_profile_digest=stale_profile_digest",
+                   "replay-report identity mismatch should name stale field");
+  auto omitted_wave_identity_contract_text = policy_wave_contract_text;
+  replace_all(omitted_wave_identity_contract_text,
+              "policy_id=wikimyei.policy.portfolio.graph_node_allocation."
+              "ppo_v0\n",
+              "");
+  replace_all(omitted_wave_identity_contract_text,
+              "policy_kind=ppo_policy_adapter.v1\n", "");
+  replace_all(omitted_wave_identity_contract_text,
+              "training_schedule_mode=causal_walk_forward_training.v1\n", "");
+  const auto omitted_wave_identity_contract_path =
+      wave_defaults_root / "policy_training.omit_wave_identity.contract";
+  write_text(omitted_wave_identity_contract_path,
+             omitted_wave_identity_contract_text);
+  result.clear();
+  error.clear();
+  check(
+      execute_runtime_run_json(
+          "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+              omitted_wave_identity_contract_path.string() + "\"}",
+          &wave_ctx, &result, &error),
+      "policy contract should derive omitted wave identity from active wave: " +
+          error);
+  require_contains(result,
+                   "\"policy_id\":\"wikimyei.policy.portfolio.graph_node_"
+                   "allocation.ppo_v0\"",
+                   "contract file should regain wave-owned policy id");
+  require_contains(result, "\"policy_kind\":\"ppo_policy_adapter.v1\"",
+                   "contract file should regain wave-owned policy kind");
+  require_contains(result,
+                   "\"training_schedule_mode\":\"causal_walk_forward_"
+                   "training.v1\"",
+                   "contract file should regain wave-owned training schedule");
+  auto omitted_wave_schedule_contract_text = policy_wave_contract_text;
+  check(omitted_wave_schedule_contract_text.find(
+            "causal_schedule_digest=policy_training_causal_walk_forward_all_"
+            "v1\n") != std::string::npos,
+        "test fixture should contain wave-owned causal schedule digest");
+  check(omitted_wave_schedule_contract_text.find(
+            "snapshot_family_digest=policy_training_causal_snapshots.cwu_02v."
+            "graph_anchor.v1\n") != std::string::npos,
+        "test fixture should contain wave-owned snapshot family digest");
+  check(omitted_wave_schedule_contract_text.find(
+            "early_stopping_policy_digest=validation_only_patience_ppo_v0_"
+            "v1\n") != std::string::npos,
+        "test fixture should contain wave-owned early-stopping policy");
+  check(omitted_wave_schedule_contract_text.find(
+            "hyperparameter_selection_policy_digest=validation_only_grid_ppo_"
+            "v0_v1\n") != std::string::npos,
+        "test fixture should contain wave-owned hyperparameter selector");
+  check(omitted_wave_schedule_contract_text.find(
+            "selector_policy_digest=validation_selector_no_test_access_ppo_v0_"
+            "v1\n") != std::string::npos,
+        "test fixture should contain wave-owned selector policy");
+  replace_all(omitted_wave_schedule_contract_text,
+              "causal_schedule_digest=policy_training_causal_walk_forward_all_"
+              "v1\n",
+              "");
+  replace_all(omitted_wave_schedule_contract_text,
+              "snapshot_family_digest=policy_training_causal_snapshots.cwu_02v."
+              "graph_anchor.v1\n",
+              "");
+  replace_all(omitted_wave_schedule_contract_text,
+              "early_stopping_policy_digest=validation_only_patience_ppo_v0_"
+              "v1\n",
+              "");
+  replace_all(omitted_wave_schedule_contract_text,
+              "hyperparameter_selection_policy_digest=validation_only_grid_ppo_"
+              "v0_v1\n",
+              "");
+  replace_all(omitted_wave_schedule_contract_text,
+              "selector_policy_digest=validation_selector_no_test_access_ppo_"
+              "v0_v1\n",
+              "");
+  const auto omitted_wave_schedule_contract_path =
+      wave_defaults_root / "policy_training.omit_wave_schedule.contract";
+  write_text(omitted_wave_schedule_contract_path,
+             omitted_wave_schedule_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_wave_schedule_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted schedule selectors from active "
+        "wave: " +
+            error);
+  require_contains(
+      result,
+      "\"causal_schedule_digest\":\"policy_training_causal_walk_forward_all_"
+      "v1\"",
+      "contract file should regain wave-owned causal schedule digest");
+  require_contains(
+      result,
+      "\"snapshot_family_digest\":\"policy_training_causal_snapshots.cwu_02v."
+      "graph_anchor.v1\"",
+      "contract file should regain wave-owned snapshot family digest");
+  require_contains(
+      result,
+      "\"early_stopping_policy_digest\":\"validation_only_patience_ppo_v0_"
+      "v1\"",
+      "contract file should regain wave-owned early-stopping policy");
+  require_contains(
+      result,
+      "\"hyperparameter_selection_policy_digest\":\"validation_only_grid_ppo_"
+      "v0_v1\"",
+      "contract file should regain wave-owned hyperparameter selector");
+  require_contains(
+      result,
+      "\"selector_policy_digest\":\"validation_selector_no_test_access_ppo_v0_"
+      "v1\"",
+      "contract file should regain wave-owned selector policy");
+  const auto non_policy_config_path =
+      wave_defaults_root / ".config.inference_active";
+  auto non_policy_config_text = read_text(config_path);
+  replace_all(non_policy_config_text,
+              "runtime_wave_id = policy_training_ppo_v0\n",
+              "runtime_wave_id = eval_wave\n");
+  write_text(non_policy_config_path, non_policy_config_text);
+  auto non_policy_active_contract_text = omitted_wave_identity_contract_text;
+  replace_all(non_policy_active_contract_text,
+              "config_path=" + config_path.string() + "\n",
+              "config_path=" + non_policy_config_path.string() + "\n");
+  const auto non_policy_active_contract_path =
+      wave_defaults_root /
+      "policy_training.omit_wave_identity.inference_active.contract";
+  write_text(non_policy_active_contract_path, non_policy_active_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                non_policy_active_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive wave identity from unique "
+        "policy-training wave when active config wave is non-policy: " +
+            error);
+  require_contains(result,
+                   "\"policy_id\":\"wikimyei.policy.portfolio.graph_node_"
+                   "allocation.ppo_v0\"",
+                   "non-policy active wave should still derive policy id from "
+                   "the unique policy-training wave");
+  require_contains(
+      result, "\"policy_kind\":\"ppo_policy_adapter.v1\"",
+      "non-policy active wave should still derive policy kind from the unique "
+      "policy-training wave");
+  require_contains(result,
+                   "\"training_schedule_mode\":\"causal_walk_forward_"
+                   "training.v1\"",
+                   "non-policy active wave should still derive schedule mode "
+                   "from the unique policy-training wave");
+  auto bad_wave_identity_contract_text = policy_wave_contract_text;
+  replace_all(bad_wave_identity_contract_text,
+              "policy_kind=ppo_policy_adapter.v1\n",
+              "policy_kind=unexpected_policy_adapter.v1\n");
+  const auto bad_wave_identity_contract_path =
+      wave_defaults_root / "policy_training.bad_wave_identity.contract";
+  write_text(bad_wave_identity_contract_path, bad_wave_identity_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_wave_identity_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject wave identity drift from config");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_MISMATCH",
+                   "wave identity mismatch should name canonical wave owner");
+  auto bad_wave_schedule_contract_text = policy_wave_contract_text;
+  replace_all(bad_wave_schedule_contract_text,
+              "snapshot_family_digest=policy_training_causal_snapshots.cwu_02v."
+              "graph_anchor.v1\n",
+              "snapshot_family_digest=stale_snapshot_family_digest\n");
+  const auto bad_wave_schedule_contract_path =
+      wave_defaults_root / "policy_training.bad_wave_schedule.contract";
+  write_text(bad_wave_schedule_contract_path, bad_wave_schedule_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_wave_schedule_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject wave-owned schedule selector drift");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_MISMATCH",
+                   "wave schedule mismatch should name canonical wave owner");
+  auto omitted_numeraire_contract_text = policy_wave_contract_text;
+  replace_all(omitted_numeraire_contract_text,
+              "accounting_numeraire_node_id=USDT\n", "");
+  const auto omitted_numeraire_contract_path =
+      wave_defaults_root / "policy_training.omit_numeraire.contract";
+  write_text(omitted_numeraire_contract_path, omitted_numeraire_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_numeraire_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted accounting numeraire from "
+        "config: " +
+            error);
+  require_contains(result, "\"accounting_numeraire_node_id\":\"USDT\"",
+                   "contract file should regain config-owned accounting "
+                   "numeraire");
+  auto omitted_target_nodes_contract_text = policy_wave_contract_text;
+  check(omitted_target_nodes_contract_text.find(
+            "target_node_ids=BTC,USDT,ETH\n") != std::string::npos,
+        "test fixture should contain graph-derived target nodes");
+  replace_all(omitted_target_nodes_contract_text,
+              "target_node_ids=BTC,USDT,ETH\n", "");
+  const auto omitted_target_nodes_contract_path =
+      wave_defaults_root / "policy_training.omit_target_nodes.contract";
+  write_text(omitted_target_nodes_contract_path,
+             omitted_target_nodes_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_target_nodes_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted target nodes from graph DSL: " +
+            error);
+  require_contains(result, "\"target_node_ids\":\"BTC,USDT,ETH\"",
+                   "contract file should regain graph-owned target nodes");
+  auto omitted_target_universe_contract_text = policy_wave_contract_text;
+  check(omitted_target_universe_contract_text.find(
+            "target_node_universe_digest=b74fcdf542df32cb862b0f0ac7efb"
+            "20b732cae303a9e36a976a69be70d4747b3\n") != std::string::npos,
+        "test fixture should contain graph-derived target universe digest");
+  replace_all(omitted_target_universe_contract_text,
+              "target_node_universe_digest=b74fcdf542df32cb862b0f0ac7efb"
+              "20b732cae303a9e36a976a69be70d4747b3\n",
+              "");
+  const auto omitted_target_universe_contract_path =
+      wave_defaults_root / "policy_training.omit_target_universe.contract";
+  write_text(omitted_target_universe_contract_path,
+             omitted_target_universe_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_target_universe_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted target-node universe digest "
+        "from graph/accounting: " +
+            error);
+  require_contains(
+      result,
+      "\"target_node_universe_digest\":\"b74fcdf542df32cb862b0f0ac7efb20b"
+      "732cae303a9e36a976a69be70d4747b3\"",
+      "contract file should regain graph/accounting-owned target universe "
+      "digest");
+  auto omitted_policy_source_contract_text = policy_wave_contract_text;
+  check(omitted_policy_source_contract_text.find(
+            "policy_dsl_digest=" + expected_policy_dsl_digest + "\n") !=
+            std::string::npos,
+        "test fixture should contain source-derived policy DSL digest");
+  check(omitted_policy_source_contract_text.find(
+            "policy_input_feature_manifest_digest=" +
+            expected_policy_features_digest + "\n") != std::string::npos,
+        "test fixture should contain source-derived feature manifest digest");
+  check(omitted_policy_source_contract_text.find(
+            "policy_net_digest=" + expected_policy_net_digest + "\n") !=
+            std::string::npos,
+        "test fixture should contain source-derived policy net digest");
+  check(omitted_policy_source_contract_text.find(
+            "policy_jkimyei_digest=" + expected_policy_jkimyei_digest + "\n") !=
+            std::string::npos,
+        "test fixture should contain source-derived policy jkimyei digest");
+  check(omitted_policy_source_contract_text.find(
+            "training_config_digest=" + expected_policy_jkimyei_digest +
+            "\n") != std::string::npos,
+        "test fixture should contain source-derived training config digest");
+  check(omitted_policy_source_contract_text.find(
+            "action_distribution_config_digest=masked_dirichlet_simplex.graph_"
+            "node_allocation.v1\n") != std::string::npos,
+        "test fixture should contain source-derived action distribution config "
+        "digest");
+  replace_all(omitted_policy_source_contract_text,
+              "policy_architecture_digest=" +
+                  expected_policy_architecture_digest + "\n",
+              "");
+  replace_all(omitted_policy_source_contract_text,
+              "policy_dsl_digest=" + expected_policy_dsl_digest + "\n", "");
+  replace_all(omitted_policy_source_contract_text,
+              "policy_net_digest=" + expected_policy_net_digest + "\n", "");
+  replace_all(omitted_policy_source_contract_text,
+              "policy_jkimyei_digest=" + expected_policy_jkimyei_digest + "\n",
+              "");
+  replace_all(omitted_policy_source_contract_text,
+              "training_config_digest=" + expected_policy_jkimyei_digest + "\n",
+              "");
+  replace_all(omitted_policy_source_contract_text,
+              "policy_input_feature_manifest_digest=" +
+                  expected_policy_features_digest + "\n",
+              "");
+  replace_all(omitted_policy_source_contract_text,
+              "action_distribution_config_digest=masked_dirichlet_simplex."
+              "graph_node_allocation.v1\n",
+              "");
+  replace_all(omitted_policy_source_contract_text,
+              "actor_architecture_digest=graph_node_allocation_actor.net.v1." +
+                  expected_policy_architecture_digest + "\n",
+              "");
+  replace_all(
+      omitted_policy_source_contract_text,
+      "critic_architecture_digest=graph_node_allocation_critic.net.v1." +
+          expected_policy_architecture_digest + "\n",
+      "");
+  const auto omitted_policy_source_contract_path =
+      wave_defaults_root / "policy_training.omit_policy_source.contract";
+  write_text(omitted_policy_source_contract_path,
+             omitted_policy_source_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_policy_source_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted policy source identity from "
+        "configured files: " +
+            error);
+  require_contains(
+      result, "\"policy_dsl_digest\":\"" + expected_policy_dsl_digest + "\"",
+      "contract file should regain source-derived policy DSL "
+      "digest");
+  require_contains(
+      result, "\"policy_net_digest\":\"" + expected_policy_net_digest + "\"",
+      "contract file should regain source-derived policy net digest");
+  require_contains(
+      result,
+      "\"policy_jkimyei_digest\":\"" + expected_policy_jkimyei_digest + "\"",
+      "contract file should regain source-derived policy jkimyei digest");
+  require_contains(
+      result,
+      "\"training_config_digest\":\"" + expected_policy_jkimyei_digest + "\"",
+      "contract file should regain source-derived training config digest");
+  require_contains(result,
+                   "\"action_distribution_config_digest\":\"masked_dirichlet_"
+                   "simplex.graph_node_allocation.v1\"",
+                   "contract file should regain source-derived action "
+                   "distribution config digest");
+  auto bad_policy_source_contract_text = policy_wave_contract_text;
+  replace_all(
+      bad_policy_source_contract_text,
+      "policy_net_digest=" + expected_policy_net_digest + "\n",
+      "policy_net_digest=000000000000000000000000000000000000000000000000"
+      "0000000000000000\n");
+  replace_all(
+      bad_policy_source_contract_text,
+      "policy_jkimyei_digest=" + expected_policy_jkimyei_digest + "\n",
+      "policy_jkimyei_digest=000000000000000000000000000000000000000000000"
+      "0000000000000000\n");
+  replace_all(bad_policy_source_contract_text,
+              "action_distribution_config_digest=masked_dirichlet_simplex."
+              "graph_node_allocation.v1\n",
+              "action_distribution_config_digest=unexpected_distribution_"
+              "config.v1\n");
+  const auto bad_policy_source_contract_path =
+      wave_defaults_root / "policy_training.bad_policy_source.contract";
+  write_text(bad_policy_source_contract_path, bad_policy_source_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_policy_source_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject policy source identity drift from "
+        "configured files");
+  require_contains(error,
+                   "E_RUNTIME_POLICY_TRAINING_POLICY_SOURCE_IDENTITY_MISMATCH",
+                   "policy source mismatch should name configured source "
+                   "owner");
+  auto omitted_ppo_config_contract_text = policy_wave_contract_text;
+  check(omitted_ppo_config_contract_text.find(
+            "ppo_config_digest=ppo_clip_gae.v1.gamma_0_99.lambda_0_95.clip_0_"
+            "20.target_kl_0_03.lr_0_00002.minibatch_32.epochs_2\n") !=
+            std::string::npos,
+        "test fixture should contain hyperparameter-derived PPO config digest");
+  replace_all(
+      omitted_ppo_config_contract_text,
+      "ppo_config_digest=ppo_clip_gae.v1.gamma_0_99.lambda_0_95.clip_0_20."
+      "target_kl_0_03.lr_0_00002.minibatch_32.epochs_2\n",
+      "");
+  replace_all(omitted_ppo_config_contract_text, "ppo_max_grad_norm=0.5\n", "");
+  replace_all(omitted_ppo_config_contract_text,
+              "ppo_max_grad_norm_bound=true\n", "");
+  replace_all(omitted_ppo_config_contract_text, "ppo_minibatch_size=32\n", "");
+  replace_all(omitted_ppo_config_contract_text,
+              "ppo_minibatch_size_bound=true\n", "");
+  replace_all(omitted_ppo_config_contract_text, "max_steps=64\n", "");
+  const auto omitted_ppo_config_contract_path =
+      wave_defaults_root / "policy_training.omit_ppo_config.contract";
+  write_text(omitted_ppo_config_contract_path,
+             omitted_ppo_config_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_ppo_config_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted PPO config digest from bound "
+        "hyperparameters: " +
+            error);
+  require_contains(
+      result,
+      "\"ppo_config_digest\":\"ppo_clip_gae.v1.gamma_0_99.lambda_0_95.clip_0_"
+      "20.target_kl_0_03.lr_0_00002.minibatch_32.epochs_2\"",
+      "contract file should regain hyperparameter-derived PPO config digest");
+  require_contains(result, "\"ppo_max_grad_norm\":0.5",
+                   "contract file should regain jkimyei-derived PPO grad clip");
+  require_contains(result, "\"ppo_minibatch_size\":32",
+                   "contract file should regain jkimyei-derived PPO minibatch");
+  require_contains(result, "\"max_steps\":64",
+                   "contract file should regain jkimyei-derived max steps");
+  auto bad_jkimyei_ppo_default_contract_text = policy_wave_contract_text;
+  replace_all(bad_jkimyei_ppo_default_contract_text, "ppo_minibatch_size=32\n",
+              "ppo_minibatch_size=64\n");
+  const auto bad_jkimyei_ppo_default_contract_path =
+      wave_defaults_root / "policy_training.bad_jkimyei_ppo_default.contract";
+  write_text(bad_jkimyei_ppo_default_contract_path,
+             bad_jkimyei_ppo_default_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_jkimyei_ppo_default_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject jkimyei-owned PPO default drift");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_MISMATCH",
+                   "jkimyei default mismatch should name configured jkimyei "
+                   "owner");
+  auto bad_jkimyei_max_steps_contract_text = policy_wave_contract_text;
+  replace_all(bad_jkimyei_max_steps_contract_text, "max_steps=64\n",
+              "max_steps=128\n");
+  const auto bad_jkimyei_max_steps_contract_path =
+      wave_defaults_root / "policy_training.bad_jkimyei_max_steps.contract";
+  write_text(bad_jkimyei_max_steps_contract_path,
+             bad_jkimyei_max_steps_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_jkimyei_max_steps_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject jkimyei-owned max steps drift");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_MISMATCH",
+                   "jkimyei max steps mismatch should name configured owner");
+  auto omitted_advantage_normalization_contract_text =
+      policy_wave_contract_text;
+  replace_all(omitted_advantage_normalization_contract_text,
+              "advantage_normalization_policy=batch_center_scale_advantages."
+              "v1\n",
+              "");
+  const auto omitted_advantage_normalization_contract_path =
+      wave_defaults_root /
+      "policy_training.omit_advantage_normalization.contract";
+  write_text(omitted_advantage_normalization_contract_path,
+             omitted_advantage_normalization_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_advantage_normalization_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted PPO advantage normalization "
+        "policy from Runtime PPO defaults: " +
+            error);
+  const std::string derived_advantage_normalization_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      derived_advantage_normalization_contract_text,
+      "advantage_normalization_policy=batch_center_scale_advantages.v1",
+      "contract text should persist Runtime-owned PPO advantage normalization "
+      "policy");
+  auto bad_advantage_normalization_contract_text =
+      omitted_advantage_normalization_contract_text;
+  bad_advantage_normalization_contract_text +=
+      "advantage_normalization_policy=stale_advantage_policy\n";
+  const auto bad_advantage_normalization_contract_path =
+      wave_defaults_root / "policy_training.bad_advantage_normalization."
+                           "contract";
+  write_text(bad_advantage_normalization_contract_path,
+             bad_advantage_normalization_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_advantage_normalization_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject PPO advantage normalization drift");
+  require_contains(error, "unsupported_advantage_normalization_policy",
+                   "PPO advantage normalization mismatch should name "
+                   "Runtime-owned policy");
+  auto omitted_range_mirrors_contract_text = policy_wave_contract_text;
+  check(omitted_range_mirrors_contract_text.find(
+            "normalization_fit_range_digest="
+            "policy_training_range_train_anchor_0_1600_v1\n") !=
+            std::string::npos,
+        "test fixture should contain normalization range mirror");
+  check(omitted_range_mirrors_contract_text.find(
+            "replay_buffer_source_range_digest="
+            "policy_training_range_train_anchor_0_1600_v1\n") !=
+            std::string::npos,
+        "test fixture should contain replay-buffer range mirror");
+  replace_all(omitted_range_mirrors_contract_text,
+              "normalization_fit_range_digest="
+              "policy_training_range_train_anchor_0_1600_v1\n",
+              "");
+  replace_all(omitted_range_mirrors_contract_text,
+              "replay_buffer_source_range_digest="
+              "policy_training_range_train_anchor_0_1600_v1\n",
+              "");
+  const auto omitted_range_mirrors_contract_path =
+      wave_defaults_root / "policy_training.omit_range_mirrors.contract";
+  write_text(omitted_range_mirrors_contract_path,
+             omitted_range_mirrors_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_range_mirrors_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted range mirrors from training "
+        "range: " +
+            error);
+  require_contains(
+      result,
+      "\"normalization_fit_range_digest\":\"policy_training_range_train_"
+      "anchor_0_1600_v1\"",
+      "contract file should regain training-owned normalization range");
+  require_contains(
+      result,
+      "\"replay_buffer_source_range_digest\":\"policy_training_range_train_"
+      "anchor_0_1600_v1\"",
+      "contract file should regain training-owned replay-buffer range");
+  auto bad_range_mirrors_contract_text = policy_wave_contract_text;
+  replace_all(bad_range_mirrors_contract_text,
+              "normalization_fit_range_digest="
+              "policy_training_range_train_anchor_0_1600_v1\n",
+              "normalization_fit_range_digest="
+              "policy_training_range_validation_anchor_1630_2247_v1\n");
+  const auto bad_range_mirrors_contract_path =
+      wave_defaults_root / "policy_training.bad_range_mirror.contract";
+  write_text(bad_range_mirrors_contract_path, bad_range_mirrors_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_range_mirrors_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject range mirror drift from training range");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_RANGE_MIRROR_MISMATCH",
+                   "range mirror mismatch should name training range owner");
+  auto omitted_target_range_contract_text = policy_wave_contract_text;
+  replace_all(omitted_target_range_contract_text,
+              "policy_execution_target_anchor_begin=0\n", "");
+  replace_all(omitted_target_range_contract_text,
+              "policy_execution_target_anchor_begin_bound=false\n", "");
+  replace_all(omitted_target_range_contract_text,
+              "policy_execution_target_anchor_end_exclusive=0\n", "");
+  replace_all(omitted_target_range_contract_text,
+              "policy_execution_target_anchor_end_exclusive_bound=false\n", "");
+  const auto omitted_target_range_contract_path =
+      wave_defaults_root / "policy_training.omit_target_range.contract";
+  write_text(omitted_target_range_contract_path,
+             omitted_target_range_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_target_range_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted policy-execution target range "
+        "from validation range digest: " +
+            error);
+  const std::string derived_target_range_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      derived_target_range_contract_text,
+      "policy_execution_target_anchor_begin=1630",
+      "contract text should persist validation-range-derived target begin");
+  require_contains(
+      derived_target_range_contract_text,
+      "policy_execution_target_anchor_end_exclusive=2247",
+      "contract text should persist validation-range-derived target end");
+  auto bad_target_range_contract_text = omitted_target_range_contract_text;
+  bad_target_range_contract_text +=
+      "policy_execution_target_anchor_begin=1600\n";
+  const auto bad_target_range_contract_path =
+      wave_defaults_root / "policy_training.bad_target_range.contract";
+  write_text(bad_target_range_contract_path, bad_target_range_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_target_range_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject target range drift from validation "
+        "range");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_TARGET_RANGE_MISMATCH",
+                   "target range mismatch should name validation range owner");
+  auto omitted_embargo_window_contract_text = policy_wave_contract_text;
+  replace_all(omitted_embargo_window_contract_text,
+              "policy_execution_target_anchor_begin=0\n", "");
+  replace_all(omitted_embargo_window_contract_text,
+              "policy_execution_target_anchor_begin_bound=false\n", "");
+  replace_all(omitted_embargo_window_contract_text,
+              "policy_execution_target_anchor_end_exclusive=0\n", "");
+  replace_all(omitted_embargo_window_contract_text,
+              "policy_execution_target_anchor_end_exclusive_bound=false\n", "");
+  replace_all(omitted_embargo_window_contract_text,
+              "embargo_purged_window_anchor_begin=0\n", "");
+  replace_all(omitted_embargo_window_contract_text,
+              "embargo_purged_window_anchor_end_exclusive=0\n", "");
+  replace_all(omitted_embargo_window_contract_text,
+              "embargo_purged_window_anchor_range_bound=false\n", "");
+  const auto omitted_embargo_window_contract_path =
+      wave_defaults_root / "policy_training.omit_embargo_window.contract";
+  write_text(omitted_embargo_window_contract_path,
+             omitted_embargo_window_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_embargo_window_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted embargo window from "
+        "policy-execution target range: " +
+            error);
+  const std::string derived_embargo_window_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      derived_embargo_window_contract_text,
+      "embargo_purged_window_anchor_begin=1630",
+      "contract text should persist target-range-derived embargo begin");
+  require_contains(
+      derived_embargo_window_contract_text,
+      "embargo_purged_window_anchor_end_exclusive=2247",
+      "contract text should persist target-range-derived embargo end");
+  require_contains(
+      derived_embargo_window_contract_text,
+      "embargo_purged_window_anchor_range_bound=true",
+      "contract text should persist target-range-derived embargo bound");
+  auto omitted_no_lookahead_schema_contract_text = policy_wave_contract_text;
+  check(omitted_no_lookahead_schema_contract_text.find(
+            "policy_execution_no_lookahead_certificate_schema="
+            "no_lookahead_artifact_provenance.v1\n") != std::string::npos,
+        "test fixture should contain protocol-owned no-lookahead certificate "
+        "schema");
+  replace_all(omitted_no_lookahead_schema_contract_text,
+              "policy_execution_no_lookahead_certificate_schema="
+              "no_lookahead_artifact_provenance.v1\n",
+              "");
+  const auto omitted_no_lookahead_schema_contract_path =
+      wave_defaults_root / "policy_training.omit_no_lookahead_schema.contract";
+  write_text(omitted_no_lookahead_schema_contract_path,
+             omitted_no_lookahead_schema_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_no_lookahead_schema_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted no-lookahead certificate "
+        "schema from active protocol: " +
+            error);
+  const std::string derived_no_lookahead_schema_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(derived_no_lookahead_schema_contract_text,
+                   "policy_execution_no_lookahead_certificate_schema="
+                   "no_lookahead_artifact_provenance.v1",
+                   "contract text should persist protocol-derived "
+                   "no-lookahead certificate schema");
+  auto bad_no_lookahead_schema_contract_text = policy_wave_contract_text;
+  replace_all(bad_no_lookahead_schema_contract_text,
+              "policy_execution_no_lookahead_certificate_schema="
+              "no_lookahead_artifact_provenance.v1\n",
+              "policy_execution_no_lookahead_certificate_schema="
+              "stale_no_lookahead_schema.v1\n");
+  const auto bad_no_lookahead_schema_contract_path =
+      wave_defaults_root / "policy_training.bad_no_lookahead_schema.contract";
+  write_text(bad_no_lookahead_schema_contract_path,
+             bad_no_lookahead_schema_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_no_lookahead_schema_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject no-lookahead certificate schema drift "
+        "from active protocol");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_PROTOCOL_DEFAULT_MISMATCH",
+                   "protocol default mismatch should name the protocol owner");
+  auto omitted_protocol_bundle_components_contract_text =
+      policy_wave_contract_text;
+  check(omitted_protocol_bundle_components_contract_text.find(
+            "bundle_representation_component_id="
+            "wikimyei.representation.encoding.mtf_jepa_mae_vicreg\n") !=
+            std::string::npos,
+        "test fixture should contain protocol-owned representation component "
+        "id");
+  check(
+      omitted_protocol_bundle_components_contract_text.find(
+          "bundle_mdn_component_id=wikimyei.inference.expected_value.mdn\n") !=
+          std::string::npos,
+      "test fixture should contain protocol-owned MDN component id");
+  replace_all(omitted_protocol_bundle_components_contract_text,
+              "bundle_representation_component_id="
+              "wikimyei.representation.encoding.mtf_jepa_mae_vicreg\n",
+              "");
+  replace_all(omitted_protocol_bundle_components_contract_text,
+              "bundle_mdn_component_id=wikimyei.inference.expected_value.mdn\n",
+              "");
+  const auto omitted_protocol_bundle_components_contract_path =
+      wave_defaults_root / "policy_training.omit_protocol_bundle_components."
+                           "contract";
+  write_text(omitted_protocol_bundle_components_contract_path,
+             omitted_protocol_bundle_components_contract_text);
+  result.clear();
+  error.clear();
+  check(
+      execute_runtime_run_json(
+          "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+              omitted_protocol_bundle_components_contract_path.string() + "\"}",
+          &wave_ctx, &result, &error),
+      "policy contract should derive omitted bundle component ids from active "
+      "protocol: " +
+          error);
+  const std::string derived_protocol_bundle_components_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(derived_protocol_bundle_components_contract_text,
+                   "bundle_representation_component_id="
+                   "wikimyei.representation.encoding.mtf_jepa_mae_vicreg",
+                   "contract text should persist protocol-derived "
+                   "representation component id");
+  require_contains(
+      derived_protocol_bundle_components_contract_text,
+      "bundle_mdn_component_id="
+      "wikimyei.inference.expected_value.mdn",
+      "contract text should persist protocol-derived MDN component "
+      "id");
+  auto bad_protocol_bundle_components_contract_text = policy_wave_contract_text;
+  replace_all(bad_protocol_bundle_components_contract_text,
+              "bundle_representation_component_id="
+              "wikimyei.representation.encoding.mtf_jepa_mae_vicreg\n",
+              "bundle_representation_component_id="
+              "wikimyei.representation.encoding.vicreg\n");
+  const auto bad_protocol_bundle_components_contract_path =
+      wave_defaults_root / "policy_training.bad_protocol_bundle_components."
+                           "contract";
+  write_text(bad_protocol_bundle_components_contract_path,
+             bad_protocol_bundle_components_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_protocol_bundle_components_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject bundle component id drift from active "
+        "protocol");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_PROTOCOL_DEFAULT_MISMATCH",
+      "protocol bundle component mismatch should name the protocol "
+      "owner");
+  auto omitted_parent_input_mirror_contract_text = policy_wave_contract_text;
+  check(omitted_parent_input_mirror_contract_text.find(
+            "parent_replay_environment_fact_digest="
+            "policy_wave_replay_environment_fact_digest_v1\n") !=
+            std::string::npos,
+        "test fixture should contain parent replay environment fact digest");
+  check(omitted_parent_input_mirror_contract_text.find(
+            std::string("parent_replay_environment_report_digest=") +
+            policy_wave_replay_report_digest + "\n") != std::string::npos,
+        "test fixture should contain parent replay environment report digest "
+        "lock");
+  check(omitted_parent_input_mirror_contract_text.find(
+            "policy_execution_input_parent_replay_environment_fact_digest="
+            "policy_wave_replay_environment_fact_digest_v1\n") !=
+            std::string::npos,
+        "test fixture should contain parent replay execution-input fact "
+        "mirror");
+  check(omitted_parent_input_mirror_contract_text.find(
+            std::string("policy_execution_input_parent_replay_environment_"
+                        "report_digest=") +
+            policy_wave_replay_report_digest + "\n") != std::string::npos,
+        "test fixture should contain parent replay execution-input report "
+        "mirror");
+  erase_assignment_line(
+      omitted_parent_input_mirror_contract_text,
+      "policy_execution_input_parent_replay_environment_fact_digest");
+  erase_assignment_line(
+      omitted_parent_input_mirror_contract_text,
+      "policy_execution_input_parent_replay_environment_report_digest");
+  const auto omitted_parent_input_mirror_contract_path =
+      wave_defaults_root / "policy_training.omit_parent_input_mirrors.contract";
+  write_text(omitted_parent_input_mirror_contract_path,
+             omitted_parent_input_mirror_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_parent_input_mirror_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted parent replay input mirrors "
+        "from parent replay identity: " +
+            error);
+  const std::string derived_parent_input_mirror_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      derived_parent_input_mirror_contract_text,
+      "policy_execution_input_parent_replay_environment_fact_digest="
+      "policy_wave_replay_environment_fact_digest_v1",
+      "contract text should persist parent replay execution-input fact mirror");
+  require_contains(
+      derived_parent_input_mirror_contract_text,
+      std::string(
+          "policy_execution_input_parent_replay_environment_report_digest=") +
+          policy_wave_replay_report_digest,
+      "contract text should persist parent replay execution-input report "
+      "mirror");
+  auto bad_parent_input_mirror_contract_text = policy_wave_contract_text;
+  replace_all(bad_parent_input_mirror_contract_text,
+              "policy_execution_input_parent_replay_environment_fact_digest="
+              "policy_wave_replay_environment_fact_digest_v1\n",
+              "policy_execution_input_parent_replay_environment_fact_digest="
+              "stale_replay_env_fact_digest\n");
+  const auto bad_parent_input_mirror_contract_path =
+      wave_defaults_root / "policy_training.bad_parent_input_mirror.contract";
+  write_text(bad_parent_input_mirror_contract_path,
+             bad_parent_input_mirror_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_parent_input_mirror_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject parent replay input mirror drift");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_REPLAY_ARTIFACT_IDENTITY_MISMATCH",
+      "parent replay input mirror mismatch should name replay_job_dir as "
+      "canonical owner");
+  auto omitted_execution_target_id_contract_text = policy_wave_contract_text;
+  replace_all(omitted_execution_target_id_contract_text,
+              "policy_execution_target_id=\n", "");
+  replace_all(omitted_execution_target_id_contract_text,
+              "policy_execution_target_id=policy_training_artifact_ready\n",
+              "");
+  const auto omitted_execution_target_id_contract_path =
+      wave_defaults_root / "policy_training.omit_execution_target_id.contract";
+  write_text(omitted_execution_target_id_contract_path,
+             omitted_execution_target_id_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_execution_target_id_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted policy-execution target id: " +
+            error);
+  const std::string derived_execution_target_id_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(derived_execution_target_id_contract_text,
+                   "policy_execution_target_id=policy_training_artifact_ready",
+                   "contract text should persist policy-training artifact "
+                   "readiness target id");
+  auto bad_execution_target_id_contract_text =
+      omitted_execution_target_id_contract_text;
+  bad_execution_target_id_contract_text +=
+      "policy_execution_target_id=stale_policy_target\n";
+  const auto bad_execution_target_id_contract_path =
+      wave_defaults_root / "policy_training.bad_execution_target_id.contract";
+  write_text(bad_execution_target_id_contract_path,
+             bad_execution_target_id_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_execution_target_id_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject policy-execution target id drift");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_EXECUTION_TARGET_ID_MISMATCH",
+      "policy-execution target id mismatch should name artifact-readiness "
+      "owner");
+  auto omitted_consumed_artifacts_contract_text = policy_wave_contract_text;
+  check(omitted_consumed_artifacts_contract_text.find(
+            "parent_forecast_eval_fact_digest="
+            "policy_wave_replay_forecast_fact_digest_v1\n") !=
+            std::string::npos,
+        "test fixture should contain parent forecast fact digest");
+  check(omitted_consumed_artifacts_contract_text.find(
+            "parent_observer_belief_fact_digest="
+            "policy_wave_replay_observer_fact_digest_v1\n") !=
+            std::string::npos,
+        "test fixture should contain parent observer fact digest");
+  replace_all(omitted_consumed_artifacts_contract_text,
+              "policy_execution_no_lookahead_certificate_digest=\n",
+              "policy_execution_no_lookahead_certificate_digest="
+              "policy_execution_certificate_digest_v1\n");
+  replace_all(omitted_consumed_artifacts_contract_text,
+              "policy_execution_provenance_closure_digest=\n",
+              "policy_execution_provenance_closure_digest="
+              "policy_execution_closure_digest_v1\n");
+  replace_all(omitted_consumed_artifacts_contract_text,
+              "policy_execution_target_id=\n",
+              "policy_execution_target_id=policy_training_artifact_ready\n");
+  erase_assignment_line(omitted_consumed_artifacts_contract_text,
+                        "policy_execution_consumed_artifact_digests");
+  const auto omitted_consumed_artifacts_contract_path =
+      wave_defaults_root / "policy_training.omit_consumed_artifacts.contract";
+  write_text(omitted_consumed_artifacts_contract_path,
+             omitted_consumed_artifacts_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_consumed_artifacts_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted consumed artifact list from "
+        "policy-execution input locks: " +
+            error);
+  const std::string derived_consumed_artifacts_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      derived_consumed_artifacts_contract_text,
+      std::string("policy_execution_consumed_artifact_digests="
+                  "policy_wave_replay_forecast_fact_digest_v1,"
+                  "policy_wave_replay_forecast_artifact_digest_v1,"
+                  "policy_wave_replay_observer_fact_digest_v1,"
+                  "policy_wave_replay_environment_fact_digest_v1,") +
+          policy_wave_replay_report_digest,
+      "contract text should persist policy-execution consumed artifact list "
+      "from input locks");
+  auto bad_consumed_artifacts_contract_text =
+      omitted_consumed_artifacts_contract_text;
+  bad_consumed_artifacts_contract_text +=
+      "policy_execution_consumed_artifact_digests="
+      "policy_wave_replay_forecast_fact_digest_v1\n";
+  const auto bad_consumed_artifacts_contract_path =
+      wave_defaults_root / "policy_training.bad_consumed_artifacts.contract";
+  write_text(bad_consumed_artifacts_contract_path,
+             bad_consumed_artifacts_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_consumed_artifacts_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject consumed artifact lists missing "
+        "derived input-lock artifacts");
+  require_contains(
+      error, "E_RUNTIME_POLICY_EXECUTION_CONSUMED_ARTIFACTS_MISMATCH",
+      "consumed artifact mismatch should name policy-execution input locks as "
+      "canonical owner");
+  auto omitted_consumed_checkpoints_contract_text =
+      omitted_consumed_artifacts_contract_text;
+  check(omitted_consumed_checkpoints_contract_text.find(
+            "bundle_representation_checkpoint_digest="
+            "policy_wave_replay_rep_checkpoint_digest_v1\n") !=
+            std::string::npos,
+        "test fixture should contain representation checkpoint digest");
+  check(omitted_consumed_checkpoints_contract_text.find(
+            "bundle_mdn_checkpoint_digest="
+            "policy_wave_replay_mdn_checkpoint_digest_v1\n") !=
+            std::string::npos,
+        "test fixture should contain MDN checkpoint digest");
+  erase_assignment_line(omitted_consumed_checkpoints_contract_text,
+                        "policy_execution_consumed_checkpoint_digests");
+  const auto omitted_consumed_checkpoints_contract_path =
+      wave_defaults_root / "policy_training.omit_consumed_checkpoints.contract";
+  write_text(omitted_consumed_checkpoints_contract_path,
+             omitted_consumed_checkpoints_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_consumed_checkpoints_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted consumed checkpoint list from "
+        "bundle checkpoint inputs: " +
+            error);
+  const std::string derived_consumed_checkpoints_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      derived_consumed_checkpoints_contract_text,
+      "policy_execution_consumed_checkpoint_digests="
+      "policy_wave_replay_rep_checkpoint_digest_v1,"
+      "policy_wave_replay_mdn_checkpoint_digest_v1",
+      "contract text should persist policy-execution consumed checkpoint list "
+      "from bundle checkpoint inputs");
+  auto bad_consumed_checkpoints_contract_text =
+      omitted_consumed_checkpoints_contract_text;
+  bad_consumed_checkpoints_contract_text +=
+      "policy_execution_consumed_checkpoint_digests="
+      "policy_wave_replay_rep_checkpoint_digest_v1\n";
+  const auto bad_consumed_checkpoints_contract_path =
+      wave_defaults_root / "policy_training.bad_consumed_checkpoints.contract";
+  write_text(bad_consumed_checkpoints_contract_path,
+             bad_consumed_checkpoints_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_consumed_checkpoints_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject consumed checkpoint lists missing "
+        "derived bundle checkpoint inputs");
+  require_contains(
+      error, "E_RUNTIME_POLICY_EXECUTION_CONSUMED_CHECKPOINTS_MISMATCH",
+      "consumed checkpoint mismatch should name bundle checkpoint inputs as "
+      "canonical owner");
+  auto omitted_bundle_mirrors_contract_text = policy_wave_contract_text;
+  check(omitted_bundle_mirrors_contract_text.find(
+            "bundle_representation_generation_id=\n") != std::string::npos,
+        "test fixture should contain representation generation id slot");
+  check(omitted_bundle_mirrors_contract_text.find(
+            "bundle_representation_checkpoint_digest="
+            "policy_wave_replay_rep_checkpoint_digest_v1\n") !=
+            std::string::npos,
+        "test fixture should contain representation checkpoint digest");
+  check(omitted_bundle_mirrors_contract_text.find(
+            "bundle_representation_generation_vector_digest="
+            "policy_wave_replay_rep_generation_vector_v1\n") !=
+            std::string::npos,
+        "test fixture should contain representation generation-vector digest");
+  check(omitted_bundle_mirrors_contract_text.find(
+            "bundle_mdn_generation_vector_digest="
+            "policy_wave_replay_mdn_generation_vector_v1\n") !=
+            std::string::npos,
+        "test fixture should contain MDN generation-vector digest");
+  check(omitted_bundle_mirrors_contract_text.find(
+            "mdn_trained_against_representation_generation_id=\n") !=
+            std::string::npos,
+        "test fixture should contain MDN trained-against generation id slot");
+  check(omitted_bundle_mirrors_contract_text.find(
+            "mdn_trained_against_representation_checkpoint_digest="
+            "policy_wave_replay_rep_checkpoint_digest_v1\n") !=
+            std::string::npos,
+        "test fixture should contain MDN trained-against checkpoint mirror");
+  check(omitted_bundle_mirrors_contract_text.find(
+            "mdn_trained_against_representation_generation_vector_digest="
+            "policy_wave_replay_rep_generation_vector_v1\n") !=
+            std::string::npos,
+        "test fixture should contain MDN trained-against vector mirror");
+  check(omitted_bundle_mirrors_contract_text.find(
+            "policy_trained_against_representation_generation_vector_digest="
+            "policy_wave_replay_rep_generation_vector_v1\n") !=
+            std::string::npos,
+        "test fixture should contain policy trained-against representation "
+        "vector mirror");
+  check(omitted_bundle_mirrors_contract_text.find(
+            "policy_trained_against_mdn_generation_vector_digest="
+            "policy_wave_replay_mdn_generation_vector_v1\n") !=
+            std::string::npos,
+        "test fixture should contain policy trained-against MDN vector mirror");
+  replace_all(omitted_bundle_mirrors_contract_text,
+              "bundle_representation_generation_id=\n",
+              "bundle_representation_generation_id=rep_generation_v1\n");
+  erase_assignment_line(omitted_bundle_mirrors_contract_text,
+                        "mdn_trained_against_representation_generation_id");
+  erase_assignment_line(omitted_bundle_mirrors_contract_text,
+                        "mdn_trained_against_representation_checkpoint_digest");
+  erase_assignment_line(
+      omitted_bundle_mirrors_contract_text,
+      "mdn_trained_against_representation_generation_vector_digest");
+  erase_assignment_line(
+      omitted_bundle_mirrors_contract_text,
+      "policy_trained_against_representation_generation_vector_digest");
+  erase_assignment_line(omitted_bundle_mirrors_contract_text,
+                        "policy_trained_against_mdn_generation_vector_digest");
+  const auto omitted_bundle_mirrors_contract_path =
+      wave_defaults_root / "policy_training.omit_bundle_mirrors.contract";
+  write_text(omitted_bundle_mirrors_contract_path,
+             omitted_bundle_mirrors_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_bundle_mirrors_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted trained-against mirrors from "
+        "bundle inputs: " +
+            error);
+  const std::string derived_bundle_mirrors_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(
+      derived_bundle_mirrors_contract_text,
+      "mdn_trained_against_representation_generation_id=rep_generation_v1",
+      "contract text should persist MDN trained-against generation id from "
+      "bundle representation input");
+  require_contains(
+      derived_bundle_mirrors_contract_text,
+      "mdn_trained_against_representation_checkpoint_digest="
+      "policy_wave_replay_rep_checkpoint_digest_v1",
+      "contract text should persist MDN trained-against checkpoint from bundle "
+      "representation input");
+  require_contains(
+      derived_bundle_mirrors_contract_text,
+      "mdn_trained_against_representation_generation_vector_digest="
+      "policy_wave_replay_rep_generation_vector_v1",
+      "contract text should persist MDN trained-against vector from bundle "
+      "representation input");
+  require_contains(
+      derived_bundle_mirrors_contract_text,
+      "policy_trained_against_representation_generation_vector_digest="
+      "policy_wave_replay_rep_generation_vector_v1",
+      "contract text should persist policy trained-against representation "
+      "vector from bundle input");
+  require_contains(
+      derived_bundle_mirrors_contract_text,
+      "policy_trained_against_mdn_generation_vector_digest="
+      "policy_wave_replay_mdn_generation_vector_v1",
+      "contract text should persist policy trained-against MDN vector from "
+      "bundle input");
+  auto bad_bundle_mirrors_contract_text = omitted_bundle_mirrors_contract_text;
+  bad_bundle_mirrors_contract_text +=
+      "policy_trained_against_mdn_generation_vector_digest="
+      "stale_mdn_generation_vector\n";
+  const auto bad_bundle_mirrors_contract_path =
+      wave_defaults_root / "policy_training.bad_bundle_mirrors.contract";
+  write_text(bad_bundle_mirrors_contract_path,
+             bad_bundle_mirrors_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_bundle_mirrors_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject trained-against mirror drift from "
+        "bundle inputs");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_BUNDLE_GENERATION_MIRROR_MISMATCH",
+      "trained-against mirror mismatch should name bundle inputs as canonical "
+      "owner");
+  auto omitted_output_anchor_mirror_contract_text = policy_wave_contract_text;
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_execution_target_anchor_begin=1630\n") != std::string::npos,
+        "test fixture should contain policy-execution target begin slot");
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_execution_target_anchor_begin_bound=true\n") !=
+            std::string::npos,
+        "test fixture should contain policy-execution target begin bound slot");
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_execution_target_anchor_end_exclusive=2247\n") !=
+            std::string::npos,
+        "test fixture should contain policy-execution target end slot");
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_execution_target_anchor_end_exclusive_bound=true\n") !=
+            std::string::npos,
+        "test fixture should contain policy-execution target end bound slot");
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_output_fit_anchor_begin=1630\n") != std::string::npos,
+        "test fixture should contain policy output fit begin slot");
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_output_fit_anchor_end_exclusive=2247\n") !=
+            std::string::npos,
+        "test fixture should contain policy output fit end slot");
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_output_valid_from_anchor=2247\n") != std::string::npos,
+        "test fixture should contain policy output valid-from slot");
+  replace_all(omitted_output_anchor_mirror_contract_text,
+              "policy_output_fit_anchor_begin=1630\n", "");
+  replace_all(omitted_output_anchor_mirror_contract_text,
+              "policy_output_fit_anchor_begin_bound=true\n", "");
+  replace_all(omitted_output_anchor_mirror_contract_text,
+              "policy_output_fit_anchor_end_exclusive=2247\n", "");
+  replace_all(omitted_output_anchor_mirror_contract_text,
+              "policy_output_fit_anchor_end_exclusive_bound=true\n", "");
+  replace_all(omitted_output_anchor_mirror_contract_text,
+              "policy_output_valid_from_anchor=2247\n", "");
+  replace_all(omitted_output_anchor_mirror_contract_text,
+              "policy_output_valid_from_anchor_bound=true\n", "");
+  const auto omitted_output_anchor_mirror_contract_path =
+      wave_defaults_root /
+      "policy_training.omit_output_anchor_mirrors.contract";
+  write_text(omitted_output_anchor_mirror_contract_path,
+             omitted_output_anchor_mirror_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_output_anchor_mirror_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted output anchor mirrors from "
+        "policy-execution target anchors: " +
+            error);
+  const std::string derived_output_anchor_mirror_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(derived_output_anchor_mirror_contract_text,
+                   "policy_output_fit_anchor_begin=1630",
+                   "contract text should persist output fit begin from "
+                   "policy-execution target begin");
+  require_contains(derived_output_anchor_mirror_contract_text,
+                   "policy_output_fit_anchor_begin_bound=true",
+                   "contract text should bind derived output fit begin");
+  require_contains(derived_output_anchor_mirror_contract_text,
+                   "policy_output_fit_anchor_end_exclusive=2247",
+                   "contract text should persist output fit end from "
+                   "policy-execution target end");
+  require_contains(derived_output_anchor_mirror_contract_text,
+                   "policy_output_fit_anchor_end_exclusive_bound=true",
+                   "contract text should bind derived output fit end");
+  require_contains(derived_output_anchor_mirror_contract_text,
+                   "policy_output_valid_from_anchor=2247",
+                   "contract text should persist output valid-from from "
+                   "policy-execution target end");
+  require_contains(derived_output_anchor_mirror_contract_text,
+                   "policy_output_valid_from_anchor_bound=true",
+                   "contract text should bind derived output valid-from");
+  auto bad_output_anchor_mirror_contract_text =
+      omitted_output_anchor_mirror_contract_text;
+  bad_output_anchor_mirror_contract_text +=
+      "policy_output_valid_from_anchor=2246\n"
+      "policy_output_valid_from_anchor_bound=true\n";
+  const auto bad_output_anchor_mirror_contract_path =
+      wave_defaults_root / "policy_training.bad_output_anchor_mirrors.contract";
+  write_text(bad_output_anchor_mirror_contract_path,
+             bad_output_anchor_mirror_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_output_anchor_mirror_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject output anchor mirror drift from "
+        "policy-execution target anchors");
+  require_contains(
+      error, "E_RUNTIME_POLICY_TRAINING_OUTPUT_ANCHOR_MIRROR_MISMATCH",
+      "output anchor mirror mismatch should name policy-execution target range "
+      "as canonical owner");
+  auto bad_ppo_config_contract_text = policy_wave_contract_text;
+  replace_all(
+      bad_ppo_config_contract_text,
+      "ppo_config_digest=ppo_clip_gae.v1.gamma_0_99.lambda_0_95.clip_0_20."
+      "target_kl_0_03.lr_0_00002.minibatch_32.epochs_2\n",
+      "ppo_config_digest=ppo_clip_gae.v1.gamma_0_99.lambda_0_95.clip_0_20."
+      "target_kl_0_99.lr_0_00002.minibatch_32.epochs_2\n");
+  const auto bad_ppo_config_contract_path =
+      wave_defaults_root / "policy_training.bad_ppo_config.contract";
+  write_text(bad_ppo_config_contract_path, bad_ppo_config_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_ppo_config_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject PPO config digest drift from bound "
+        "hyperparameters");
+  require_contains(error,
+                   "E_RUNTIME_POLICY_TRAINING_PPO_CONFIG_DIGEST_NOT_CANONICAL",
+                   "PPO config mismatch should name bound hyperparameter "
+                   "owner");
+  auto bad_target_universe_contract_text = policy_wave_contract_text;
+  replace_all(bad_target_universe_contract_text,
+              "target_node_universe_digest=b74fcdf542df32cb862b0f0ac7efb"
+              "20b732cae303a9e36a976a69be70d4747b3\n",
+              "target_node_universe_digest=000000000000000000000000000000000"
+              "0000000000000000000000000000000000\n");
+  const auto bad_target_universe_contract_path =
+      wave_defaults_root / "policy_training.bad_target_universe.contract";
+  write_text(bad_target_universe_contract_path,
+             bad_target_universe_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_target_universe_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject target-node universe digest drift from "
+        "graph/accounting");
+  require_contains(error,
+                   "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_UNIVERSE_DIGEST_NOT_"
+                   "CANONICAL",
+                   "target-node universe mismatch should name canonical graph "
+                   "owner");
+  auto omitted_policy_surface_contract_text = policy_wave_contract_text;
+  check(omitted_policy_surface_contract_text.find(
+            "observation_schema_digest=kikijyeba.environment.policy_input."
+            "v1\n") != std::string::npos,
+        "test fixture should contain graph-node allocation observation schema");
+  check(omitted_policy_surface_contract_text.find(
+            "reward_contract_digest=kikijyeba.environment.reward."
+            "post_execution_ledger_log_growth_cost_drawdown.v1\n") !=
+            std::string::npos,
+        "test fixture should contain graph-node allocation reward contract");
+  replace_all(omitted_policy_surface_contract_text,
+              "observation_schema_digest=kikijyeba.environment.policy_input."
+              "v1\n",
+              "");
+  replace_all(omitted_policy_surface_contract_text,
+              "reward_contract_digest=kikijyeba.environment.reward."
+              "post_execution_ledger_log_growth_cost_drawdown.v1\n",
+              "");
+  const auto omitted_policy_surface_contract_path =
+      wave_defaults_root / "policy_training.omit_policy_surface.contract";
+  write_text(omitted_policy_surface_contract_path,
+             omitted_policy_surface_contract_text);
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_policy_surface_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted policy surface from "
+        "graph-node allocation DSL: " +
+            error);
+  require_contains(result,
+                   "\"observation_schema_digest\":\"kikijyeba.environment."
+                   "policy_input.v1\"",
+                   "contract file should regain graph-node allocation "
+                   "observation schema");
+  require_contains(
+      result,
+      "\"reward_contract_digest\":\"kikijyeba.environment.reward."
+      "post_execution_ledger_log_growth_cost_drawdown.v1\"",
+      "contract file should regain graph-node allocation reward contract");
+  auto bad_policy_surface_contract_text = policy_wave_contract_text;
+  replace_all(bad_policy_surface_contract_text,
+              "reward_contract_digest=kikijyeba.environment.reward."
+              "post_execution_ledger_log_growth_cost_drawdown.v1\n",
+              "reward_contract_digest=unexpected_reward_contract.v1\n");
+  const auto bad_policy_surface_contract_path =
+      wave_defaults_root / "policy_training.bad_policy_surface.contract";
+  write_text(bad_policy_surface_contract_path,
+             bad_policy_surface_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_policy_surface_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject policy-surface drift from graph-node "
+        "allocation DSL");
+  require_contains(error,
+                   "E_RUNTIME_POLICY_TRAINING_POLICY_SURFACE_DEFAULT_"
+                   "MISMATCH",
+                   "policy-surface mismatch should name graph-node allocation "
+                   "owner");
+  auto bad_target_nodes_contract_text = policy_wave_contract_text;
+  replace_all(bad_target_nodes_contract_text, "target_node_ids=BTC,USDT,ETH\n",
+              "target_node_ids=BTC,ETH\n");
+  const auto bad_target_nodes_contract_path =
+      wave_defaults_root / "policy_training.bad_target_nodes.contract";
+  write_text(bad_target_nodes_contract_path, bad_target_nodes_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_target_nodes_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject target-node drift from graph DSL");
+  require_contains(error,
+                   "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_IDS_NOT_CANONICAL",
+                   "target-node mismatch should name canonical graph owner");
+  auto bad_numeraire_contract_text = policy_wave_contract_text;
+  replace_all(bad_numeraire_contract_text,
+              "accounting_numeraire_node_id=USDT\n",
+              "accounting_numeraire_node_id=EUR\n");
+  const auto bad_numeraire_contract_path =
+      wave_defaults_root / "policy_training.bad_numeraire.contract";
+  write_text(bad_numeraire_contract_path, bad_numeraire_contract_text);
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                bad_numeraire_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should reject accounting numeraire drift from config");
+  require_contains(error,
+                   "E_RUNTIME_POLICY_TRAINING_ACCOUNTING_NUMERAIRE_NOT_"
+                   "CANONICAL",
+                   "accounting numeraire mismatch should name canonical config "
+                   "owner");
   std::filesystem::remove_all(wave_defaults_root);
 
   result.clear();
@@ -3421,20 +6528,44 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "\"critic_architecture_digest\":\"critic_arch_digest_v1\",",
       "missing_critic_architecture_digest", "critic architecture digest");
   expect_missing_ppo_contract_field(
-      "\"actor_checkpoint_digest\":\"actor_checkpoint_digest_v1\",",
-      "missing_actor_checkpoint_digest", "actor checkpoint digest");
-  expect_missing_ppo_contract_field(
-      "\"critic_checkpoint_digest\":\"critic_checkpoint_digest_v1\",",
-      "missing_critic_checkpoint_digest", "critic checkpoint digest");
-  expect_missing_ppo_contract_field(
       "\"ppo_config_digest\":\"ppo_config_digest_v1\",",
       "missing_ppo_config_digest", "PPO config digest");
-  expect_missing_ppo_contract_field(
-      "\"rollout_collection_digest\":\"rollout_collection_digest_v1\",",
-      "missing_rollout_collection_digest", "rollout collection digest");
-  expect_missing_ppo_contract_field(
-      "\"ppo_update_report_digest\":\"ppo_update_report_digest_v1\",",
-      "missing_ppo_update_report_digest", "PPO update report digest");
+  std::string stale_output_digest_args = valid_policy_training_args("dry_run");
+  const std::string output_digest_insertion =
+      "\"actor_checkpoint_digest\":\"stale_actor_digest\","
+      "\"critic_checkpoint_digest\":\"stale_critic_digest\","
+      "\"optimizer_state_digest\":\"stale_optimizer_digest\","
+      "\"rollout_collection_digest\":\"stale_rollout_digest\","
+      "\"ppo_update_report_digest\":\"stale_update_digest\","
+      "\"validation_rollout_report_digest\":\"stale_validation_digest\","
+      "\"policy_quality_report_digest\":\"stale_quality_digest\",";
+  const auto output_digest_insert_pos =
+      stale_output_digest_args.find("\"ppo_config_digest\"");
+  check(output_digest_insert_pos != std::string::npos,
+        "PPO fixture should contain PPO config digest insertion point");
+  stale_output_digest_args.insert(output_digest_insert_pos,
+                                  output_digest_insertion);
+  result.clear();
+  error.clear();
+  check(
+      execute_runtime_run_json(stale_output_digest_args, &ctx, &result, &error),
+      "policy-training dry-run should canonicalize authored "
+      "Runtime-emitted output digests: " +
+          error);
+  require_contains(result, "\"actor_checkpoint_digest\":\"\"",
+                   "dry-run clears authored actor checkpoint output digest");
+  require_contains(result, "\"critic_checkpoint_digest\":\"\"",
+                   "dry-run clears authored critic checkpoint output digest");
+  require_contains(result, "\"optimizer_state_digest\":\"\"",
+                   "dry-run clears authored optimizer-state output digest");
+  require_contains(result, "\"rollout_collection_digest\":\"\"",
+                   "dry-run clears authored rollout collection output digest");
+  require_contains(result, "\"ppo_update_report_digest\":\"\"",
+                   "dry-run clears authored PPO update output digest");
+  require_contains(result, "\"validation_rollout_report_digest\":\"\"",
+                   "dry-run clears authored validation rollout output digest");
+  require_contains(result, "\"policy_quality_report_digest\":\"\"",
+                   "dry-run clears authored policy quality output digest");
 
   std::string offline_args = valid_policy_training_args("dry_run");
   const std::string causal_mode =
@@ -3721,6 +6852,15 @@ void test_policy_training_contract_and_pre_ppo_execute() {
             !parsed_ppo_facts.front().resume_parent_loaded &&
             !parsed_ppo_facts.front().optimizer_state_resume_loaded,
         "parsed PPO fact carries fresh-spawn resume evidence");
+  check(
+      parsed_ppo_facts.front().causal_provenance_schema ==
+              "causal_provenance_generalization.v1" &&
+          parsed_ppo_facts.front().causal_artifact_production_schema ==
+              "runtime.artifact_production.inline_policy_training.v1" &&
+          parsed_ppo_facts.front().causal_interface_stability_contract_digest ==
+              "interface_stability.trained_against_generation_vector.v1",
+      "parsed PPO fact preserves generalized causal provenance contract "
+      "metadata");
 
   const std::string first_actor_checkpoint_digest =
       json_string_field(result, "actor_checkpoint_digest");
@@ -3744,7 +6884,10 @@ void test_policy_training_contract_and_pre_ppo_execute() {
         "PPO resume fixture should contain live execution denial");
   ppo_resume_args.replace(ppo_resume_live_pos, ppo_resume_live_forbidden.size(),
                           "\"live_execution_allowed\":false,"
-                          "\"resume_actor_checkpoint_path\":\"" +
+                          "\"parent_checkpoint_digest\":\"" +
+                              first_actor_checkpoint_digest +
+                              "\","
+                              "\"resume_actor_checkpoint_path\":\"" +
                               ppo_actor_checkpoint_path.string() +
                               "\",\"resume_actor_checkpoint_digest\":\"" +
                               first_actor_checkpoint_digest +
@@ -3752,8 +6895,10 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                               ppo_optimizer_state_path.string() +
                               "\",\"resume_optimizer_state_digest\":\"" +
                               first_optimizer_state_digest + "\"}");
-  check(execute_runtime_run_json(ppo_resume_args, &ppo_ctx, &result, &error),
-        "PPO resume execute failed: " + error);
+  const bool ppo_resume_ok =
+      execute_runtime_run_json(ppo_resume_args, &ppo_ctx, &result, &error);
+  check(ppo_resume_ok,
+        "PPO resume execute failed: " + error + " result=" + result);
   check(!hero_runtime::tool_result_is_error(result),
         "PPO resume execute returned error: " + result);
   require_contains(result, "\"resume_mode\":\"resume_weights_and_optimizer\"",
@@ -4107,15 +7252,34 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   const auto ppo_source_job_dir = ppo_runtime_root / "source_completed_job";
   const auto ppo_source_replay_artifact_dir =
       ppo_source_job_dir / "artifacts" / "kikijyeba.environment.replay.v1";
+  const auto ppo_source_replay_pulse_dir =
+      ppo_source_replay_artifact_dir / "pulses" / "pulse_000000";
+  const auto ppo_source_replay_artifact_index_path =
+      ppo_source_replay_pulse_dir / "runtime_replay_artifacts.index";
   std::filesystem::create_directories(ppo_source_replay_artifact_dir);
+  std::filesystem::create_directories(ppo_source_replay_pulse_dir);
   write_text(ppo_source_job_dir / "job.manifest",
              "job_id=source_completed_job\n"
              "target_component_family_id=wikimyei.inference.expected_value."
              "mdn\n");
   write_text(ppo_source_job_dir / "job.state", "status=completed\n");
+  write_text(ppo_source_replay_artifact_index_path,
+             "schema=kikijyeba.environment.replay.runtime_artifact_path_index."
+             "v1\n"
+             "entry_count=2\n"
+             "entry_0_kind=policy_input\n"
+             "entry_0_path=policy_input_0.json\n"
+             "entry_1_kind=policy_input\n"
+             "entry_1_path=policy_input_1.json\n");
   write_text(ppo_source_replay_artifact_dir / "runtime_replay_batches.index",
              "schema=kikijyeba.environment.replay.runtime_batch_index.v1\n"
-             "entry_count=1\n");
+             "entry_count=1\n"
+             "entry_0_begin_anchor_index=0\n"
+             "entry_0_end_anchor_index=10\n"
+             "entry_0_anchor_count=2\n"
+             "entry_0_batch_cursor_token=cursor_0_10\n"
+             "entry_0_artifact_path_index_path=" +
+                 ppo_source_replay_artifact_index_path.string() + "\n");
   const auto fake_ppo_replay_exec =
       ppo_runtime_root / "fake_ppo_replay_exec.sh";
   write_text(
@@ -4124,6 +7288,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "report_path=''\n"
       "policy_checkpoint_path=''\n"
       "policy_artifact_digest=''\n"
+      "replay_experiment_id=''\n"
       "linear_cost_rate=''\n"
       "on_policy_sample='false'\n"
       "quality_replay='false'\n"
@@ -4139,6 +7304,9 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "  elif [ \"$1\" = '--replay-policy-artifact-digest' ]; then\n"
       "    shift\n"
       "    policy_artifact_digest=\"$1\"\n"
+      "  elif [ \"$1\" = '--replay-experiment-id' ]; then\n"
+      "    shift\n"
+      "    replay_experiment_id=\"$1\"\n"
       "  elif [ \"$1\" = '--replay-linear-transaction-cost-rate' ]; "
       "then\n"
       "    shift\n"
@@ -4155,6 +7323,10 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "if [ -z \"$report_path\" ]; then\n"
       "  echo missing replay report path >&2\n"
       "  exit 2\n"
+      "fi\n"
+      "if [ -z \"$replay_experiment_id\" ]; then\n"
+      "  echo missing replay experiment id >&2\n"
+      "  exit 6\n"
       "fi\n"
       "case \"$report_path\" in\n"
       "  *policy_quality_replay.report) quality_replay='true' ;;\n"
@@ -4274,6 +7446,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "cat > \"$report_path\" <<REPORT\n"
       "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
       "artifact.v1\n"
+      "experiment_id=$replay_experiment_id\n"
       "runtime_run_id=$runtime_run_id\n"
       "environment_run_id=$environment_run_id\n"
       "mean_final_equity_numeraire=$final_equity\n"
@@ -4553,7 +7726,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "policy_4_partial_order_count=0\n"
       "REPORT\n"
       "fi\n"
-      "printf 'replay_experiment_id=ppo_on_policy_fixture\\n'\n"
+      "printf 'replay_experiment_id=%s\\n' \"$replay_experiment_id\"\n"
       "printf 'replay_completed_count=1\\n'\n"
       "printf 'replay_report_path=%s\\n' \"$report_path\"\n");
   std::filesystem::permissions(fake_ppo_replay_exec,
@@ -4562,8 +7735,104 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                                    std::filesystem::perms::owner_write);
   ppo_ctx.policy.values["runtime_exec_path"] = fake_ppo_replay_exec.string();
   auto ppo_parent_bundle = make_ppo_rehearsal_parent_fact_bundle();
+  const auto &ppo_parent_forecast =
+      ppo_parent_bundle.ledger.forecast_eval_facts().front();
+  const auto &ppo_parent_replay =
+      ppo_parent_bundle.ledger.replay_environment_facts().front();
+  const auto ppo_source_replay_job_dir_digest = digest_file_for_handoff(
+      ppo_source_replay_artifact_dir / "runtime_replay_batches.index",
+      "policy_execution_replay_job_dir_anchor.v1");
+  std::vector<std::string> ppo_policy_input_artifacts{
+      ppo_parent_bundle.forecast_eval_digest,
+      ppo_parent_forecast.forecast_artifact_digest};
+  ppo_policy_input_artifacts.insert(
+      ppo_policy_input_artifacts.end(),
+      ppo_parent_replay.influence_summary.parent_artifact_digests.begin(),
+      ppo_parent_replay.influence_summary.parent_artifact_digests.end());
+  ppo_policy_input_artifacts.push_back(
+      ppo_parent_replay.parent_forecast_eval_fact_digest);
+  ppo_policy_input_artifacts.push_back(
+      ppo_parent_replay.parent_forecast_artifact_digest);
+  ppo_policy_input_artifacts.push_back(
+      ppo_parent_bundle.observer_belief_digest);
+  ppo_policy_input_artifacts.push_back(
+      ppo_parent_bundle.replay_environment_digest);
+  ppo_policy_input_artifacts.push_back(
+      ppo_parent_replay.experiment_report_digest);
+  ppo_policy_input_artifacts.push_back(ppo_source_replay_job_dir_digest);
+  std::vector<std::string> ppo_policy_input_checkpoints =
+      ppo_parent_forecast.influence_summary.parent_checkpoint_digests;
+  ppo_policy_input_checkpoints.insert(
+      ppo_policy_input_checkpoints.end(),
+      ppo_parent_replay.influence_summary.parent_checkpoint_digests.begin(),
+      ppo_parent_replay.influence_summary.parent_checkpoint_digests.end());
+  ppo_policy_input_checkpoints.insert(
+      ppo_policy_input_checkpoints.end(),
+      ppo_parent_forecast.influence_summary.parent_checkpoint_digests.begin(),
+      ppo_parent_forecast.influence_summary.parent_checkpoint_digests.end());
+  std::vector<std::string> ppo_policy_input_generations{
+      ppo_parent_forecast.influence_summary.producer_generation_vector_digest};
+  ppo_policy_input_generations.insert(
+      ppo_policy_input_generations.end(),
+      ppo_parent_replay.influence_summary.parent_generation_vector_digests
+          .begin(),
+      ppo_parent_replay.influence_summary.parent_generation_vector_digests
+          .end());
+  ppo_policy_input_generations.push_back(
+      ppo_parent_replay.influence_summary.producer_generation_vector_digest);
+  ppo_policy_input_generations.push_back(
+      ppo_parent_forecast.influence_summary.producer_generation_vector_digest);
+  std::vector<std::string> ppo_no_lookahead_closure_artifacts{
+      ppo_parent_bundle.forecast_eval_digest,
+      ppo_parent_forecast.forecast_artifact_digest};
+  ppo_no_lookahead_closure_artifacts.insert(
+      ppo_no_lookahead_closure_artifacts.end(),
+      ppo_parent_replay.influence_summary.parent_artifact_digests.begin(),
+      ppo_parent_replay.influence_summary.parent_artifact_digests.end());
+  ppo_no_lookahead_closure_artifacts.push_back(
+      ppo_parent_replay.parent_forecast_eval_fact_digest);
+  ppo_no_lookahead_closure_artifacts.push_back(
+      ppo_parent_replay.parent_forecast_artifact_digest);
+  std::vector<std::string> ppo_no_lookahead_closure_generations{
+      ppo_parent_forecast.influence_summary.producer_generation_vector_digest};
+  ppo_no_lookahead_closure_generations.insert(
+      ppo_no_lookahead_closure_generations.end(),
+      ppo_parent_replay.influence_summary.parent_generation_vector_digests
+          .begin(),
+      ppo_parent_replay.influence_summary.parent_generation_vector_digests
+          .end());
+  ppo_no_lookahead_closure_generations.push_back(
+      ppo_parent_forecast.influence_summary.producer_generation_vector_digest);
+  const std::string ppo_embargo_policy_fingerprint = "embargo_policy_anchor_v1";
+  const std::int64_t ppo_embargo_window_begin = 0;
+  const std::int64_t ppo_embargo_window_end = 0;
+  const auto ppo_no_lookahead_closure =
+      expected_policy_no_lookahead_closure_digest(
+          ppo_parent_forecast.influence_summary.no_lookahead_contract_digest,
+          ppo_no_lookahead_closure_artifacts, ppo_policy_input_checkpoints,
+          ppo_no_lookahead_closure_generations,
+          std::max(ppo_parent_forecast.influence_summary
+                       .influence_anchor_end_exclusive_max,
+                   ppo_parent_replay.influence_summary
+                       .influence_anchor_end_exclusive_max),
+          true,
+          std::max(ppo_parent_forecast.influence_summary
+                       .label_or_reward_availability_end_exclusive_max,
+                   ppo_parent_replay.influence_summary
+                       .label_or_reward_availability_end_exclusive_max),
+          true, ppo_embargo_policy_fingerprint, ppo_embargo_window_begin,
+          ppo_embargo_window_end, true);
+  const auto ppo_no_lookahead_certificate_digest =
+      lattice_exposure::exposure_digest_for_text(
+          "ppo_policy_input_certificate|" + ppo_no_lookahead_closure);
+  const auto ppo_evidence_snapshot_digest =
+      lattice_exposure::exposure_digest_for_text("ppo_policy_input_snapshot|" +
+                                                 ppo_no_lookahead_closure);
   write_text(ppo_source_job_dir / "lattice.forecast_eval.fact",
              "fact_digest=" + ppo_parent_bundle.forecast_eval_digest +
+                 "\n"
+                 "forecast_artifact_digest=" +
+                 ppo_parent_forecast.forecast_artifact_digest +
                  "\n"
                  "parent_exposure_fact_digest=" +
                  lattice_exposure::exposure_fact_digest(
@@ -4575,6 +7844,17 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                  "anchor_end=10\n"
                  "completed_anchor_begin=0\n"
                  "completed_anchor_end=10\n");
+  write_text(ppo_source_job_dir / "lattice.replay_environment.fact",
+             "fact_digest=" + ppo_parent_bundle.replay_environment_digest +
+                 "\n"
+                 "experiment_report_digest=" +
+                 ppo_parent_replay.experiment_report_digest +
+                 "\n"
+                 "parent_forecast_eval_fact_digest=" +
+                 ppo_parent_replay.parent_forecast_eval_fact_digest +
+                 "\n"
+                 "parent_forecast_artifact_digest=" +
+                 ppo_parent_replay.parent_forecast_artifact_digest + "\n");
   std::string ppo_on_policy_args = valid_policy_training_args("execute");
   replace_all(ppo_on_policy_args,
               "\"parent_forecast_eval_fact_digest\":\"forecast_eval_fact_"
@@ -4607,18 +7887,104 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       ppo_on_policy_args.find(ppo_live_forbidden);
   check(ppo_on_policy_live_pos != std::string::npos,
         "PPO on-policy fixture should contain live execution denial");
+  const std::string ppo_policy_execution_lock_args =
+      "\"policy_execution_no_lookahead_certificate_schema\":\""
+      "no_lookahead_artifact_provenance.v1\","
+      "\"policy_execution_no_lookahead_certificate_digest\":\"" +
+      ppo_no_lookahead_certificate_digest +
+      "\","
+      "\"policy_execution_evidence_snapshot_digest\":\"" +
+      ppo_evidence_snapshot_digest +
+      "\","
+      "\"policy_execution_provenance_closure_digest\":\"" +
+      ppo_no_lookahead_closure +
+      "\","
+      "\"policy_execution_target_id\":\"policy_training_artifact_ready\","
+      "\"policy_execution_target_anchor_begin\":0,"
+      "\"policy_execution_target_anchor_end_exclusive\":10,"
+      "\"policy_execution_no_lookahead_contract_digest\":\"" +
+      ppo_parent_forecast.influence_summary.no_lookahead_contract_digest +
+      "\","
+      "\"embargo_policy_fingerprint\":\"" +
+      ppo_embargo_policy_fingerprint +
+      "\","
+      "\"embargo_purged_window_anchor_begin\":" +
+      std::to_string(ppo_embargo_window_begin) +
+      ","
+      "\"embargo_purged_window_anchor_end_exclusive\":" +
+      std::to_string(ppo_embargo_window_end) +
+      ","
+      "\"embargo_purged_window_anchor_range_bound\":true,"
+      "\"policy_execution_input_parent_forecast_eval_fact_digest\":\"" +
+      ppo_parent_bundle.forecast_eval_digest +
+      "\","
+      "\"policy_execution_input_parent_forecast_artifact_digest\":\"" +
+      ppo_parent_forecast.forecast_artifact_digest +
+      "\","
+      "\"policy_execution_input_parent_replay_environment_fact_digest\":\"" +
+      ppo_parent_bundle.replay_environment_digest +
+      "\","
+      "\"policy_execution_input_parent_replay_environment_report_digest\":\"" +
+      ppo_parent_replay.experiment_report_digest +
+      "\","
+      "\"policy_execution_replay_job_dir_digest\":\"" +
+      ppo_source_replay_job_dir_digest +
+      "\","
+      "\"policy_execution_consumed_artifact_digests\":\"" +
+      csv_policy_execution_keys(ppo_policy_input_artifacts) +
+      "\","
+      "\"policy_execution_consumed_checkpoint_digests\":\"" +
+      csv_policy_execution_keys(ppo_policy_input_checkpoints) +
+      "\","
+      "\"policy_execution_consumed_generation_vector_digests\":\"" +
+      csv_policy_execution_keys(ppo_policy_input_generations) +
+      "\","
+      "\"bundle_representation_component_id\":\""
+      "wikimyei.representation.encoding.mtf_jepa_mae_vicreg\","
+      "\"bundle_representation_checkpoint_digest\":\""
+      "representation_checkpoint_digest_v1\","
+      "\"bundle_representation_generation_id\":\""
+      "rep_generation_prior_v1\","
+      "\"bundle_representation_generation_vector_digest\":\""
+      "generation_vector_prior_rep_mdn_v1\","
+      "\"bundle_mdn_component_id\":\"wikimyei.inference.expected_value.mdn\","
+      "\"bundle_mdn_checkpoint_digest\":\"mdn_checkpoint_digest_v1\","
+      "\"bundle_mdn_generation_id\":\"mdn_generation_prior_v1\","
+      "\"bundle_mdn_generation_vector_digest\":\""
+      "generation_vector_prior_rep_mdn_v1\","
+      "\"mdn_trained_against_representation_generation_vector_digest\":\""
+      "generation_vector_prior_rep_mdn_v1\","
+      "\"policy_trained_against_representation_generation_vector_digest\":\""
+      "generation_vector_prior_rep_mdn_v1\","
+      "\"policy_trained_against_mdn_generation_vector_digest\":\""
+      "generation_vector_prior_rep_mdn_v1\","
+      "\"parent_policy_generation_id\":\"policy_generation_seed_v1\","
+      "\"parent_policy_generation_vector_digest\":\""
+      "generation_vector_seed_policy_v1\","
+      "\"parent_policy_influence_complete\":true,"
+      "\"parent_policy_influence_anchor_begin_min\":0,"
+      "\"parent_policy_influence_anchor_end_exclusive_max\":0,"
+      "\"parent_policy_influence_label_or_reward_availability_end_exclusive_"
+      "max\":0,"
+      "\"parent_policy_valid_from_anchor\":0,"
+      "\"parent_policy_no_lookahead_contract_digest\":\"" +
+      ppo_parent_forecast.influence_summary.no_lookahead_contract_digest +
+      "\",";
   ppo_on_policy_args.replace(ppo_on_policy_live_pos, ppo_live_forbidden.size(),
-                             "\"live_execution_allowed\":false,"
-                             "\"job_id\":\"ppo_on_policy_collect\","
-                             "\"replay_job_dir\":\"" +
+                             "\"live_execution_allowed\":false," +
+                                 ppo_policy_execution_lock_args +
+                                 "\"job_id\":\"ppo_on_policy_collect\","
+                                 "\"experiment_id\":\"ppo_on_policy_fixture\","
+                                 "\"replay_job_dir\":\"" +
                                  ppo_source_job_dir.string() +
                                  "\","
                                  "\"accounting_numeraire_node_id\":\"USDT\"}");
   result.clear();
   error.clear();
-  check(execute_runtime_run_json(ppo_on_policy_args, &ppo_ctx, &result, &error),
-        "PPO on-policy replay execute failed: " + error +
-            "\nresult: " + result);
+  const bool ppo_on_policy_ok =
+      execute_runtime_run_json(ppo_on_policy_args, &ppo_ctx, &result, &error);
+  check(ppo_on_policy_ok, "PPO on-policy replay execute failed: " + error +
+                              "\nresult: " + result);
   require_contains(result,
                    "\"rollout_collection_source\":\"kikijyeba_on_policy_"
                    "replay\"",
@@ -4640,6 +8006,18 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "ref");
   require_contains(result, "\"policy_quality_report_ref\":\"rpt_",
                    "PPO on-policy execute reports policy-quality operator ref");
+  require_contains(result, "\"performance_profile_report_ref\":\"rpt_",
+                   "PPO on-policy execute reports performance-profile "
+                   "operator ref");
+  require_contains(result, "\"certified_replay_chunk_count\":1",
+                   "PPO on-policy execute reports certified replay chunk "
+                   "count");
+  require_contains(result, "\"certified_replay_sample_count\":2",
+                   "PPO on-policy execute reports certified replay sample "
+                   "count");
+  require_contains(result,
+                   "\"policy_experience_mode\":\"on_policy_current_rollout\"",
+                   "PPO on-policy execute reports policy experience mode");
   require_contains(result, "\"optimizer_torch_state_ref\":\"opt_",
                    "PPO on-policy execute reports optimizer archive operator "
                    "ref");
@@ -4649,6 +8027,9 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "PPO on-policy execute denies policy-quality claims");
   require_contains(result, "\"market_readiness_claimed\":false",
                    "PPO on-policy execute denies market-readiness claims");
+  const auto ppo_on_policy_job_id = json_string_field(result, "job_id");
+  const std::string ppo_on_policy_child_experiment_root =
+      "ppo_on_policy_fixture." + ppo_on_policy_job_id;
   require_contains(result, "\"input_policy_checkpoint_path\":",
                    "PPO on-policy execute reports collection checkpoint path");
   require_contains(
@@ -4666,6 +8047,44 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "dispatch_kikijyeba_replay_collect_on_policy_report_"
                    "write_checkpoint_rollout_update",
                    "PPO on-policy manifest records fresh collection chain");
+  const auto ppo_on_policy_input_replay_report_path = std::filesystem::path(
+      json_string_field(result, "input_replay_report_path"));
+  const auto ppo_on_policy_input_replay_report_text =
+      read_text(ppo_on_policy_input_replay_report_path);
+  const auto ppo_on_policy_input_replay_report_digest =
+      replay_report_digest_for_text(ppo_on_policy_input_replay_report_text);
+  require_contains(ppo_on_policy_input_replay_report_text,
+                   "experiment_id=" + ppo_on_policy_child_experiment_root +
+                       ".on_policy_collection",
+                   "PPO on-policy collection replay uses a job-bound "
+                   "experiment id");
+  check(ppo_on_policy_input_replay_report_text.find(
+            "experiment_id=ppo_on_policy_fixture\n") == std::string::npos,
+        "PPO on-policy collection replay does not reuse the static contract "
+        "experiment id");
+  const auto ppo_certified_replay_bank_manifest_path = std::filesystem::path(
+      json_string_field(result, "certified_replay_bank_manifest_path"));
+  const auto ppo_certified_replay_bank_manifest_text =
+      read_text(ppo_certified_replay_bank_manifest_path);
+  require_contains(ppo_certified_replay_bank_manifest_text,
+                   "schema=certified_replay_bank_manifest.v1",
+                   "PPO on-policy certified replay bank writes manifest "
+                   "schema");
+  require_contains(ppo_certified_replay_bank_manifest_text, "chunk_count=1",
+                   "PPO on-policy certified replay bank records chunk count");
+  require_contains(ppo_certified_replay_bank_manifest_text, "sample_count=2",
+                   "PPO on-policy certified replay bank records sample count");
+  require_contains(ppo_certified_replay_bank_manifest_text,
+                   "coverage_anchor_begin=0",
+                   "PPO on-policy certified replay bank records coverage "
+                   "begin");
+  require_contains(ppo_certified_replay_bank_manifest_text,
+                   "coverage_anchor_end_exclusive=10",
+                   "PPO on-policy certified replay bank records coverage end");
+  require_contains(ppo_certified_replay_bank_manifest_text,
+                   "chunk_0_artifact_path_index_digest=",
+                   "PPO on-policy certified replay bank binds chunk artifact "
+                   "index digest");
   const auto ppo_on_policy_rollout_path = std::filesystem::path(
       json_string_field(result, "rollout_collection_path"));
   const auto ppo_on_policy_rollout_text = read_text(ppo_on_policy_rollout_path);
@@ -4680,6 +8099,24 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   require_contains(ppo_on_policy_rollout_text,
                    "on_policy_runtime_collection_complete=true",
                    "PPO on-policy rollout records completion flag");
+  require_contains(ppo_on_policy_rollout_text,
+                   "certified_replay_bank_manifest_digest=",
+                   "PPO on-policy rollout binds certified replay bank digest");
+  require_contains(ppo_on_policy_rollout_text, "certified_replay_chunk_count=1",
+                   "PPO on-policy rollout records certified replay chunk "
+                   "count");
+  require_contains(ppo_on_policy_rollout_text,
+                   "certified_replay_sample_count=2",
+                   "PPO on-policy rollout records certified replay sample "
+                   "count");
+  require_contains(ppo_on_policy_rollout_text,
+                   "certified_replay_coverage_anchor_begin=0",
+                   "PPO on-policy rollout records certified replay coverage "
+                   "begin");
+  require_contains(ppo_on_policy_rollout_text,
+                   "certified_replay_coverage_anchor_end_exclusive=10",
+                   "PPO on-policy rollout records certified replay coverage "
+                   "end");
   require_contains(ppo_on_policy_rollout_text,
                    "action_log_prob_source=action_distribution_evidence",
                    "PPO on-policy rollout uses action-distribution evidence");
@@ -4710,6 +8147,66 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "PPO on-policy report records collection checkpoint path");
   require_contains(ppo_on_policy_report_text, "input_policy_checkpoint_digest=",
                    "PPO on-policy report records collection checkpoint digest");
+  require_contains(
+      ppo_on_policy_report_text,
+      "performance_profile_schema=policy_training_anchor_v1_performance_"
+      "profile.v1",
+      "PPO on-policy report binds the anchor-v1 performance profile schema");
+  require_contains(ppo_on_policy_report_text,
+                   "performance_profile_report_digest=",
+                   "PPO on-policy report binds the performance profile digest");
+  require_contains(ppo_on_policy_report_text,
+                   "certified_replay_bank_manifest_digest=",
+                   "PPO on-policy report binds certified replay bank digest");
+  require_contains(ppo_on_policy_report_text, "policy_experience_set_digest=",
+                   "PPO on-policy report binds policy experience set digest");
+  const auto ppo_on_policy_performance_profile_path = std::filesystem::path(
+      json_string_field(result, "performance_profile_report_path"));
+  const auto ppo_on_policy_performance_profile_text =
+      read_text(ppo_on_policy_performance_profile_path);
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "certified_replay_bank_bound=true",
+                   "PPO on-policy performance profile records bound certified "
+                   "replay bank");
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "certified_replay_sample_count_low=true",
+                   "PPO on-policy performance profile records low certified "
+                   "replay exposure");
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "certified_replay_sample_deficit_to_threshold=1022",
+                   "PPO on-policy performance profile records certified "
+                   "replay sample deficit");
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "policy_training_uses_all_certified_replay=true",
+                   "PPO on-policy performance profile records whether "
+                   "training consumed all certified replay samples");
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "ppo_rollout_sample_cap_limited=false",
+                   "PPO on-policy performance profile separates rollout caps "
+                   "from source capacity");
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "certified_replay_source_capacity_limited=true",
+                   "PPO on-policy performance profile identifies the source "
+                   "replay capacity bottleneck");
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "ppo_kl_target_exceeded=true",
+                   "PPO on-policy performance profile keeps update stability "
+                   "warnings ahead of scaling recommendations");
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "certified_replay_scaling_bottleneck_kind="
+                   "ppo_update_stability",
+                   "PPO on-policy performance profile prioritizes PPO update "
+                   "stability when KL exceeds the target");
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "certified_replay_scaling_recommendation="
+                   "stabilize_ppo_update_before_scaling",
+                   "PPO on-policy performance profile recommends stabilizing "
+                   "PPO before scaling certified replay generation");
+  require_contains(ppo_on_policy_performance_profile_text,
+                   "suggested_next_performance_tag="
+                   "ppo_update_stability",
+                   "PPO on-policy performance profile keeps update stability "
+                   "as the next tag while KL exceeds the target");
   const auto ppo_on_policy_fact_path = std::filesystem::path(
       json_string_field(result, "policy_training_fact_path"));
   const auto ppo_on_policy_fact_text = read_text(ppo_on_policy_fact_path);
@@ -4717,6 +8214,30 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "PPO on-policy fact records collection checkpoint path");
   require_contains(ppo_on_policy_fact_text, "input_policy_checkpoint_digest=",
                    "PPO on-policy fact records collection checkpoint digest");
+  require_contains(
+      ppo_on_policy_fact_text,
+      "policy_execution_no_lookahead_certificate_schema="
+      "no_lookahead_artifact_provenance.v1",
+      "PPO on-policy fact records execution input certificate schema");
+  require_contains(ppo_on_policy_fact_text,
+                   "policy_execution_replay_job_dir_digest=" +
+                       ppo_source_replay_job_dir_digest,
+                   "PPO on-policy fact records certified replay job digest");
+  require_contains(ppo_on_policy_fact_text,
+                   "certified_replay_bank_manifest_digest=",
+                   "PPO on-policy fact records certified replay bank digest");
+  require_contains(ppo_on_policy_fact_text, "certified_replay_chunk_count=1",
+                   "PPO on-policy fact records certified replay chunk count");
+  require_contains(ppo_on_policy_fact_text, "certified_replay_sample_count=2",
+                   "PPO on-policy fact records certified replay sample count");
+  require_contains(ppo_on_policy_fact_text, "policy_output_fit_anchor_begin=0",
+                   "PPO on-policy fact records output fit anchor begin");
+  require_contains(ppo_on_policy_fact_text,
+                   "policy_output_fit_anchor_end_exclusive=10",
+                   "PPO on-policy fact records output fit anchor end");
+  require_contains(ppo_on_policy_fact_text,
+                   "policy_output_valid_from_anchor=10",
+                   "PPO on-policy fact records future valid-from anchor");
   const auto parsed_ppo_on_policy_facts =
       lattice_exposure::make_policy_training_facts_from_job_dir(
           ppo_on_policy_fact_path.parent_path(), ppo_parent_bundle.parent_fact);
@@ -4725,6 +8246,99 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   const auto &parsed_ppo_on_policy_fact = parsed_ppo_on_policy_facts.front();
   check(!parsed_ppo_on_policy_fact.input_policy_checkpoint_digest.empty(),
         "parsed on-policy PPO fact carries input policy checkpoint digest");
+  check(parsed_ppo_on_policy_fact
+                    .policy_execution_no_lookahead_certificate_schema ==
+                "no_lookahead_artifact_provenance.v1" &&
+            parsed_ppo_on_policy_fact
+                    .policy_execution_no_lookahead_certificate_digest ==
+                ppo_no_lookahead_certificate_digest &&
+            parsed_ppo_on_policy_fact
+                    .policy_execution_provenance_closure_digest ==
+                ppo_no_lookahead_closure,
+        "parsed on-policy PPO fact preserves claim-bound no-lookahead "
+        "input certificate lock");
+  check(
+      parsed_ppo_on_policy_fact.causal_provenance_schema ==
+              "causal_provenance_generalization.v1" &&
+          parsed_ppo_on_policy_fact.causal_artifact_production_schema ==
+              "runtime.artifact_production.inline_policy_training.v1" &&
+          parsed_ppo_on_policy_fact.causal_artifact_production_closure_digest ==
+              ppo_no_lookahead_closure &&
+          parsed_ppo_on_policy_fact.causal_provenance_closure_digest ==
+              ppo_no_lookahead_closure &&
+          parsed_ppo_on_policy_fact.causal_purged_embargo_policy_fingerprint ==
+              ppo_embargo_policy_fingerprint &&
+          parsed_ppo_on_policy_fact
+                  .causal_interface_stability_contract_digest ==
+              "interface_stability.trained_against_generation_vector.v1",
+      "parsed on-policy PPO fact preserves generalized causal provenance "
+      "aggregate fields bound to the no-lookahead closure");
+  check(
+      parsed_ppo_on_policy_fact.policy_execution_target_anchor_range_bound &&
+          parsed_ppo_on_policy_fact.policy_execution_target_anchor_range
+                  .begin == 0 &&
+          parsed_ppo_on_policy_fact.policy_execution_target_anchor_range.end ==
+              10,
+      "parsed on-policy PPO fact preserves certified target anchor range");
+  check(parsed_ppo_on_policy_fact.certified_replay_bank_schema ==
+                "certified_replay_bank_manifest.v1" &&
+            !parsed_ppo_on_policy_fact.certified_replay_bank_manifest_digest
+                 .empty() &&
+            !parsed_ppo_on_policy_fact.policy_experience_set_digest.empty() &&
+            parsed_ppo_on_policy_fact.policy_experience_mode ==
+                "on_policy_current_rollout" &&
+            parsed_ppo_on_policy_fact.certified_replay_chunk_count_bound &&
+            parsed_ppo_on_policy_fact.certified_replay_chunk_count == 1 &&
+            parsed_ppo_on_policy_fact.certified_replay_sample_count_bound &&
+            parsed_ppo_on_policy_fact.certified_replay_sample_count == 2 &&
+            parsed_ppo_on_policy_fact
+                .certified_replay_coverage_anchor_range_bound &&
+            parsed_ppo_on_policy_fact.certified_replay_coverage_anchor_range
+                    .begin == 0 &&
+            parsed_ppo_on_policy_fact.certified_replay_coverage_anchor_range
+                    .end == 10,
+        "parsed on-policy PPO fact preserves certified replay bank exposure "
+        "summary");
+  check(
+      parsed_ppo_on_policy_fact
+                  .policy_execution_input_parent_replay_environment_fact_digest ==
+              ppo_parent_bundle.replay_environment_digest &&
+          parsed_ppo_on_policy_fact
+                  .policy_execution_input_parent_replay_environment_report_digest ==
+              ppo_parent_replay.experiment_report_digest,
+      "parsed on-policy PPO fact preserves certified replay input identity");
+  check(
+      parsed_ppo_on_policy_fact.embargo_policy_fingerprint ==
+              ppo_embargo_policy_fingerprint &&
+          parsed_ppo_on_policy_fact.embargo_purged_window_anchor_range_bound &&
+          parsed_ppo_on_policy_fact.embargo_purged_window_anchor_range.begin ==
+              ppo_embargo_window_begin &&
+          parsed_ppo_on_policy_fact.embargo_purged_window_anchor_range.end ==
+              ppo_embargo_window_end,
+      "parsed on-policy PPO fact preserves embargo/purged-window evidence");
+  check(parsed_ppo_on_policy_fact.parent_policy_influence_summary.complete &&
+            parsed_ppo_on_policy_fact.parent_policy_influence_summary
+                .influence_anchor_end_exclusive_max_bound &&
+            parsed_ppo_on_policy_fact.parent_policy_influence_summary
+                    .influence_anchor_end_exclusive_max == 0 &&
+            parsed_ppo_on_policy_fact.parent_policy_influence_summary
+                .label_or_reward_availability_end_exclusive_max_bound &&
+            parsed_ppo_on_policy_fact.parent_policy_influence_summary
+                    .label_or_reward_availability_end_exclusive_max == 0,
+        "parsed on-policy PPO fact preserves admissible parent policy "
+        "influence and label/reward availability");
+  check(
+      parsed_ppo_on_policy_fact.policy_output_fit_anchor_range_bound &&
+          parsed_ppo_on_policy_fact.policy_output_fit_anchor_range.begin == 0 &&
+          parsed_ppo_on_policy_fact.policy_output_fit_anchor_range.end == 10 &&
+          parsed_ppo_on_policy_fact.policy_output_valid_from_anchor_bound &&
+          parsed_ppo_on_policy_fact.policy_output_valid_from_anchor == 10 &&
+          parsed_ppo_on_policy_fact.influence_summary
+              .influence_anchor_end_exclusive_max_bound &&
+          parsed_ppo_on_policy_fact.influence_summary
+                  .influence_anchor_end_exclusive_max >= 10,
+      "parsed on-policy PPO fact declares final policy output fit range, "
+      "future valid-from anchor, and output influence");
   check(parsed_ppo_on_policy_fact.parent_forecast_eval_fact_digest ==
             ppo_parent_bundle.forecast_eval_digest,
         "parsed on-policy PPO fact binds concrete forecast-eval parent digest");
@@ -4737,6 +8351,13 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                 "policy_net_digest_v1" &&
             parsed_ppo_on_policy_fact.policy_jkimyei_digest ==
                 "policy_jkimyei_digest_v1" &&
+            parsed_ppo_on_policy_fact
+                    .policy_jkimyei_no_lookahead_contract_digest ==
+                protocol_fixture::
+                    canonical_cwu_02v_no_lookahead_contract_digest() &&
+            parsed_ppo_on_policy_fact.policy_jkimyei_component_role ==
+                "policy" &&
+            parsed_ppo_on_policy_fact.policy_jkimyei_serving_order_index == 2 &&
             parsed_ppo_on_policy_fact.target_node_universe_digest ==
                 "target_node_universe_digest_v1",
         "parsed on-policy PPO fact binds policy DSL/net/jkimyei and target "
@@ -4746,21 +8367,88 @@ void test_policy_training_contract_and_pre_ppo_execute() {
         "parent lineage");
   check(parsed_ppo_on_policy_fact.parent_replay_environment_fact_digest.empty(),
         "parsed on-policy PPO fact does not depend on a pre-derived replay "
-        "environment fact digest");
+        "environment fact digest outside the certified input lock");
   const auto ppo_policy_quality_replay_path = std::filesystem::path(
       json_string_field(result, "policy_quality_replay_report_path"));
-  const auto ppo_policy_quality_replay_digest =
-      lattice_exposure::replay_environment_report_digest_for_text(
-          read_text(ppo_policy_quality_replay_path));
+  const auto ppo_policy_quality_replay_text =
+      read_text(ppo_policy_quality_replay_path);
+  require_contains(ppo_policy_quality_replay_text,
+                   "experiment_id=" + ppo_on_policy_child_experiment_root +
+                       ".policy_quality",
+                   "PPO policy-quality replay uses a job-bound experiment id");
   check(parsed_ppo_on_policy_fact.parent_replay_environment_report_digest ==
-            ppo_policy_quality_replay_digest,
-        "parsed on-policy PPO fact binds post-derived replay report lineage "
-        "digest");
+            ppo_on_policy_input_replay_report_digest,
+        "parsed on-policy PPO fact binds generated on-policy replay report "
+        "lineage digest");
   const auto ppo_on_policy_fact_issues =
       lattice_exposure::policy_training_fact_issues(parsed_ppo_on_policy_fact);
   check(ppo_on_policy_fact_issues.empty(),
         "parsed on-policy PPO fact is Lattice-ready artifact evidence: " +
             join_issue_tokens(ppo_on_policy_fact_issues));
+  const auto ppo_policy_training_job_dir =
+      ppo_on_policy_fact_path.parent_path();
+  const auto ppo_checkpoint_fact_path =
+      ppo_policy_training_job_dir / "lattice.checkpoint.fact";
+  const auto ppo_checkpoint_fact_text = read_text(ppo_checkpoint_fact_path);
+  require_contains(
+      ppo_checkpoint_fact_text,
+      "generation_manifest_schema=component_checkpoint_generation_manifest.v1",
+      "PPO output checkpoint sidecar records component generation manifest "
+      "schema");
+  require_contains(ppo_checkpoint_fact_text, "component_role=policy",
+                   "PPO output checkpoint sidecar records policy role");
+  require_contains(ppo_checkpoint_fact_text,
+                   "producer_component_update_fact_digest=",
+                   "PPO output checkpoint sidecar binds producer update fact");
+  require_contains(
+      ppo_checkpoint_fact_text, "generation_lane=readiness_grade",
+      "PPO output checkpoint sidecar marks readiness-grade generation lane");
+  const auto ppo_component_update_path =
+      ppo_policy_training_job_dir / "runtime.component_training_update.fact";
+  const auto ppo_component_update_text = read_text(ppo_component_update_path);
+  require_contains(ppo_component_update_text,
+                   "schema=runtime.component_training_update.v1",
+                   "PPO output writes component training update fact");
+  require_contains(
+      ppo_component_update_text,
+      "write_generation_id=" +
+          parsed_ppo_on_policy_fact.policy_output_generation_id,
+      "PPO component update fact binds output policy generation id");
+  require_contains(ppo_component_update_text,
+                   "write_checkpoint_digest=" +
+                       parsed_ppo_on_policy_fact.actor_checkpoint_digest,
+                   "PPO component update fact binds output actor checkpoint "
+                   "digest");
+  add_checkpoint_generation_with_update(
+      ppo_parent_bundle.ledger,
+      make_checkpoint_generation_fact(
+          "wikimyei.policy.portfolio.graph_node_allocation",
+          parsed_ppo_on_policy_fact.input_policy_checkpoint_digest,
+          parsed_ppo_on_policy_fact.parent_policy_generation_id,
+          parsed_ppo_on_policy_fact.parent_policy_generation_vector_digest, 0,
+          0, parsed_ppo_on_policy_fact.graph_order_fingerprint,
+          parsed_ppo_on_policy_fact.source_cursor_token,
+          parsed_ppo_on_policy_fact.split_policy_fingerprint,
+          parsed_ppo_on_policy_fact.parent_policy_influence_summary
+              .no_lookahead_contract_digest,
+          "frozen_init"));
+  ppo_parent_bundle.ledger.add_component_training_update(
+      lattice_exposure::make_component_training_update_fact_from_sidecar_file(
+          ppo_component_update_path));
+  ppo_parent_bundle.ledger.add_checkpoint(
+      lattice_exposure::make_checkpoint_fact_from_sidecar_file(
+          ppo_checkpoint_fact_path, ppo_policy_training_job_dir));
+  auto generated_on_policy_replay_parent =
+      ppo_parent_bundle.ledger.replay_environment_facts().front();
+  generated_on_policy_replay_parent.experiment_report_path =
+      ppo_on_policy_input_replay_report_path;
+  generated_on_policy_replay_parent.experiment_report_digest =
+      ppo_on_policy_input_replay_report_digest;
+  ppo_parent_bundle.ledger.add_replay_environment(
+      std::move(generated_on_policy_replay_parent));
+  const auto ppo_policy_quality_replay_digest =
+      lattice_exposure::replay_environment_report_digest_for_text(
+          ppo_policy_quality_replay_text);
   auto generated_policy_quality_replay_parent =
       ppo_parent_bundle.ledger.replay_environment_facts().front();
   generated_policy_quality_replay_parent.experiment_report_path =
@@ -4810,18 +8498,38 @@ LATTICE_TARGET {
         "fresh PPO Lattice target uses policy-training artifact proof");
   check(ppo_artifact_eval.subject_fact_family == "policy_training",
         "fresh PPO Lattice target remains scoped to policy_training facts");
+  check(ppo_artifact_eval.proof_certificate.artifacts.size() == 1 &&
+            ppo_artifact_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_checked &&
+            ppo_artifact_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_complete &&
+            ppo_artifact_eval.proof_certificate.artifacts.front()
+                .no_lookahead_provenance_admissible &&
+            !ppo_artifact_eval.proof_certificate.artifacts.front()
+                 .consumed_generation_vector_digests.empty(),
+        "fresh PPO Lattice target carries passing no-lookahead provenance from "
+        "the parent forecast/replay chain");
   check(!ppo_artifact_eval.plan_ready &&
             ppo_artifact_eval.suggested_wave.empty(),
         "fresh PPO artifact readiness does not suggest training or selection "
         "work");
   check(ppo_artifact_eval.fact_integrity_summary_available,
         "fresh PPO artifact readiness exposes fact-integrity summary");
-  check(ppo_artifact_eval.fact_integrity_summary.relation_declared_count == 3,
-        "fresh PPO artifact readiness declares three parent evidence "
-        "relations");
-  check(ppo_artifact_eval.fact_integrity_summary.relation_bound_count == 3,
-        "fresh PPO artifact readiness binds all three parent evidence "
-        "relations");
+  check(ppo_artifact_eval.fact_integrity_summary.relation_declared_count >= 3,
+        "fresh PPO artifact readiness declares at least the legacy parent "
+        "evidence relations");
+  check(ppo_artifact_eval.fact_integrity_summary.relation_bound_count ==
+            ppo_artifact_eval.fact_integrity_summary.relation_declared_count,
+        "fresh PPO artifact readiness binds every declared parent evidence "
+        "relation: declared=" +
+            std::to_string(ppo_artifact_eval.fact_integrity_summary
+                               .relation_declared_count) +
+            ", bound=" +
+            std::to_string(
+                ppo_artifact_eval.fact_integrity_summary.relation_bound_count) +
+            ", issues=" +
+            join_issue_tokens(
+                ppo_artifact_eval.fact_integrity_summary.issue_codes));
   check(ppo_artifact_eval.fact_integrity_summary.relation_integrity_clean,
         "fresh PPO artifact readiness has clean parent relation "
         "integrity");
@@ -5004,6 +8712,14 @@ LATTICE_TARGET {
       json_string_field(result, "validation_rollout_report_path"));
   const auto ppo_on_policy_validation_rollout_text =
       read_text(ppo_on_policy_validation_rollout_path);
+  const auto ppo_validation_replay_report_path = std::filesystem::path(
+      json_string_field(result, "validation_replay_report_path"));
+  const auto ppo_validation_replay_report_text =
+      read_text(ppo_validation_replay_report_path);
+  require_contains(ppo_validation_replay_report_text,
+                   "experiment_id=" + ppo_on_policy_child_experiment_root +
+                       ".validation_rollout",
+                   "PPO validation replay uses a job-bound experiment id");
   require_contains(ppo_on_policy_validation_rollout_text,
                    "schema=kikijyeba.runtime.ppo_cost_aware_validation_"
                    "rollout.v1",
@@ -5165,9 +8881,35 @@ LATTICE_TARGET {
                    "PPO policy-quality report denies Lattice selection");
   require_contains(ppo_policy_quality_report_text, "report_integrity_only=true",
                    "PPO policy-quality report is integrity evidence only");
+  const auto ppo_performance_profile_report_path = std::filesystem::path(
+      json_string_field(result, "performance_profile_report_path"));
+  const auto ppo_performance_profile_report_text =
+      read_text(ppo_performance_profile_report_path);
+  require_contains(ppo_performance_profile_report_text,
+                   "schema=policy_training_anchor_v1_performance_profile.v1",
+                   "PPO performance profile records schema");
+  require_contains(ppo_performance_profile_report_text, "sample_count=2",
+                   "PPO performance profile records sample count");
+  require_contains(ppo_performance_profile_report_text,
+                   "training_replay_backing_complete=true",
+                   "PPO performance profile records replay backing");
+  require_contains(ppo_performance_profile_report_text,
+                   "validation_rollout_ready=true",
+                   "PPO performance profile records validation availability");
+  require_contains(ppo_performance_profile_report_text,
+                   "policy_quality_comparison_complete=true",
+                   "PPO performance profile records complete quality "
+                   "comparison evidence");
+  require_contains(ppo_performance_profile_report_text,
+                   "performance_profile_claimed=false",
+                   "PPO performance profile does not claim performance");
+  require_contains(ppo_performance_profile_report_text,
+                   "policy_quality_claimed=false",
+                   "PPO performance profile does not claim quality");
+  require_contains(ppo_performance_profile_report_text,
+                   "report_integrity_only=true",
+                   "PPO performance profile remains diagnostic evidence");
 
-  const auto ppo_policy_training_job_dir =
-      ppo_on_policy_fact_path.parent_path();
   const auto acceptance_parent_fact =
       lattice_exposure::make_exposure_fact_from_job_dir(
           ppo_policy_training_job_dir,
@@ -5208,6 +8950,32 @@ LATTICE_TARGET {
              lattice_exposure::canonical_tsodao_settings_protection_fact_text(
                  tsodao_protection_fact));
 
+  const auto ppo_environment_policy_path =
+      ppo_runtime_root / "hero.environment.dsl";
+  write_text(ppo_ctx.global_config_path,
+             "[HERO]\n"
+             "environment_hero_dsl_path = " +
+                 ppo_environment_policy_path.string() +
+                 "\n"
+                 "[ACCOUNTING]\n"
+                 "accounting_numeraire_node_id = "
+                 "USDT\n");
+  write_text(ppo_environment_policy_path,
+             "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+             "environment_profile:enum = operator_default\n"
+             "default_config_path:path = " +
+                 ppo_ctx.global_config_path.string() +
+                 "\n"
+                 "runtime_root:path = " +
+                 ppo_runtime_root.string() +
+                 "\n"
+                 "allowed_job_roots:path_list = " +
+                 ppo_runtime_root.string() +
+                 "\n"
+                 "allow_certify_issue:bool = true\n"
+                 "allow_rollout_replay:bool = false\n"
+                 "max_capture_bytes:int = 4096\n"
+                 "max_runtime_seconds:int = 30\n");
   hero_environment::environment_context_t environment_ctx{};
   environment_ctx.global_config_path = ppo_ctx.global_config_path;
   environment_ctx.policy_path =
@@ -5800,99 +9568,6 @@ LATTICE_TARGET {
                    "acceptance execute refusal names existing sidecar");
 
   std::filesystem::remove_all(ppo_runtime_root);
-
-  const auto runtime_root = make_tmp_dir("policy_training_noop_execute");
-  hero_runtime::runtime_context_t exec_ctx{};
-  exec_ctx.global_config_path = runtime_root / ".config";
-  exec_ctx.policy.policy_path = runtime_root / "hero.runtime.dsl";
-  exec_ctx.policy.global_config_path = exec_ctx.global_config_path;
-  exec_ctx.policy.values["runtime_root"] = runtime_root.string();
-  exec_ctx.policy.values["allowed_job_roots"] = runtime_root.string();
-  exec_ctx.policy.values["allow_execute"] = "true";
-  exec_ctx.policy.values["allow_train_execute"] = "true";
-  exec_ctx.policy.values["max_capture_bytes"] = "65536";
-  std::string noop_execute_args = valid_policy_training_args(
-      "execute", "noop_policy_training.v1",
-      "wikimyei.policy.portfolio.graph_node_allocation.noop_pre_ppo.v1");
-  const std::string live_forbidden = "\"live_execution_allowed\":false}";
-  const auto live_forbidden_pos = noop_execute_args.find(live_forbidden);
-  check(live_forbidden_pos != std::string::npos,
-        "test fixture should contain live execution denial");
-  result.clear();
-  error.clear();
-  check(execute_runtime_run_json(noop_execute_args, &exec_ctx, &result, &error),
-        "noop policy-training execute failed: " + error);
-  check(!hero_runtime::tool_result_is_error(result),
-        "noop policy-training execute returned error: " + result);
-  require_contains(result,
-                   "\"schema_version\":\"kikijyeba.runtime.policy_training_"
-                   "execution_packet.v1\"",
-                   "noop execute reports execution packet schema");
-  require_contains(result, "\"trainer_kind\":\"noop_policy_training.v1\"",
-                   "noop execute binds trainer kind");
-  require_contains(result, "\"ppo_implemented\":false",
-                   "noop execute does not implement PPO");
-  require_contains(result, "\"policy_training_fact_path\":",
-                   "noop execute writes policy-training fact");
-  require_contains(result, "\"checkpoint_digest\":",
-                   "noop execute reports checkpoint digest");
-  require_contains(result, "\"runtime_executes_policy_training_smoke\":true",
-                   "noop execute declares bounded smoke execution");
-  require_contains(result, "\"runtime_trains_ppo\":false",
-                   "noop execute denies PPO training authority");
-
-  std::string inspect_result;
-  std::string inspect_error;
-  check(execute_runtime_inspect_json(
-            "{\"subject\":\"jobs\",\"root\":\"" + runtime_root.string() +
-                "\",\"include_artifacts\":true}",
-            &exec_ctx, &inspect_result, &inspect_error),
-        "noop policy-training job inspection failed: " + inspect_error);
-  require_contains(inspect_result, "\"job_kind\":\"policy_training\"",
-                   "noop execute creates an inspectable Runtime job");
-  bool policy_fact_found = false;
-  for (const auto &entry :
-       std::filesystem::recursive_directory_iterator(runtime_root)) {
-    if (entry.path().filename() == "runtime.policy_training.fact") {
-      policy_fact_found = true;
-      break;
-    }
-  }
-  check(policy_fact_found,
-        "noop execute should write runtime.policy_training.fact");
-
-  const auto policy_training_scan =
-      lattice_exposure::scan_exposure_ledger_from_runtime_root(runtime_root);
-  check(policy_training_scan.ledger.policy_training_facts().size() == 1,
-        "Lattice exposure scan derives one policy-training fact from noop "
-        "Runtime job");
-  const auto &policy_training_fact =
-      policy_training_scan.ledger.policy_training_facts().front();
-  check(lattice_exposure::policy_training_fact_issues(policy_training_fact)
-            .empty(),
-        "noop Runtime policy-training fact is issue-clean for the declared "
-        "pre-PPO contract");
-  check(
-      policy_training_fact.policy_input_schema_id ==
-              "kikijyeba.environment.policy_input.v1" &&
-          policy_training_fact.target_component_family_id ==
-              "wikimyei.policy.portfolio.graph_node_allocation" &&
-          policy_training_fact.action_schema_digest ==
-              "kikijyeba.environment.action.target_node_weights.v1" &&
-          policy_training_fact.action_adapter_id ==
-              "target_node_weights_simplex.v1" &&
-          policy_training_fact.action_distribution_id ==
-              "masked_dirichlet_simplex.v1" &&
-          policy_training_fact.reward_contract_id ==
-              "kikijyeba.environment.reward."
-              "post_execution_ledger_log_growth_cost_drawdown.v1" &&
-          policy_training_fact.training_schedule_mode ==
-              "causal_walk_forward_training.v1" &&
-          policy_training_fact.causal_schedule_no_future_snapshot_use_source ==
-              "derived_from_artifact_fit_use_ledgers",
-      "noop Runtime policy-training fact binds policy input, unified action, "
-      "post-execution reward, and derived causal schedule identity");
-  std::filesystem::remove_all(runtime_root);
 }
 
 } // namespace
@@ -5913,7 +9588,7 @@ int main() {
     test_source_key_wave_preview_reports_key_bounds();
     test_mdn_wave_preview_reads_jkimyei_model_state_inputs();
     test_policy_training_causal_schedule_contract();
-    test_policy_training_contract_and_pre_ppo_execute();
+    test_policy_training_contract_and_ppo_execute();
     test_execute_expected_wave_binding();
     test_handoff_checkpoint_inputs_launch_without_static_config_inputs();
     test_execute_wave_overlay();

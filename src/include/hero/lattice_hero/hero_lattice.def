@@ -16,17 +16,17 @@ HERO_LATTICE_POLICY_KEY("protocol_layer", "enum", 1, "STDIO", "one token",
                         "MCP protocol layer. HTTPS/SSE is reserved and fails "
                         "fast.")
 HERO_LATTICE_POLICY_KEY(
-    "default_config_path", "path", 1, "/cuwacunu/src/config/.config",
-    "file path", "absolute_or_relative_path",
+    "default_config_path", "path", 1, ".config", "file path",
+    "absolute_or_relative_path",
     "Default global config used to find lattice target DSL paths.")
 HERO_LATTICE_POLICY_KEY("runtime_root", "path", 1,
-                        "/cuwacunu/.runtime/cuwacunu_exec", "directory path",
+                        "../../.runtime/cuwacunu_exec", "directory path",
                         "absolute_or_relative_path",
                         "Default runtime artifact root scanned by Lattice "
                         "Hero.")
 HERO_LATTICE_POLICY_KEY(
     "allowed_runtime_roots", "path_list", 1,
-    "/cuwacunu/.runtime/cuwacunu_exec,/tmp", "comma-separated path list",
+    "../../.runtime/cuwacunu_exec,/tmp", "comma-separated path list",
     "absolute_or_relative_paths",
     "Roots under which explicit runtime_root and checkpoint arguments may "
     "live.")

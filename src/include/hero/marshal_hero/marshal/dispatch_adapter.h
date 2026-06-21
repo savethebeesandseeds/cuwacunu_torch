@@ -342,14 +342,10 @@ build_runtime_dry_run_dispatch_preview(
         add_refusal(decision,
                     marshal_refusal_reason_t::missing_model_state_input,
                     required_input + " is missing from dispatch advice");
-      } else if (actual == active_wave.model_state_inputs.end() ||
-                 actual->second.empty()) {
-        add_refusal(decision,
-                    marshal_refusal_reason_t::runtime_checkpoint_input_missing,
-                    required_input +
-                        " is missing from Runtime Hero active wave");
-      } else if (detail::normalize_path_text(expected->second) !=
-                 detail::normalize_path_text(actual->second)) {
+      } else if (actual != active_wave.model_state_inputs.end() &&
+                 !actual->second.empty() &&
+                 detail::normalize_path_text(expected->second) !=
+                     detail::normalize_path_text(actual->second)) {
         add_refusal(
             decision, marshal_refusal_reason_t::checkpoint_input_mismatch,
             required_input + " differs between advice and Runtime Hero wave");

@@ -669,6 +669,92 @@ void test_rollout_tool_rejects_unknown_execution_profile_field() {
         "unknown rollout profile field rejection should be explicit");
 }
 
+void test_rollout_profile_derives_environment_defaults() {
+  const auto root = make_tmp_dir("environment_profile_defaults");
+  auto request = valid_rollout_request(root);
+  const auto config_path = root / ".config";
+  const auto environment_policy_path = root / "hero.environment.dsl";
+  request.config_path = config_path;
+
+  write_text(config_path, "[ACCOUNTING]\n"
+                          "accounting_numeraire_node_id = USDT\n"
+                          "[HERO]\n"
+                          "environment_hero_dsl_path = " +
+                              environment_policy_path.string() +
+                              "\n"
+                              "environment_hero_profile = tuned_rollout\n");
+  write_text(environment_policy_path,
+             "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+             "environment_profile:enum = operator_default\n"
+             "rollout_policy_set:string = numeraire,current_weight\n"
+             "rollout_max_steps:int = 10\n"
+             "rollout_max_parallel_jobs:int = 1\n"
+             "rollout_runtime_exec_path:path = " +
+                 request.runtime_exec_path.string() +
+                 "\n"
+                 "rollout_execution_backend_id:string = "
+                 "cajtucu.execution.paper.v1\n"
+                 "rollout_cost_model_id:string = "
+                 "linear_transaction_cost_rate.v1\n"
+                 "rollout_allow_synthetic_direct_edges:bool = false\n"
+                 "rollout_synthetic_edge_research_reason:string =\n"
+                 "rollout_linear_transaction_cost_rate:number = 0.001\n"
+                 "rollout_allow_partial_fills:bool = false\n"
+                 "rollout_equity_mismatch_tolerance:number = 0.000001\n"
+                 "rollout_equity_mismatch_fail_tolerance:number = 0.01\n"
+                 "rollout_live_execution_allowed:bool = false\n"
+                 "max_runtime_seconds:int = 600\n"
+                 "\n"
+                 "ENVIRONMENT_PROFILE tuned_rollout {\n"
+                 "  rollout_policy_set:string = equal_weight,sdu\n"
+                 "  rollout_max_steps:int = 37\n"
+                 "  rollout_max_parallel_jobs:int = 2\n"
+                 "  rollout_linear_transaction_cost_rate:number = 0.002\n"
+                 "  max_runtime_seconds:int = 12\n"
+                 "}\n");
+
+  const auto resolved =
+      marshal::tool_detail::resolve_rollout_profile_from_fields(
+          "env_derived", {}, config_path);
+  check(resolved.policy_tokens ==
+            std::vector<std::string>({"equal_weight", "sdu"}),
+        "empty Marshal rollout profile should inherit Environment policy set");
+  check(resolved.max_steps == 37,
+        "empty Marshal rollout profile should inherit Environment max steps");
+  check(resolved.max_parallel_jobs == 2,
+        "empty Marshal rollout profile should inherit Environment workers");
+  check(resolved.timeout_seconds == 12,
+        "empty Marshal rollout profile should inherit Environment timeout");
+  check(resolved.execution_profile.linear_transaction_cost_rate == 0.002,
+        "empty Marshal rollout profile should inherit Environment cost rate");
+
+  marshal::marshal_context_t ctx{};
+  ctx.global_config_path = config_path;
+  ctx.policy_path = root / "hero.marshal.dsl";
+  ctx.policy.policy_path = ctx.policy_path;
+  ctx.policy.global_config_path = config_path;
+  ctx.policy.values["protocol_layer"] =
+      std::string(marshal::kProtocolLayerStdio);
+  ctx.policy.values["rollout_profile"] = "env_derived";
+  ctx.policy.rollout_profile_id = "env_derived";
+  ctx.policy.rollout_profile_fields["env_derived"] = {};
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json(
+            "hero.marshal.rollout",
+            direct_rollout_args("plan", request, false, "env_derived"), &result,
+            &error, &ctx),
+        "rollout tool should plan from Environment-derived defaults: " + error);
+  check(result.find("--replay-max-steps 37") != std::string::npos,
+        "rollout plan should expose Environment-derived max steps");
+  check(result.find("--replay-max-parallel-jobs 2") != std::string::npos,
+        "rollout plan should expose Environment-derived worker cap");
+  check(result.find("\"linear_transaction_cost_rate\":0.002") !=
+            std::string::npos,
+        "rollout plan should expose Environment-derived cost rate");
+}
+
 void test_rollout_execute_calls_runtime_replay() {
   const auto root = make_tmp_dir("execute");
   auto request = valid_rollout_request(root);
@@ -819,8 +905,11 @@ void test_rollout_execute_calls_runtime_replay() {
         "execute rollout should name internal Runtime replay executor");
   check(result.find("\"executor_result_error\":false") != std::string::npos,
         "execute rollout Runtime executor result should not be an error");
-  check(result.find("replay_completed_count") != std::string::npos,
-        "execute rollout should expose Runtime replay stdout evidence");
+  check(std::filesystem::exists(request.report_path),
+        "execute rollout should produce Runtime replay report evidence");
+  check(read_text(request.report_path).find("completed_count=2") !=
+            std::string::npos,
+        "execute rollout report should preserve completed replay evidence");
   const auto rollout_plan = marshal::prepare_rollout_plan(request);
   const auto runtime_replay_args =
       marshal::rollout_runtime_replay_args_json(request, rollout_plan, false);
@@ -877,6 +966,7 @@ int main() {
   test_rollout_tool_rejects_prepare_only_field();
   test_rollout_request_rejects_removed_packet_fields();
   test_rollout_tool_rejects_unknown_execution_profile_field();
+  test_rollout_profile_derives_environment_defaults();
   test_rollout_execute_calls_runtime_replay();
   test_prepare_rejects_rollout_intent();
   return 0;

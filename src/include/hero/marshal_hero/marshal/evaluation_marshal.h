@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/marshal_hero/marshal/digest.h"
 
 namespace cuwacunu::hero::marshal {
@@ -45,7 +46,7 @@ struct marshal_evaluation_request_t {
   std::string source_order{"sequential"};
 
   std::filesystem::path runtime_exec_path{
-      "/cuwacunu/.build/exec/cuwacunu_exec"};
+      cuwacunu::hero::config_paths::default_runtime_exec_path()};
   std::filesystem::path evaluation_config_path{};
   std::filesystem::path input_mdn_checkpoint{};
   std::filesystem::path input_representation_checkpoint{};

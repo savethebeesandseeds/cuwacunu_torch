@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "iinuji/iinuji_cmd/action_registry.h"
 #include "iinuji/iinuji_cmd/home_showcase.h"
 #include "iinuji/iinuji_cmd/views.h"
@@ -105,7 +106,8 @@ enum class HomeVisualSnapshotMode : std::uint8_t {
 
 struct CmdOptions {
   std::string invoked_command_name{"cuwacunu_cmd"};
-  std::filesystem::path global_config_path{"/cuwacunu/src/config/.config"};
+  std::filesystem::path global_config_path{
+      cuwacunu::hero::config_paths::default_global_config_path()};
   ScreenMode initial_screen{ScreenMode::Home};
   SplashSnapshotMode splash_snapshot{SplashSnapshotMode::None};
   HomeVisualSnapshotMode visual_snapshot_mode{HomeVisualSnapshotMode::None};
@@ -1655,9 +1657,9 @@ workspace_split_columns_for_screen(ScreenMode screen) {
   return {len_spec::frac(0.44), len_spec::frac(0.56)};
 }
 
-inline CmdUi create_ui(
-    const std::filesystem::path &global_config_path = std::filesystem::path{
-        "/cuwacunu/src/config/.config"}) {
+inline CmdUi
+create_ui(const std::filesystem::path &global_config_path =
+              cuwacunu::hero::config_paths::default_global_config_path()) {
   CmdUi ui{};
   const iinuji_style_t root_style{"#D8D8D8", "#101014"};
   const iinuji_style_t title_style{"#EDEDED",
@@ -6926,7 +6928,7 @@ inline void append_home_motion_strip(std::ostringstream &out,
 
 inline std::string make_home_visual_snapshot_text(
     const std::filesystem::path &global_config_path =
-        std::filesystem::path{"/cuwacunu/src/config/.config"},
+        cuwacunu::hero::config_paths::default_global_config_path(),
     HomeVisualSnapshotMode mode = HomeVisualSnapshotMode::Full) {
   if (mode == HomeVisualSnapshotMode::None)
     mode = HomeVisualSnapshotMode::Full;
@@ -7002,7 +7004,7 @@ inline std::string make_home_visual_snapshot_text(
 
 inline std::string make_home_snapshot_visual_preview_text(
     const std::filesystem::path &global_config_path =
-        std::filesystem::path{"/cuwacunu/src/config/.config"},
+        cuwacunu::hero::config_paths::default_global_config_path(),
     HomePresentationMode presentation = HomePresentationMode::Showcase) {
   if (presentation == HomePresentationMode::BootstrapSplash ||
       presentation == HomePresentationMode::FarewellSplash) {
@@ -7060,8 +7062,8 @@ inline std::string make_home_snapshot_visual_preview_text(
 
 inline std::string make_snapshot_text_with_visuals(
     const CmdState &state,
-    const std::filesystem::path &global_config_path = std::filesystem::path{
-        "/cuwacunu/src/config/.config"}) {
+    const std::filesystem::path &global_config_path =
+        cuwacunu::hero::config_paths::default_global_config_path()) {
   if (state.screen != ScreenMode::Home)
     return make_snapshot_text(state);
 
@@ -7082,7 +7084,7 @@ inline std::string make_snapshot_text_with_visuals(
 inline std::string make_splash_snapshot_text(
     SplashSnapshotMode mode,
     const std::filesystem::path &global_config_path =
-        std::filesystem::path{"/cuwacunu/src/config/.config"},
+        cuwacunu::hero::config_paths::default_global_config_path(),
     const std::string &command_name = "cuwacunu_cmd") {
   if (mode == SplashSnapshotMode::None)
     mode = SplashSnapshotMode::Bootstrap;

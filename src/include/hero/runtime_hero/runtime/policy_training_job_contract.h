@@ -40,6 +40,28 @@ inline constexpr const char *k_ppo_update_report_schema_v1 =
 inline constexpr const char *k_policy_quality_report_schema_v1 =
     "kikijyeba.runtime.policy_quality_report.v1";
 inline constexpr const char *k_gae_advantage_estimator_v1 = "gae.v1";
+inline constexpr const char *k_ppo_advantage_normalization_policy_v1 =
+    "batch_center_scale_advantages.v1";
+inline constexpr const char *k_policy_training_purged_embargo_policy_v1 =
+    "embargo_policy_anchor_v1";
+inline constexpr const char *k_no_lookahead_artifact_provenance_certificate_v1 =
+    "no_lookahead_artifact_provenance.v1";
+inline constexpr const char
+    *k_no_lookahead_artifact_provenance_anchor_schema_v1 =
+        "no_lookahead_artifact_provenance.anchor_v1";
+inline constexpr const char *k_policy_runtime_execution_provenance_v1 =
+    "policy_runtime_execution_provenance.v1";
+inline constexpr const char *k_causal_provenance_generalization_v1 =
+    "causal_provenance_generalization.v1";
+inline constexpr const char *k_causal_atom_anchor_interval_v1 =
+    "causal_atom.anchor_interval_v1";
+inline constexpr const char *k_causal_interval_set_anchor_half_open_v1 =
+    "causal_interval_set.anchor_half_open_v1";
+inline constexpr const char *k_runtime_artifact_production_inline_policy_v1 =
+    "runtime.artifact_production.inline_policy_training.v1";
+inline constexpr const char
+    *k_interface_stability_trained_against_generation_vector_v1 =
+        "interface_stability.trained_against_generation_vector.v1";
 
 [[nodiscard]] inline bool
 policy_kind_is_ppo_adapter(std::string_view policy_kind,
@@ -58,12 +80,24 @@ struct policy_training_job_contract_t {
   std::string job_dir{};
   std::string report_path{};
   std::string replay_job_dir{};
+  std::string certified_replay_bank_schema{"certified_replay_bank_manifest.v1"};
+  std::string certified_replay_bank_manifest_path{};
+  std::string certified_replay_bank_manifest_digest{};
+  std::string policy_experience_set_digest{};
+  std::string policy_experience_mode{"on_policy_current_rollout"};
+  std::int64_t certified_replay_chunk_count{0};
+  bool certified_replay_chunk_count_bound{false};
+  std::int64_t certified_replay_sample_count{0};
+  bool certified_replay_sample_count_bound{false};
+  std::int64_t certified_replay_coverage_anchor_begin{0};
+  std::int64_t certified_replay_coverage_anchor_end_exclusive{0};
+  bool certified_replay_coverage_anchor_range_bound{false};
   std::string config_path{};
   std::string accounting_numeraire_node_id{};
   std::string target_node_ids{};
   std::string experiment_id{};
   std::string policy_set_digest{};
-  std::string protocol_id{"cwu_02v"};
+  std::string protocol_id{};
   std::string protocol_contract_fingerprint{};
   std::string graph_order_fingerprint{};
   std::string source_cursor_token{};
@@ -93,9 +127,65 @@ struct policy_training_job_contract_t {
   std::string policy_net_digest{};
   std::string policy_input_feature_manifest_digest{};
   std::string policy_jkimyei_digest{};
+  std::string policy_jkimyei_no_lookahead_contract_id{};
+  std::string policy_jkimyei_no_lookahead_contract_digest{};
+  std::string policy_jkimyei_component_order_contract_id{};
+  std::string policy_jkimyei_component_order_contract_digest{};
+  std::string policy_jkimyei_component_role{};
+  std::int64_t policy_jkimyei_serving_order_index{0};
+  bool policy_jkimyei_serving_order_index_bound{false};
   std::string target_node_universe_digest{};
   std::string action_distribution_config_digest{};
   std::string snapshot_family_digest{};
+  std::string snapshot_bundle_schema{"snapshot_bundle_manifest.v1"};
+  std::string snapshot_bundle_id{};
+  std::string snapshot_bundle_kind{"readiness_candidate"};
+  std::string snapshot_bundle_selection_basis{};
+  std::string snapshot_bundle_no_lookahead_contract_id{};
+  std::string snapshot_bundle_no_lookahead_contract_digest{};
+  std::string snapshot_bundle_component_order_contract_id{};
+  std::string snapshot_bundle_component_order_contract_digest{};
+  std::string snapshot_bundle_protocol_contract_fingerprint{};
+  std::string snapshot_bundle_generation_vector_digest{};
+  std::int64_t snapshot_bundle_valid_from_anchor{0};
+  bool snapshot_bundle_valid_from_anchor_bound{false};
+  std::int64_t snapshot_bundle_valid_until_anchor{0};
+  bool snapshot_bundle_valid_until_anchor_bound{false};
+  std::int64_t snapshot_bundle_influence_anchor_end_exclusive_max{0};
+  bool snapshot_bundle_influence_anchor_end_exclusive_max_bound{false};
+  std::string snapshot_bundle_compatibility_closure_digest{};
+  std::string snapshot_bundle_no_lookahead_certificate_digests{};
+  std::string snapshot_bundle_policy_execution_certificate_digest{};
+  std::string snapshot_bundle_created_by_lattice_target{};
+  std::string bundle_representation_component_id{};
+  std::string bundle_representation_jkimyei_digest{};
+  std::string bundle_representation_checkpoint_digest{};
+  std::string bundle_representation_generation_id{};
+  std::string bundle_representation_generation_vector_digest{};
+  std::string bundle_representation_generation_manifest_digest{};
+  std::string bundle_mdn_component_id{};
+  std::string bundle_mdn_jkimyei_digest{};
+  std::string bundle_mdn_checkpoint_digest{};
+  std::string bundle_mdn_generation_id{};
+  std::string bundle_mdn_generation_vector_digest{};
+  std::string bundle_mdn_generation_manifest_digest{};
+  std::string bundle_policy_component_id{};
+  std::string bundle_policy_jkimyei_digest{};
+  std::string bundle_policy_checkpoint_digest{};
+  std::string bundle_policy_generation_id{};
+  std::string bundle_policy_generation_vector_digest{};
+  std::string bundle_policy_generation_manifest_digest{};
+  std::string mdn_trained_against_representation_generation_id{};
+  std::string mdn_trained_against_representation_checkpoint_digest{};
+  std::string mdn_trained_against_representation_generation_vector_digest{};
+  std::string mdn_representation_feature_schema_digest{};
+  std::string policy_trained_against_forecast_eval_fact_digest{};
+  std::string policy_trained_against_replay_environment_fact_digest{};
+  std::string policy_trained_against_representation_generation_vector_digest{};
+  std::string policy_trained_against_mdn_generation_vector_digest{};
+  std::string policy_trained_against_policy_parent_generation_vector_digest{};
+  std::string policy_execution_input_lock_digest{};
+  std::string policy_trained_against_no_lookahead_certificate_digest{};
   std::string actor_architecture_digest{};
   std::string critic_architecture_digest{};
   std::string actor_checkpoint_digest{};
@@ -124,6 +214,7 @@ struct policy_training_job_contract_t {
   double ppo_gae_lambda{0.0};
   double ppo_clip_epsilon{0.0};
   double ppo_target_kl{0.0};
+  double ppo_learning_rate{0.0};
   double ppo_entropy_coeff{0.0};
   double ppo_value_loss_coeff{0.0};
   double ppo_max_grad_norm{0.0};
@@ -135,6 +226,7 @@ struct policy_training_job_contract_t {
   bool ppo_gae_lambda_bound{false};
   bool ppo_clip_epsilon_bound{false};
   bool ppo_target_kl_bound{false};
+  bool ppo_learning_rate_bound{false};
   bool ppo_entropy_coeff_bound{false};
   bool ppo_value_loss_coeff_bound{false};
   bool ppo_max_grad_norm_bound{false};
@@ -153,6 +245,21 @@ struct policy_training_job_contract_t {
   std::string causal_schedule_cursor_key_kind{"numeric_anchor_index"};
   std::string causal_schedule_no_future_snapshot_use_source{
       k_policy_training_schedule_no_future_snapshot_source_v1};
+  std::string causal_provenance_schema{k_causal_provenance_generalization_v1};
+  std::string causal_atom_schema{k_causal_atom_anchor_interval_v1};
+  std::string causal_interval_set_schema{
+      k_causal_interval_set_anchor_half_open_v1};
+  std::string causal_label_reward_horizon_policy_fingerprint{
+      "label_reward_horizon.anchor_scalar_v1"};
+  std::string causal_fold_policy_fingerprint{
+      "fold_policy.single_time_split_v1"};
+  std::string causal_purged_embargo_policy_fingerprint{};
+  std::string causal_artifact_production_schema{
+      k_runtime_artifact_production_inline_policy_v1};
+  std::string causal_artifact_production_closure_digest{};
+  std::string causal_interface_stability_contract_digest{
+      k_interface_stability_trained_against_generation_vector_v1};
+  std::string causal_provenance_closure_digest{};
   std::string normalization_fit_range_digest{};
   std::string replay_buffer_source_range_digest{};
   std::string early_stopping_policy_digest{};
@@ -166,11 +273,59 @@ struct policy_training_job_contract_t {
   std::string parent_replay_environment_fact_digest{};
   std::string parent_replay_environment_report_digest{};
   std::string final_refit_parent_selected_checkpoint_digest{};
+  std::string policy_execution_no_lookahead_certificate_schema{};
+  std::string policy_execution_no_lookahead_certificate_digest{};
+  std::string policy_execution_evidence_snapshot_digest{};
+  std::string policy_execution_provenance_closure_digest{};
+  std::string policy_execution_target_id{};
+  std::int64_t policy_execution_target_anchor_begin{0};
+  std::int64_t policy_execution_target_anchor_end_exclusive{0};
+  bool policy_execution_target_anchor_begin_bound{false};
+  bool policy_execution_target_anchor_end_exclusive_bound{false};
+  std::string policy_execution_no_lookahead_contract_digest{};
+  std::string embargo_policy_fingerprint{};
+  std::int64_t embargo_purged_window_anchor_begin{0};
+  std::int64_t embargo_purged_window_anchor_end_exclusive{0};
+  bool embargo_purged_window_anchor_range_bound{false};
+  std::string policy_execution_input_parent_forecast_eval_fact_digest{};
+  std::string policy_execution_input_parent_forecast_artifact_digest{};
+  std::string policy_execution_input_parent_replay_environment_fact_digest{};
+  std::string policy_execution_input_parent_replay_environment_report_digest{};
+  std::string policy_execution_replay_job_dir_digest{};
+  std::string policy_execution_consumed_artifact_digests{};
+  std::string policy_execution_consumed_checkpoint_digests{};
+  std::string policy_execution_consumed_generation_vector_digests{};
+  std::string parent_policy_generation_id{};
+  std::string parent_policy_generation_vector_digest{};
+  std::string parent_policy_influence_schema{
+      k_no_lookahead_artifact_provenance_anchor_schema_v1};
+  bool parent_policy_influence_complete{false};
+  std::int64_t parent_policy_influence_anchor_begin_min{0};
+  std::int64_t parent_policy_influence_anchor_end_exclusive_max{0};
+  bool parent_policy_influence_anchor_begin_min_bound{false};
+  bool parent_policy_influence_anchor_end_exclusive_max_bound{false};
+  std::int64_t parent_policy_label_or_reward_availability_end_exclusive_max{0};
+  bool parent_policy_label_or_reward_availability_end_exclusive_max_bound{
+      false};
+  std::int64_t parent_policy_valid_from_anchor{0};
+  bool parent_policy_valid_from_anchor_bound{false};
+  std::string parent_policy_provenance_closure_digest{};
+  std::string parent_policy_no_lookahead_contract_digest{};
+  std::string policy_output_generation_id{};
+  std::string policy_output_generation_vector_digest{};
+  std::int64_t policy_output_fit_anchor_begin{0};
+  std::int64_t policy_output_fit_anchor_end_exclusive{0};
+  bool policy_output_fit_anchor_begin_bound{false};
+  bool policy_output_fit_anchor_end_exclusive_bound{false};
+  std::int64_t policy_output_valid_from_anchor{0};
+  bool policy_output_valid_from_anchor_bound{false};
+  std::string policy_output_provenance_closure_digest{};
   std::int64_t random_seed{0};
   bool random_seed_bound{false};
   std::int64_t max_episodes{0};
   std::int64_t max_steps{0};
   std::int64_t max_parallel_jobs{1};
+  bool max_parallel_jobs_bound{false};
   std::int64_t max_wall_clock_seconds{0};
   bool causal_schedule_readiness_eligible{true};
   bool causal_schedule_no_future_snapshot_use{true};
@@ -189,6 +344,30 @@ struct policy_training_job_contract_t {
     out << "job_dir=" << job_dir << "\n";
     out << "report_path=" << report_path << "\n";
     out << "replay_job_dir=" << replay_job_dir << "\n";
+    out << "certified_replay_bank_schema=" << certified_replay_bank_schema
+        << "\n";
+    out << "certified_replay_bank_manifest_path="
+        << certified_replay_bank_manifest_path << "\n";
+    out << "certified_replay_bank_manifest_digest="
+        << certified_replay_bank_manifest_digest << "\n";
+    out << "policy_experience_set_digest=" << policy_experience_set_digest
+        << "\n";
+    out << "policy_experience_mode=" << policy_experience_mode << "\n";
+    out << "certified_replay_chunk_count=" << certified_replay_chunk_count
+        << "\n";
+    out << "certified_replay_chunk_count_bound="
+        << (certified_replay_chunk_count_bound ? "true" : "false") << "\n";
+    out << "certified_replay_sample_count=" << certified_replay_sample_count
+        << "\n";
+    out << "certified_replay_sample_count_bound="
+        << (certified_replay_sample_count_bound ? "true" : "false") << "\n";
+    out << "certified_replay_coverage_anchor_begin="
+        << certified_replay_coverage_anchor_begin << "\n";
+    out << "certified_replay_coverage_anchor_end_exclusive="
+        << certified_replay_coverage_anchor_end_exclusive << "\n";
+    out << "certified_replay_coverage_anchor_range_bound="
+        << (certified_replay_coverage_anchor_range_bound ? "true" : "false")
+        << "\n";
     out << "config_path=" << config_path << "\n";
     out << "accounting_numeraire_node_id=" << accounting_numeraire_node_id
         << "\n";
@@ -229,11 +408,122 @@ struct policy_training_job_contract_t {
     out << "policy_input_feature_manifest_digest="
         << policy_input_feature_manifest_digest << "\n";
     out << "policy_jkimyei_digest=" << policy_jkimyei_digest << "\n";
+    out << "policy_jkimyei_no_lookahead_contract_id="
+        << policy_jkimyei_no_lookahead_contract_id << "\n";
+    out << "policy_jkimyei_no_lookahead_contract_digest="
+        << policy_jkimyei_no_lookahead_contract_digest << "\n";
+    out << "policy_jkimyei_component_order_contract_id="
+        << policy_jkimyei_component_order_contract_id << "\n";
+    out << "policy_jkimyei_component_order_contract_digest="
+        << policy_jkimyei_component_order_contract_digest << "\n";
+    out << "policy_jkimyei_component_role=" << policy_jkimyei_component_role
+        << "\n";
+    out << "policy_jkimyei_serving_order_index="
+        << policy_jkimyei_serving_order_index << "\n";
+    out << "policy_jkimyei_serving_order_index_bound="
+        << (policy_jkimyei_serving_order_index_bound ? "true" : "false")
+        << "\n";
     out << "target_node_universe_digest=" << target_node_universe_digest
         << "\n";
     out << "action_distribution_config_digest="
         << action_distribution_config_digest << "\n";
     out << "snapshot_family_digest=" << snapshot_family_digest << "\n";
+    out << "snapshot_bundle_schema=" << snapshot_bundle_schema << "\n";
+    out << "snapshot_bundle_id=" << snapshot_bundle_id << "\n";
+    out << "snapshot_bundle_kind=" << snapshot_bundle_kind << "\n";
+    out << "snapshot_bundle_selection_basis=" << snapshot_bundle_selection_basis
+        << "\n";
+    out << "snapshot_bundle_no_lookahead_contract_id="
+        << snapshot_bundle_no_lookahead_contract_id << "\n";
+    out << "snapshot_bundle_no_lookahead_contract_digest="
+        << snapshot_bundle_no_lookahead_contract_digest << "\n";
+    out << "snapshot_bundle_component_order_contract_id="
+        << snapshot_bundle_component_order_contract_id << "\n";
+    out << "snapshot_bundle_component_order_contract_digest="
+        << snapshot_bundle_component_order_contract_digest << "\n";
+    out << "snapshot_bundle_protocol_contract_fingerprint="
+        << snapshot_bundle_protocol_contract_fingerprint << "\n";
+    out << "snapshot_bundle_generation_vector_digest="
+        << snapshot_bundle_generation_vector_digest << "\n";
+    out << "snapshot_bundle_valid_from_anchor="
+        << snapshot_bundle_valid_from_anchor << "\n";
+    out << "snapshot_bundle_valid_from_anchor_bound="
+        << (snapshot_bundle_valid_from_anchor_bound ? "true" : "false") << "\n";
+    out << "snapshot_bundle_valid_until_anchor="
+        << snapshot_bundle_valid_until_anchor << "\n";
+    out << "snapshot_bundle_valid_until_anchor_bound="
+        << (snapshot_bundle_valid_until_anchor_bound ? "true" : "false")
+        << "\n";
+    out << "snapshot_bundle_influence_anchor_end_exclusive_max="
+        << snapshot_bundle_influence_anchor_end_exclusive_max << "\n";
+    out << "snapshot_bundle_influence_anchor_end_exclusive_max_bound="
+        << (snapshot_bundle_influence_anchor_end_exclusive_max_bound ? "true"
+                                                                     : "false")
+        << "\n";
+    out << "snapshot_bundle_compatibility_closure_digest="
+        << snapshot_bundle_compatibility_closure_digest << "\n";
+    out << "snapshot_bundle_no_lookahead_certificate_digests="
+        << snapshot_bundle_no_lookahead_certificate_digests << "\n";
+    out << "snapshot_bundle_policy_execution_certificate_digest="
+        << snapshot_bundle_policy_execution_certificate_digest << "\n";
+    out << "snapshot_bundle_created_by_lattice_target="
+        << snapshot_bundle_created_by_lattice_target << "\n";
+    out << "bundle_representation_component_id="
+        << bundle_representation_component_id << "\n";
+    out << "bundle_representation_jkimyei_digest="
+        << bundle_representation_jkimyei_digest << "\n";
+    out << "bundle_representation_checkpoint_digest="
+        << bundle_representation_checkpoint_digest << "\n";
+    out << "bundle_representation_generation_id="
+        << bundle_representation_generation_id << "\n";
+    out << "bundle_representation_generation_vector_digest="
+        << bundle_representation_generation_vector_digest << "\n";
+    out << "bundle_representation_generation_manifest_digest="
+        << bundle_representation_generation_manifest_digest << "\n";
+    out << "bundle_mdn_component_id=" << bundle_mdn_component_id << "\n";
+    out << "bundle_mdn_jkimyei_digest=" << bundle_mdn_jkimyei_digest << "\n";
+    out << "bundle_mdn_checkpoint_digest=" << bundle_mdn_checkpoint_digest
+        << "\n";
+    out << "bundle_mdn_generation_id=" << bundle_mdn_generation_id << "\n";
+    out << "bundle_mdn_generation_vector_digest="
+        << bundle_mdn_generation_vector_digest << "\n";
+    out << "bundle_mdn_generation_manifest_digest="
+        << bundle_mdn_generation_manifest_digest << "\n";
+    out << "bundle_policy_component_id=" << bundle_policy_component_id << "\n";
+    out << "bundle_policy_jkimyei_digest=" << bundle_policy_jkimyei_digest
+        << "\n";
+    out << "bundle_policy_checkpoint_digest=" << bundle_policy_checkpoint_digest
+        << "\n";
+    out << "bundle_policy_generation_id=" << bundle_policy_generation_id
+        << "\n";
+    out << "bundle_policy_generation_vector_digest="
+        << bundle_policy_generation_vector_digest << "\n";
+    out << "bundle_policy_generation_manifest_digest="
+        << bundle_policy_generation_manifest_digest << "\n";
+    out << "mdn_trained_against_representation_generation_id="
+        << mdn_trained_against_representation_generation_id << "\n";
+    out << "mdn_trained_against_representation_checkpoint_digest="
+        << mdn_trained_against_representation_checkpoint_digest << "\n";
+    out << "mdn_trained_against_representation_generation_vector_digest="
+        << mdn_trained_against_representation_generation_vector_digest << "\n";
+    out << "mdn_representation_feature_schema_digest="
+        << mdn_representation_feature_schema_digest << "\n";
+    out << "policy_trained_against_forecast_eval_fact_digest="
+        << policy_trained_against_forecast_eval_fact_digest << "\n";
+    out << "policy_trained_against_replay_environment_fact_digest="
+        << policy_trained_against_replay_environment_fact_digest << "\n";
+    out << "policy_trained_against_representation_generation_vector_digest="
+        << policy_trained_against_representation_generation_vector_digest
+        << "\n";
+    out << "policy_trained_against_mdn_generation_vector_digest="
+        << policy_trained_against_mdn_generation_vector_digest << "\n";
+    out << "policy_trained_against_policy_parent_generation_vector_digest="
+        << policy_trained_against_policy_parent_generation_vector_digest
+        << "\n";
+    out << "policy_execution_input_lock_digest="
+        << policy_execution_input_lock_digest << "\n";
+    out << "policy_trained_against_no_lookahead_certificate_digest="
+        << policy_trained_against_no_lookahead_certificate_digest << "\n";
     out << "actor_architecture_digest=" << actor_architecture_digest << "\n";
     out << "critic_architecture_digest=" << critic_architecture_digest << "\n";
     out << "actor_checkpoint_digest=" << actor_checkpoint_digest << "\n";
@@ -278,6 +568,9 @@ struct policy_training_job_contract_t {
     out << "ppo_target_kl=" << ppo_target_kl << "\n";
     out << "ppo_target_kl_bound=" << (ppo_target_kl_bound ? "true" : "false")
         << "\n";
+    out << "ppo_learning_rate=" << ppo_learning_rate << "\n";
+    out << "ppo_learning_rate_bound="
+        << (ppo_learning_rate_bound ? "true" : "false") << "\n";
     out << "ppo_entropy_coeff=" << ppo_entropy_coeff << "\n";
     out << "ppo_entropy_coeff_bound="
         << (ppo_entropy_coeff_bound ? "true" : "false") << "\n";
@@ -313,6 +606,23 @@ struct policy_training_job_contract_t {
         << "\n";
     out << "causal_schedule_no_future_snapshot_use_source="
         << causal_schedule_no_future_snapshot_use_source << "\n";
+    out << "causal_provenance_schema=" << causal_provenance_schema << "\n";
+    out << "causal_atom_schema=" << causal_atom_schema << "\n";
+    out << "causal_interval_set_schema=" << causal_interval_set_schema << "\n";
+    out << "causal_label_reward_horizon_policy_fingerprint="
+        << causal_label_reward_horizon_policy_fingerprint << "\n";
+    out << "causal_fold_policy_fingerprint=" << causal_fold_policy_fingerprint
+        << "\n";
+    out << "causal_purged_embargo_policy_fingerprint="
+        << causal_purged_embargo_policy_fingerprint << "\n";
+    out << "causal_artifact_production_schema="
+        << causal_artifact_production_schema << "\n";
+    out << "causal_artifact_production_closure_digest="
+        << causal_artifact_production_closure_digest << "\n";
+    out << "causal_interface_stability_contract_digest="
+        << causal_interface_stability_contract_digest << "\n";
+    out << "causal_provenance_closure_digest="
+        << causal_provenance_closure_digest << "\n";
     out << "normalization_fit_range_digest=" << normalization_fit_range_digest
         << "\n";
     out << "replay_buffer_source_range_digest="
@@ -336,6 +646,106 @@ struct policy_training_job_contract_t {
         << parent_replay_environment_report_digest << "\n";
     out << "final_refit_parent_selected_checkpoint_digest="
         << final_refit_parent_selected_checkpoint_digest << "\n";
+    out << "policy_execution_no_lookahead_certificate_schema="
+        << policy_execution_no_lookahead_certificate_schema << "\n";
+    out << "policy_execution_no_lookahead_certificate_digest="
+        << policy_execution_no_lookahead_certificate_digest << "\n";
+    out << "policy_execution_evidence_snapshot_digest="
+        << policy_execution_evidence_snapshot_digest << "\n";
+    out << "policy_execution_provenance_closure_digest="
+        << policy_execution_provenance_closure_digest << "\n";
+    out << "policy_execution_target_id=" << policy_execution_target_id << "\n";
+    out << "policy_execution_target_anchor_begin="
+        << policy_execution_target_anchor_begin << "\n";
+    out << "policy_execution_target_anchor_begin_bound="
+        << (policy_execution_target_anchor_begin_bound ? "true" : "false")
+        << "\n";
+    out << "policy_execution_target_anchor_end_exclusive="
+        << policy_execution_target_anchor_end_exclusive << "\n";
+    out << "policy_execution_target_anchor_end_exclusive_bound="
+        << (policy_execution_target_anchor_end_exclusive_bound ? "true"
+                                                               : "false")
+        << "\n";
+    out << "policy_execution_no_lookahead_contract_digest="
+        << policy_execution_no_lookahead_contract_digest << "\n";
+    out << "embargo_policy_fingerprint=" << embargo_policy_fingerprint << "\n";
+    out << "embargo_purged_window_anchor_begin="
+        << embargo_purged_window_anchor_begin << "\n";
+    out << "embargo_purged_window_anchor_end_exclusive="
+        << embargo_purged_window_anchor_end_exclusive << "\n";
+    out << "embargo_purged_window_anchor_range_bound="
+        << (embargo_purged_window_anchor_range_bound ? "true" : "false")
+        << "\n";
+    out << "policy_execution_input_parent_forecast_eval_fact_digest="
+        << policy_execution_input_parent_forecast_eval_fact_digest << "\n";
+    out << "policy_execution_input_parent_forecast_artifact_digest="
+        << policy_execution_input_parent_forecast_artifact_digest << "\n";
+    out << "policy_execution_input_parent_replay_environment_fact_digest="
+        << policy_execution_input_parent_replay_environment_fact_digest << "\n";
+    out << "policy_execution_input_parent_replay_environment_report_digest="
+        << policy_execution_input_parent_replay_environment_report_digest
+        << "\n";
+    out << "policy_execution_replay_job_dir_digest="
+        << policy_execution_replay_job_dir_digest << "\n";
+    out << "policy_execution_consumed_artifact_digests="
+        << policy_execution_consumed_artifact_digests << "\n";
+    out << "policy_execution_consumed_checkpoint_digests="
+        << policy_execution_consumed_checkpoint_digests << "\n";
+    out << "policy_execution_consumed_generation_vector_digests="
+        << policy_execution_consumed_generation_vector_digests << "\n";
+    out << "parent_policy_generation_id=" << parent_policy_generation_id
+        << "\n";
+    out << "parent_policy_generation_vector_digest="
+        << parent_policy_generation_vector_digest << "\n";
+    out << "parent_policy_influence_schema=" << parent_policy_influence_schema
+        << "\n";
+    out << "parent_policy_influence_complete="
+        << (parent_policy_influence_complete ? "true" : "false") << "\n";
+    out << "parent_policy_influence_anchor_begin_min="
+        << parent_policy_influence_anchor_begin_min << "\n";
+    out << "parent_policy_influence_anchor_begin_min_bound="
+        << (parent_policy_influence_anchor_begin_min_bound ? "true" : "false")
+        << "\n";
+    out << "parent_policy_influence_anchor_end_exclusive_max="
+        << parent_policy_influence_anchor_end_exclusive_max << "\n";
+    out << "parent_policy_influence_anchor_end_exclusive_max_bound="
+        << (parent_policy_influence_anchor_end_exclusive_max_bound ? "true"
+                                                                   : "false")
+        << "\n";
+    out << "parent_policy_label_or_reward_availability_end_exclusive_max="
+        << parent_policy_label_or_reward_availability_end_exclusive_max << "\n";
+    out << "parent_policy_label_or_reward_availability_end_exclusive_max_bound="
+        << (parent_policy_label_or_reward_availability_end_exclusive_max_bound
+                ? "true"
+                : "false")
+        << "\n";
+    out << "parent_policy_valid_from_anchor=" << parent_policy_valid_from_anchor
+        << "\n";
+    out << "parent_policy_valid_from_anchor_bound="
+        << (parent_policy_valid_from_anchor_bound ? "true" : "false") << "\n";
+    out << "parent_policy_provenance_closure_digest="
+        << parent_policy_provenance_closure_digest << "\n";
+    out << "parent_policy_no_lookahead_contract_digest="
+        << parent_policy_no_lookahead_contract_digest << "\n";
+    out << "policy_output_generation_id=" << policy_output_generation_id
+        << "\n";
+    out << "policy_output_generation_vector_digest="
+        << policy_output_generation_vector_digest << "\n";
+    out << "policy_output_fit_anchor_begin=" << policy_output_fit_anchor_begin
+        << "\n";
+    out << "policy_output_fit_anchor_begin_bound="
+        << (policy_output_fit_anchor_begin_bound ? "true" : "false") << "\n";
+    out << "policy_output_fit_anchor_end_exclusive="
+        << policy_output_fit_anchor_end_exclusive << "\n";
+    out << "policy_output_fit_anchor_end_exclusive_bound="
+        << (policy_output_fit_anchor_end_exclusive_bound ? "true" : "false")
+        << "\n";
+    out << "policy_output_valid_from_anchor=" << policy_output_valid_from_anchor
+        << "\n";
+    out << "policy_output_valid_from_anchor_bound="
+        << (policy_output_valid_from_anchor_bound ? "true" : "false") << "\n";
+    out << "policy_output_provenance_closure_digest="
+        << policy_output_provenance_closure_digest << "\n";
     out << "random_seed=" << random_seed << "\n";
     out << "random_seed_bound=" << (random_seed_bound ? "true" : "false")
         << "\n";
@@ -381,6 +791,18 @@ policy_training_contract_digest_for_text(std::string_view text) {
   out << "policy_input_feature_manifest_digest="
       << contract.policy_input_feature_manifest_digest << "\n";
   out << "policy_jkimyei_digest=" << contract.policy_jkimyei_digest << "\n";
+  out << "policy_jkimyei_no_lookahead_contract_id="
+      << contract.policy_jkimyei_no_lookahead_contract_id << "\n";
+  out << "policy_jkimyei_no_lookahead_contract_digest="
+      << contract.policy_jkimyei_no_lookahead_contract_digest << "\n";
+  out << "policy_jkimyei_component_order_contract_id="
+      << contract.policy_jkimyei_component_order_contract_id << "\n";
+  out << "policy_jkimyei_component_order_contract_digest="
+      << contract.policy_jkimyei_component_order_contract_digest << "\n";
+  out << "policy_jkimyei_component_role="
+      << contract.policy_jkimyei_component_role << "\n";
+  out << "policy_jkimyei_serving_order_index="
+      << contract.policy_jkimyei_serving_order_index << "\n";
   out << "policy_input_schema_id=" << contract.policy_input_schema_id << "\n";
   out << "action_schema_digest=" << contract.action_schema_digest << "\n";
   out << "action_adapter_id=" << contract.action_adapter_id << "\n";
@@ -490,6 +912,21 @@ validate_policy_training_job_contract(
                    "causal_schedule_cursor_key_kind");
   require_nonempty(contract.causal_schedule_no_future_snapshot_use_source,
                    "causal_schedule_no_future_snapshot_use_source");
+  require_nonempty(contract.causal_provenance_schema,
+                   "causal_provenance_schema");
+  require_nonempty(contract.causal_atom_schema, "causal_atom_schema");
+  require_nonempty(contract.causal_interval_set_schema,
+                   "causal_interval_set_schema");
+  require_nonempty(contract.causal_label_reward_horizon_policy_fingerprint,
+                   "causal_label_reward_horizon_policy_fingerprint");
+  require_nonempty(contract.causal_fold_policy_fingerprint,
+                   "causal_fold_policy_fingerprint");
+  require_nonempty(contract.causal_purged_embargo_policy_fingerprint,
+                   "causal_purged_embargo_policy_fingerprint");
+  require_nonempty(contract.causal_artifact_production_schema,
+                   "causal_artifact_production_schema");
+  require_nonempty(contract.causal_interface_stability_contract_digest,
+                   "causal_interface_stability_contract_digest");
   require_nonempty(contract.normalization_fit_range_digest,
                    "normalization_fit_range_digest");
   require_nonempty(contract.replay_buffer_source_range_digest,
@@ -574,6 +1011,35 @@ validate_policy_training_job_contract(
     require_nonempty(contract.policy_input_feature_manifest_digest,
                      "policy_input_feature_manifest_digest");
     require_nonempty(contract.policy_jkimyei_digest, "policy_jkimyei_digest");
+    require_nonempty(contract.policy_jkimyei_no_lookahead_contract_id,
+                     "policy_jkimyei_no_lookahead_contract_id");
+    require_nonempty(contract.policy_jkimyei_no_lookahead_contract_digest,
+                     "policy_jkimyei_no_lookahead_contract_digest");
+    require_nonempty(contract.policy_jkimyei_component_order_contract_id,
+                     "policy_jkimyei_component_order_contract_id");
+    require_nonempty(contract.policy_jkimyei_component_order_contract_digest,
+                     "policy_jkimyei_component_order_contract_digest");
+    require_nonempty(contract.policy_jkimyei_component_role,
+                     "policy_jkimyei_component_role");
+    if (contract.policy_jkimyei_no_lookahead_contract_id !=
+            contract.policy_jkimyei_component_order_contract_id ||
+        contract.policy_jkimyei_no_lookahead_contract_digest !=
+            contract.policy_jkimyei_component_order_contract_digest ||
+        (!contract.policy_execution_no_lookahead_contract_digest.empty() &&
+         contract.policy_jkimyei_no_lookahead_contract_digest !=
+             contract.policy_execution_no_lookahead_contract_digest) ||
+        (!contract.parent_policy_no_lookahead_contract_digest.empty() &&
+         contract.policy_jkimyei_no_lookahead_contract_digest !=
+             contract.parent_policy_no_lookahead_contract_digest)) {
+      issues.emplace_back("policy_jkimyei_contract_ref_mismatch");
+    }
+    if (contract.policy_jkimyei_component_role != "policy") {
+      issues.emplace_back("policy_jkimyei_component_role_mismatch");
+    }
+    if (!contract.policy_jkimyei_serving_order_index_bound ||
+        contract.policy_jkimyei_serving_order_index != 2) {
+      issues.emplace_back("policy_jkimyei_serving_order_index_mismatch");
+    }
     require_nonempty(contract.target_node_universe_digest,
                      "target_node_universe_digest");
     require_nonempty(contract.action_distribution_config_digest,
@@ -583,11 +1049,6 @@ validate_policy_training_job_contract(
                      "actor_architecture_digest");
     require_nonempty(contract.critic_architecture_digest,
                      "critic_architecture_digest");
-    require_nonempty(contract.actor_checkpoint_digest,
-                     "actor_checkpoint_digest");
-    require_nonempty(contract.critic_checkpoint_digest,
-                     "critic_checkpoint_digest");
-    require_nonempty(contract.optimizer_state_digest, "optimizer_state_digest");
     require_nonempty(contract.ppo_config_digest, "ppo_config_digest");
     require_nonempty(contract.optimizer_state_schema_id,
                      "optimizer_state_schema_id");
@@ -598,14 +1059,8 @@ validate_policy_training_job_contract(
                      "advantage_normalization_policy");
     require_nonempty(contract.rollout_collection_schema_id,
                      "rollout_collection_schema_id");
-    require_nonempty(contract.rollout_collection_digest,
-                     "rollout_collection_digest");
     require_nonempty(contract.ppo_update_report_schema_id,
                      "ppo_update_report_schema_id");
-    require_nonempty(contract.ppo_update_report_digest,
-                     "ppo_update_report_digest");
-    require_nonempty(contract.validation_rollout_report_digest,
-                     "validation_rollout_report_digest");
     if (!contract.ppo_policy_artifact_contract_id.empty() &&
         contract.ppo_policy_artifact_contract_id !=
             k_ppo_policy_artifact_contract_v1) {
@@ -676,6 +1131,11 @@ validate_policy_training_job_contract(
         contract.advantage_estimator_id != k_gae_advantage_estimator_v1) {
       issues.emplace_back("unsupported_advantage_estimator_id");
     }
+    if (!contract.advantage_normalization_policy.empty() &&
+        contract.advantage_normalization_policy !=
+            k_ppo_advantage_normalization_policy_v1) {
+      issues.emplace_back("unsupported_advantage_normalization_policy");
+    }
     if (!contract.ppo_gamma_bound || !std::isfinite(contract.ppo_gamma) ||
         contract.ppo_gamma <= 0.0 || contract.ppo_gamma > 1.0) {
       issues.emplace_back("invalid_ppo_gamma");
@@ -694,6 +1154,11 @@ validate_policy_training_job_contract(
         !std::isfinite(contract.ppo_target_kl) ||
         contract.ppo_target_kl <= 0.0) {
       issues.emplace_back("invalid_ppo_target_kl");
+    }
+    if (contract.ppo_learning_rate_bound &&
+        (!std::isfinite(contract.ppo_learning_rate) ||
+         contract.ppo_learning_rate <= 0.0)) {
+      issues.emplace_back("invalid_ppo_learning_rate");
     }
     if (!contract.ppo_entropy_coeff_bound ||
         !std::isfinite(contract.ppo_entropy_coeff) ||
@@ -736,6 +1201,26 @@ validate_policy_training_job_contract(
   if (contract.causal_schedule_no_future_snapshot_use_source !=
       k_policy_training_schedule_no_future_snapshot_source_v1) {
     issues.emplace_back("unsupported_no_future_snapshot_use_source");
+  }
+  if (contract.causal_provenance_schema !=
+      k_causal_provenance_generalization_v1) {
+    issues.emplace_back("unsupported_causal_provenance_schema");
+  }
+  if (contract.causal_atom_schema != k_causal_atom_anchor_interval_v1) {
+    issues.emplace_back("unsupported_causal_atom_schema");
+  }
+  if (contract.causal_interval_set_schema !=
+      k_causal_interval_set_anchor_half_open_v1) {
+    issues.emplace_back("unsupported_causal_interval_set_schema");
+  }
+  if (contract.causal_artifact_production_schema !=
+      k_runtime_artifact_production_inline_policy_v1) {
+    issues.emplace_back("unsupported_causal_artifact_production_schema");
+  }
+  if (contract.causal_interface_stability_contract_digest !=
+      k_interface_stability_trained_against_generation_vector_v1) {
+    issues.emplace_back(
+        "unsupported_causal_interface_stability_contract_digest");
   }
   if (contract.training_schedule_mode ==
       k_policy_training_schedule_mode_causal_v1) {

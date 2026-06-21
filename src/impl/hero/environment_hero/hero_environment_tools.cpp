@@ -1,5 +1,6 @@
 #include "hero/environment_hero/hero_environment_tools.h"
 
+#include "hero/config_path_defaults.h"
 #include "hero/environment_hero/hero_environment.h"
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/marshal_hero/marshal/digest.h"
@@ -43,9 +44,6 @@ namespace md = cuwacunu::hero::marshal::tool_detail;
 namespace display = cuwacunu::hero::display;
 
 constexpr int kPolicyErrorCode = -32070;
-constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
-constexpr const char *kDefaultEnvironmentPolicyPath =
-    "/cuwacunu/src/config/hero.environment.dsl";
 constexpr const char *kProtocolLayerStdio = "STDIO";
 constexpr const char *kProtocolLayerHttpsSseFailFastMessage =
     "HTTPS/SSE protocol_layer is reserved and not implemented; use STDIO";
@@ -123,11 +121,11 @@ constexpr policy_descriptor_t kPolicyDescriptors[] = {
      "MCP protocol layer. HTTPS/SSE is reserved and fails fast."},
     {"environment_profile", "enum", "operator_default",
      "Named Environment policy profile."},
-    {"default_config_path", "path", kDefaultGlobalConfigPath,
+    {"default_config_path", "path", ".config",
      "Default global config path for delegated Runtime work."},
-    {"runtime_root", "path", "/cuwacunu/.runtime/cuwacunu_exec",
+    {"runtime_root", "path", "../../.runtime/cuwacunu_exec",
      "Runtime evidence root inspected by Environment admission checks."},
-    {"allowed_job_roots", "path_list", "/cuwacunu/.runtime/cuwacunu_exec,/tmp",
+    {"allowed_job_roots", "path_list", "../../.runtime/cuwacunu_exec,/tmp",
      "Roots under which Environment may read/write job-local evidence."},
     {"allow_certify_issue", "bool", "true",
      "Allow Environment certification to issue validated sidecars."},
@@ -149,7 +147,7 @@ constexpr policy_descriptor_t kPolicyDescriptors[] = {
      "Default positive finite Environment rollout step cap."},
     {"rollout_max_parallel_jobs", "int", "4",
      "Default positive finite Environment rollout worker cap."},
-    {"rollout_runtime_exec_path", "path", "/cuwacunu/.build/exec/cuwacunu_exec",
+    {"rollout_runtime_exec_path", "path", "../../.build/exec/cuwacunu_exec",
      "Runtime executable used for delegated rollout replay."},
     {"rollout_execution_backend_id", "string", "cajtucu.execution.paper.v1",
      "Execution backend identity for Environment rollout replay."},
@@ -564,15 +562,42 @@ struct parsed_policy_text_t {
   return root_it == normalized_root.end();
 }
 
+[[nodiscard]] fs::path policy_path_or(const environment_policy_t &policy,
+                                      std::string_view key,
+                                      const fs::path &fallback) {
+  const std::string raw = trim_ascii(policy_get(policy, key));
+  if (raw.empty()) {
+    return fallback.empty()
+               ? fallback
+               : resolve_against(policy.policy_path, fallback.string());
+  }
+  return resolve_against(policy.policy_path, raw);
+}
+
 [[nodiscard]] fs::path runtime_root(const environment_policy_t &policy) {
-  return normalize_path(fs::path(policy_get(policy, "runtime_root")));
+  return normalize_path(policy_path_or(policy, "runtime_root", {}));
+}
+
+[[nodiscard]] std::string
+resolved_path_list_text(const environment_policy_t &policy,
+                        std::string_view key) {
+  std::ostringstream out;
+  bool first = true;
+  for (const auto &root : split_path_list(policy_get(policy, key))) {
+    if (!first) {
+      out << ",";
+    }
+    first = false;
+    out << resolve_against(policy.policy_path, root.string()).string();
+  }
+  return out.str();
 }
 
 [[nodiscard]] bool explicit_job_dir_allowed(const environment_policy_t &policy,
                                             const fs::path &path) {
   for (const auto &root :
        split_path_list(policy_get(policy, "allowed_job_roots"))) {
-    if (path_within(root, path)) {
+    if (path_within(resolve_against(policy.policy_path, root.string()), path)) {
       return true;
     }
   }
@@ -979,16 +1004,6 @@ object_fields_no_duplicates(const std::string &json, std::string_view label) {
                                               err);
 }
 
-[[nodiscard]] fs::path policy_path_or(const environment_policy_t &policy,
-                                      std::string_view key,
-                                      const fs::path &fallback) {
-  const std::string raw = trim_ascii(policy_get(policy, key));
-  if (raw.empty()) {
-    return fallback;
-  }
-  return resolve_against(policy.policy_path, raw);
-}
-
 [[nodiscard]] bool rollout_request_from_direct_args(
     const std::map<std::string, std::string> &args,
     std::string_view environment_requested_mode, environment_context_t *ctx,
@@ -1001,10 +1016,11 @@ object_fields_no_duplicates(const std::string &json, std::string_view label) {
     marshal::marshal_rollout_request_t request{};
     request.requested_mode =
         environment_requested_mode == "replay" ? "execute" : "plan";
-    request.config_path = policy_path_or(
-        ctx->policy, "default_config_path",
-        ctx->global_config_path.empty() ? fs::path(kDefaultGlobalConfigPath)
-                                        : ctx->global_config_path);
+    request.config_path =
+        policy_path_or(ctx->policy, "default_config_path",
+                       ctx->global_config_path.empty()
+                           ? config_paths::default_global_config_path()
+                           : ctx->global_config_path);
     request.runtime_job_dir =
         fs::path(md::optional_string(args, "runtime_job_dir"));
     request.rollout_id = md::optional_string(args, "rollout_id");
@@ -1024,7 +1040,7 @@ object_fields_no_duplicates(const std::string &json, std::string_view label) {
         policy_int_or(ctx->policy, "max_runtime_seconds", 600);
     request.runtime_exec_path =
         policy_path_or(ctx->policy, "rollout_runtime_exec_path",
-                       fs::path("/cuwacunu/.build/exec/cuwacunu_exec"));
+                       fs::path("../../.build/exec/cuwacunu_exec"));
     request.execution_profile.execution_backend_id =
         trim_ascii(policy_get(ctx->policy, "rollout_execution_backend_id"));
     if (request.execution_profile.execution_backend_id.empty()) {
@@ -3610,10 +3626,9 @@ using handler_fn = bool (*)(const std::map<std::string, std::string> &,
        << ",\"global_config_path\":"
        << json_quote(ctx->policy.global_config_path.string())
        << ",\"profile_id\":" << json_quote(ctx->policy.profile_id)
-       << ",\"runtime_root\":"
-       << json_quote(policy_get(ctx->policy, "runtime_root"))
+       << ",\"runtime_root\":" << json_quote(runtime_root(ctx->policy).string())
        << ",\"allowed_job_roots\":"
-       << json_quote(policy_get(ctx->policy, "allowed_job_roots"))
+       << json_quote(resolved_path_list_text(ctx->policy, "allowed_job_roots"))
        << ",\"allow_certify_issue\":"
        << bool_json(policy_bool_or(ctx->policy, "allow_certify_issue", false))
        << ",\"allow_rollout_replay\":"
@@ -3999,7 +4014,8 @@ std::filesystem::path resolve_environment_hero_dsl_path(
                                              "environment_hero_dsl_path")) {
     return resolve_against(global_config_path, *configured);
   }
-  return kDefaultEnvironmentPolicyPath;
+  return config_paths::default_config_sibling_path(global_config_path,
+                                                   "hero.environment.dsl");
 }
 
 bool load_environment_policy(const std::filesystem::path &policy_path,

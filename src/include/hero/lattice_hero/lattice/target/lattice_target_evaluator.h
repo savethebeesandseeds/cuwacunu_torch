@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/lattice/split/split_policy.h"
 #include "hero/lattice_hero/lattice/target/lattice_target.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
@@ -49,7 +50,8 @@ struct lattice_target_active_identity_t {
 };
 
 struct lattice_target_evaluator_options_t {
-  std::filesystem::path runtime_root{"/cuwacunu/.runtime/cuwacunu_exec"};
+  std::filesystem::path runtime_root{
+      cuwacunu::hero::config_paths::default_runtime_root_path()};
   lattice_target_active_identity_t active_identity{};
   const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
       *exposure_ledger{nullptr};
@@ -2950,6 +2952,51 @@ private:
   }
 
   template <typename Fact>
+  [[nodiscard]] bool artifact_fact_matches_parent_lineage_identity(
+      const lattice_target_spec_t &spec, const Fact &fact,
+      const std::string &expected_split_policy_fingerprint) const {
+    namespace detail = lattice_target_eval_detail;
+    if (!options_.active_identity.protocol_id.empty() &&
+        fact.protocol_id != options_.active_identity.protocol_id) {
+      return false;
+    }
+    if (!spec.protocol_id.empty() && fact.protocol_id != spec.protocol_id) {
+      return false;
+    }
+    if (detail::target_requires_graph_anchor_identity(spec)) {
+      if (fact.graph_order_fingerprint !=
+          options_.active_identity.graph_order_fingerprint) {
+        return false;
+      }
+      if (fact.source_cursor_token !=
+          options_.active_identity.source_cursor_token) {
+        return false;
+      }
+    }
+    if (!expected_split_policy_fingerprint.empty()) {
+      if (fact.split_policy_fingerprint.empty()) {
+        if (certificate_names_concrete_split(fact.split_name)) {
+          return false;
+        }
+      } else if (fact.split_policy_fingerprint !=
+                 expected_split_policy_fingerprint) {
+        return false;
+      }
+    }
+    const auto target_range = detail::target_anchor_interval(spec);
+    if (!target_range.empty()) {
+      if (fact.anchor_range.empty()) {
+        return false;
+      }
+      if (fact.anchor_range.begin > target_range.begin ||
+          fact.anchor_range.end < target_range.end) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  template <typename Fact>
   [[nodiscard]] lattice_target_evidence_t
   artifact_evidence_from_fact(const Fact &fact, std::int64_t family_fact_count,
                               std::int64_t identity_fact_count) const {
@@ -3262,6 +3309,801 @@ private:
     return proof;
   }
 
+  struct artifact_influence_resolution_t {
+    bool declared{false};
+    bool complete{false};
+    bool admissible{false};
+    bool influence_end_bound{false};
+    std::int64_t influence_end{0};
+    bool availability_end_bound{false};
+    std::int64_t availability_end{0};
+    bool embargo_purged_window_anchor_range_bound{false};
+    cuwacunu::hero::lattice::exposure::anchor_interval_t
+        embargo_purged_window_anchor_range{};
+    std::string embargo_policy_fingerprint{};
+    bool coverage_anchor_range_bound{false};
+    cuwacunu::hero::lattice::exposure::anchor_interval_t
+        coverage_anchor_range{};
+    std::string no_lookahead_contract_digest{};
+    std::string producer_generation_vector_digest{};
+    std::string provenance_closure_digest{};
+    std::string parent_forecast_fact_digest{};
+    std::string parent_forecast_artifact_digest{};
+    std::vector<std::string> consumed_artifact_digests{};
+    std::vector<std::string> consumed_checkpoint_digests{};
+    std::vector<std::string> consumed_generation_vector_digests{};
+    std::vector<std::string> issues{};
+  };
+
+  struct checkpoint_generation_resolution_t {
+    bool found{false};
+    bool complete{false};
+    bool influence_begin_bound{false};
+    std::int64_t influence_begin{0};
+    bool influence_end_bound{false};
+    std::int64_t influence_end{0};
+    bool availability_end_bound{false};
+    std::int64_t availability_end{0};
+    bool valid_from_bound{false};
+    std::int64_t valid_from{0};
+    std::string generation_id{};
+    std::string generation_vector_digest{};
+    std::string no_lookahead_contract_digest{};
+    std::vector<std::string> parent_generation_vector_digests{};
+    std::vector<std::string> issues{};
+  };
+
+  [[nodiscard]] static const cuwacunu::hero::lattice::exposure::
+      lattice_checkpoint_fact_t *
+      find_checkpoint_generation_fact_by_digest(
+          const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
+              &ledger,
+          const std::string &checkpoint_digest) {
+    if (checkpoint_digest.empty()) {
+      return nullptr;
+    }
+    for (const auto &fact : ledger.checkpoint_facts()) {
+      if (fact.checkpoint_file_digest == checkpoint_digest) {
+        return &fact;
+      }
+    }
+    return nullptr;
+  }
+
+  [[nodiscard]] static const cuwacunu::hero::lattice::exposure::
+      lattice_checkpoint_fact_t *
+      find_checkpoint_generation_fact_by_generation(
+          const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
+              &ledger,
+          const std::string &generation_id,
+          const std::string &generation_vector_digest = {}) {
+    for (const auto &fact : ledger.checkpoint_facts()) {
+      if (!generation_id.empty() && fact.generation_id == generation_id) {
+        return &fact;
+      }
+      if (!generation_vector_digest.empty() &&
+          fact.generation_vector_member_digest == generation_vector_digest) {
+        return &fact;
+      }
+    }
+    return nullptr;
+  }
+
+  [[nodiscard]] static const cuwacunu::hero::lattice::exposure::
+      lattice_component_training_update_fact_t *
+      find_component_training_update_fact_by_digest(
+          const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
+              &ledger,
+          const std::string &digest) {
+    if (digest.empty()) {
+      return nullptr;
+    }
+    for (const auto &fact : ledger.component_training_update_facts()) {
+      if (cuwacunu::hero::lattice::exposure::
+              component_training_update_fact_digest(fact) == digest) {
+        return &fact;
+      }
+    }
+    return nullptr;
+  }
+
+  [[nodiscard]] checkpoint_generation_resolution_t
+  resolve_checkpoint_generation_influence_impl(
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
+          &ledger,
+      const cuwacunu::hero::lattice::exposure::lattice_checkpoint_fact_t &fact,
+      const std::string &expected_graph_order_fingerprint,
+      const std::string &expected_source_cursor_token,
+      const std::string &expected_split_policy_fingerprint,
+      const std::string &expected_contract_digest,
+      std::unordered_set<std::string> &visiting) const {
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+    checkpoint_generation_resolution_t out{};
+    out.found = true;
+    out.generation_id = fact.generation_id;
+    out.generation_vector_digest = fact.generation_vector_member_digest;
+    out.no_lookahead_contract_digest = fact.no_lookahead_contract_digest;
+    out.parent_generation_vector_digests =
+        fact.parent_generation_vector_digests;
+
+    const auto issue = [&](const char *value) {
+      out.issues.emplace_back(value);
+    };
+    if (fact.generation_manifest_schema !=
+        "component_checkpoint_generation_manifest.v1") {
+      issue("checkpoint_generation_manifest_schema_mismatch");
+    }
+    if (fact.generation_id.empty()) {
+      issue("checkpoint_generation_id_missing");
+    }
+    if (fact.generation_vector_member_digest.empty()) {
+      issue("checkpoint_generation_vector_digest_missing");
+    }
+    if (fact.fit_anchor_range_bound) {
+      out.influence_begin = fact.fit_anchor_range.begin;
+      out.influence_begin_bound = true;
+      out.influence_end = fact.fit_anchor_range.end;
+      out.influence_end_bound = true;
+    } else {
+      issue("checkpoint_generation_fit_range_missing");
+    }
+    if (!fact.valid_from_anchor_bound) {
+      issue("checkpoint_generation_valid_from_missing");
+    } else if (fact.fit_anchor_range_bound &&
+               fact.valid_from_anchor < fact.fit_anchor_range.end) {
+      issue("checkpoint_generation_valid_from_before_fit_end");
+    } else {
+      out.valid_from = fact.valid_from_anchor;
+      out.valid_from_bound = true;
+    }
+    if (fact.no_lookahead_contract_digest.empty()) {
+      issue("checkpoint_generation_contract_digest_missing");
+    } else if (!expected_contract_digest.empty() &&
+               fact.no_lookahead_contract_digest != expected_contract_digest) {
+      issue("checkpoint_generation_contract_digest_mismatch");
+    }
+    if (fact.graph_order_fingerprint.empty() ||
+        fact.graph_order_fingerprint != expected_graph_order_fingerprint) {
+      issue("checkpoint_generation_graph_order_mismatch");
+    }
+    if (fact.source_cursor_token.empty() ||
+        fact.source_cursor_token != expected_source_cursor_token) {
+      issue("checkpoint_generation_source_cursor_mismatch");
+    }
+    if (!expected_split_policy_fingerprint.empty()) {
+      if (fact.influence_summary.split_policy_fingerprint.empty() ||
+          fact.influence_summary.split_policy_fingerprint !=
+              expected_split_policy_fingerprint) {
+        issue("checkpoint_generation_split_policy_mismatch");
+      }
+    }
+    const bool frozen_or_bootstrap = fact.generation_lane == "frozen_init" ||
+                                     fact.generation_lane == "bootstrap";
+    const bool readiness_grade = fact.generation_lane == "readiness_grade";
+    if (!readiness_grade && !frozen_or_bootstrap) {
+      issue("checkpoint_generation_lane_not_readiness_grade");
+    }
+
+    if (readiness_grade) {
+      if (fact.producer_component_update_fact_digest.empty()) {
+        issue("checkpoint_generation_producer_update_missing");
+      } else {
+        const auto *update = find_component_training_update_fact_by_digest(
+            ledger, fact.producer_component_update_fact_digest);
+        if (update == nullptr) {
+          issue("checkpoint_generation_producer_update_missing");
+        } else {
+          if (update->component_id != fact.component ||
+              update->write_checkpoint_digest != fact.checkpoint_file_digest ||
+              update->write_generation_id != fact.generation_id ||
+              update->fit_anchor_range.begin != fact.fit_anchor_range.begin ||
+              update->fit_anchor_range.end != fact.fit_anchor_range.end ||
+              update->fit_anchor_range_bound != fact.fit_anchor_range_bound ||
+              update->graph_order_fingerprint != fact.graph_order_fingerprint ||
+              update->source_cursor_token != fact.source_cursor_token ||
+              !split_policy_fingerprint_compatible(
+                  update->split_policy_fingerprint,
+                  fact.influence_summary.split_policy_fingerprint) ||
+              update->no_lookahead_contract_digest !=
+                  fact.no_lookahead_contract_digest) {
+            issue("checkpoint_generation_read_write_mismatch");
+          }
+          if (!update->label_or_reward_availability_end_exclusive_max_bound) {
+            issue("checkpoint_generation_availability_frontier_missing");
+          } else {
+            out.availability_end =
+                update->label_or_reward_availability_end_exclusive_max;
+            out.availability_end_bound = true;
+          }
+        }
+      }
+    } else if (fact.influence_summary
+                   .label_or_reward_availability_end_exclusive_max_bound) {
+      out.availability_end =
+          fact.influence_summary.label_or_reward_availability_end_exclusive_max;
+      out.availability_end_bound = true;
+    }
+
+    if (!fact.generation_id.empty() &&
+        !visiting.insert(fact.generation_id).second) {
+      issue("checkpoint_generation_parent_cycle");
+      out.complete = false;
+      return out;
+    }
+    const auto contains_generation_id =
+        [](const std::vector<std::string> &values, const std::string &needle) {
+          return !needle.empty() && std::find(values.begin(), values.end(),
+                                              needle) != values.end();
+        };
+    const auto is_explicit_empty_policy_seed_parent =
+        [&](const std::string &generation_id) {
+          return fact.component_role == "policy" &&
+                 generation_id == "policy_generation_seed_v1" &&
+                 contains_generation_id(fact.parent_generation_vector_digests,
+                                        "generation_vector_seed_policy_v1");
+        };
+    for (const auto &parent_generation_id : fact.parent_generation_ids) {
+      if (is_explicit_empty_policy_seed_parent(parent_generation_id)) {
+        continue;
+      }
+      const auto *parent = find_checkpoint_generation_fact_by_generation(
+          ledger, parent_generation_id);
+      if (parent == nullptr) {
+        issue("checkpoint_generation_parent_missing");
+        continue;
+      }
+      auto parent_resolution = resolve_checkpoint_generation_influence_impl(
+          ledger, *parent, expected_graph_order_fingerprint,
+          expected_source_cursor_token, expected_split_policy_fingerprint,
+          expected_contract_digest, visiting);
+      for (const auto &parent_issue : parent_resolution.issues) {
+        if (std::find(out.issues.begin(), out.issues.end(), parent_issue) ==
+            out.issues.end()) {
+          out.issues.push_back(parent_issue);
+        }
+      }
+      if (!parent_resolution.complete) {
+        issue("checkpoint_generation_parent_missing");
+      }
+      if (parent_resolution.influence_begin_bound) {
+        if (!out.influence_begin_bound ||
+            parent_resolution.influence_begin < out.influence_begin) {
+          out.influence_begin = parent_resolution.influence_begin;
+          out.influence_begin_bound = true;
+        }
+      }
+      if (parent_resolution.influence_end_bound) {
+        if (!out.influence_end_bound ||
+            parent_resolution.influence_end > out.influence_end) {
+          out.influence_end = parent_resolution.influence_end;
+          out.influence_end_bound = true;
+        }
+      }
+      if (parent_resolution.availability_end_bound) {
+        if (!out.availability_end_bound ||
+            parent_resolution.availability_end > out.availability_end) {
+          out.availability_end = parent_resolution.availability_end;
+          out.availability_end_bound = true;
+        }
+      }
+      if (!parent_resolution.generation_vector_digest.empty()) {
+        out.parent_generation_vector_digests.push_back(
+            parent_resolution.generation_vector_digest);
+      }
+    }
+    for (const auto &read_checkpoint_digest : fact.read_checkpoint_digests) {
+      const auto *parent = find_checkpoint_generation_fact_by_digest(
+          ledger, read_checkpoint_digest);
+      if (parent == nullptr) {
+        if (contains_generation_id(fact.read_generation_ids,
+                                   "policy_generation_seed_v1") &&
+            is_explicit_empty_policy_seed_parent("policy_generation_seed_v1")) {
+          continue;
+        }
+        issue("checkpoint_generation_parent_missing");
+        continue;
+      }
+      if (!contains_generation_id(fact.read_generation_ids,
+                                  parent->generation_id) &&
+          !contains_generation_id(fact.parent_generation_ids,
+                                  parent->generation_id)) {
+        issue("checkpoint_generation_read_write_mismatch");
+      }
+    }
+    if (!fact.generation_id.empty()) {
+      visiting.erase(fact.generation_id);
+    }
+
+    const auto &summary = fact.influence_summary;
+    if (!exposure::artifact_influence_summary_declared(summary) ||
+        !summary.complete ||
+        !summary.influence_anchor_end_exclusive_max_bound ||
+        !summary.influence_anchor_begin_min_bound ||
+        !summary.label_or_reward_availability_end_exclusive_max_bound ||
+        summary.producer_generation_vector_digest.empty() ||
+        summary.provenance_closure_digest.empty()) {
+      issue("checkpoint_generation_influence_not_recomputable");
+    } else {
+      if (summary.producer_generation_vector_digest !=
+          fact.generation_vector_member_digest) {
+        issue("checkpoint_generation_vector_digest_missing");
+      }
+      if (out.influence_end_bound &&
+          summary.influence_anchor_end_exclusive_max < out.influence_end) {
+        issue("checkpoint_generation_influence_understates_parents");
+      }
+      if (!out.availability_end_bound) {
+        issue("checkpoint_generation_availability_frontier_missing");
+      } else if (summary.label_or_reward_availability_end_exclusive_max <
+                 out.availability_end) {
+        issue("checkpoint_generation_availability_understates_parents");
+      }
+      if (summary.no_lookahead_contract_digest.empty() ||
+          summary.no_lookahead_contract_digest !=
+              fact.no_lookahead_contract_digest) {
+        issue("checkpoint_generation_contract_digest_mismatch");
+      }
+    }
+    out.complete = out.found && out.influence_end_bound &&
+                   out.influence_begin_bound && out.availability_end_bound &&
+                   out.issues.empty();
+    return out;
+  }
+
+  [[nodiscard]] checkpoint_generation_resolution_t
+  resolve_checkpoint_generation_influence(
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
+          &ledger,
+      const std::string &checkpoint_digest,
+      const std::string &expected_graph_order_fingerprint,
+      const std::string &expected_source_cursor_token,
+      const std::string &expected_split_policy_fingerprint,
+      const std::string &expected_contract_digest) const {
+    checkpoint_generation_resolution_t out{};
+    const auto *fact =
+        find_checkpoint_generation_fact_by_digest(ledger, checkpoint_digest);
+    if (fact == nullptr) {
+      out.issues.emplace_back("checkpoint_generation_manifest_missing");
+      return out;
+    }
+    std::unordered_set<std::string> visiting;
+    return resolve_checkpoint_generation_influence_impl(
+        ledger, *fact, expected_graph_order_fingerprint,
+        expected_source_cursor_token, expected_split_policy_fingerprint,
+        expected_contract_digest, visiting);
+  }
+
+  [[nodiscard]] static bool
+  string_vector_contains(const std::vector<std::string> &values,
+                         const std::string &needle) {
+    if (needle.empty()) {
+      return false;
+    }
+    return std::find(values.begin(), values.end(), needle) != values.end();
+  }
+
+  [[nodiscard]] static bool
+  string_vector_contains_all(const std::vector<std::string> &values,
+                             const std::vector<std::string> &needles) {
+    for (const auto &needle : needles) {
+      if (!needle.empty() && !string_vector_contains(values, needle)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  [[nodiscard]] static bool map_contains_key(
+      const std::unordered_map<std::string,
+                               const cuwacunu::hero::lattice::exposure::
+                                   lattice_forecast_eval_fact_t *> &values,
+      const std::string &key) {
+    return !key.empty() && values.find(key) != values.end();
+  }
+
+  [[nodiscard]] static bool forecast_fact_digest_matches(
+      const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+          &fact,
+      const std::string &digest) {
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+    if (digest.empty()) {
+      return false;
+    }
+    const auto aliases = exposure::related_fact_digest_aliases(
+        fact, exposure::forecast_eval_fact_digest);
+    return std::find(aliases.begin(), aliases.end(), digest) != aliases.end();
+  }
+
+  [[nodiscard]] static bool
+  split_policy_fingerprint_compatible(const std::string &left,
+                                      const std::string &right) {
+    return left.empty() || right.empty() || left == right;
+  }
+
+  [[nodiscard]] static bool anchor_range_covers(
+      const cuwacunu::hero::lattice::exposure::anchor_interval_t &outer,
+      const cuwacunu::hero::lattice::exposure::anchor_interval_t &inner) {
+    if (outer.empty() || inner.empty()) {
+      return false;
+    }
+    return outer.begin <= inner.begin && outer.end >= inner.end;
+  }
+
+  static void
+  append_prefixed_unique_issues(std::vector<std::string> &out,
+                                const std::vector<std::string> &issues,
+                                const std::string &prefix) {
+    for (const auto &issue : issues) {
+      const auto value = prefix + issue;
+      if (std::find(out.begin(), out.end(), value) == out.end()) {
+        out.push_back(value);
+      }
+    }
+  }
+
+  template <typename ParentFact, typename PolicyFact>
+  static void
+  append_policy_parent_identity_issues(std::vector<std::string> &issues,
+                                       const ParentFact &parent,
+                                       const PolicyFact &policy) {
+    if (parent.graph_order_fingerprint != policy.graph_order_fingerprint) {
+      issues.emplace_back("no_lookahead_graph_order_mismatch");
+    }
+    if (parent.source_cursor_token != policy.source_cursor_token) {
+      issues.emplace_back("no_lookahead_source_cursor_mismatch");
+    }
+    const auto split_unspecified = [](const auto &fact) {
+      return fact.split_policy_fingerprint.empty() &&
+             !certificate_names_concrete_split(fact.split_name);
+    };
+    if (parent.split_policy_fingerprint != policy.split_policy_fingerprint &&
+        !split_unspecified(parent) && !split_unspecified(policy)) {
+      issues.emplace_back("no_lookahead_split_policy_mismatch");
+    }
+  }
+
+  template <typename Fact>
+  [[nodiscard]] static artifact_influence_resolution_t
+  resolve_declared_influence(const Fact &fact,
+                             const cuwacunu::hero::lattice::exposure::
+                                 lattice_artifact_influence_summary_t &summary,
+                             std::int64_t target_anchor_begin,
+                             const char *issue_prefix) {
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+    artifact_influence_resolution_t out{};
+    out.declared = exposure::artifact_influence_summary_declared(summary);
+    if (!out.declared) {
+      out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                              "_influence_summary");
+      return out;
+    }
+    if (!summary.complete) {
+      out.issues.emplace_back(std::string("incomplete_") + issue_prefix +
+                              "_influence_summary");
+    }
+    if (summary.schema != "no_lookahead_artifact_provenance.anchor_v1") {
+      out.issues.emplace_back(std::string(issue_prefix) +
+                              "_influence_schema_mismatch");
+    }
+    if (!summary.influence_anchor_end_exclusive_max_bound) {
+      out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                              "_influence_anchor_end_exclusive_max");
+    }
+    if (!summary.label_or_reward_availability_end_exclusive_max_bound) {
+      out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                              "_label_or_reward_availability_end_"
+                              "exclusive_max");
+    }
+    if (!summary.coverage_anchor_range_bound ||
+        summary.coverage_anchor_range.empty()) {
+      out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                              "_coverage_anchor_range");
+    }
+    if (summary.no_lookahead_contract_digest.empty()) {
+      out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                              "_no_lookahead_contract_digest");
+    }
+    if (summary.producer_generation_vector_digest.empty()) {
+      out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                              "_generation_vector_digest");
+    }
+    if (summary.provenance_closure_digest.empty()) {
+      out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                              "_provenance_closure_digest");
+    }
+    if (summary.graph_order_fingerprint.empty()) {
+      out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                              "_influence_graph_order_fingerprint");
+    } else if (summary.graph_order_fingerprint !=
+               fact.graph_order_fingerprint) {
+      out.issues.emplace_back(std::string(issue_prefix) +
+                              "_influence_graph_order_mismatch");
+    }
+    if (summary.source_cursor_token.empty()) {
+      out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                              "_influence_source_cursor_token");
+    } else if (summary.source_cursor_token != fact.source_cursor_token) {
+      out.issues.emplace_back(std::string(issue_prefix) +
+                              "_influence_source_cursor_mismatch");
+    }
+    if (!fact.split_policy_fingerprint.empty()) {
+      if (summary.split_policy_fingerprint.empty()) {
+        out.issues.emplace_back(std::string("missing_") + issue_prefix +
+                                "_influence_split_policy_fingerprint");
+      } else if (summary.split_policy_fingerprint !=
+                 fact.split_policy_fingerprint) {
+        out.issues.emplace_back(std::string(issue_prefix) +
+                                "_influence_split_policy_mismatch");
+      }
+    }
+    if (summary.coverage_anchor_range_bound &&
+        !anchor_range_covers(summary.coverage_anchor_range,
+                             fact.anchor_range)) {
+      out.issues.emplace_back(std::string(issue_prefix) +
+                              "_coverage_anchor_range_does_not_cover_fact");
+    }
+    out.coverage_anchor_range_bound = summary.coverage_anchor_range_bound;
+    out.coverage_anchor_range = summary.coverage_anchor_range;
+    out.influence_end_bound = summary.influence_anchor_end_exclusive_max_bound;
+    out.influence_end = summary.influence_anchor_end_exclusive_max;
+    out.availability_end_bound =
+        summary.label_or_reward_availability_end_exclusive_max_bound;
+    out.availability_end =
+        summary.label_or_reward_availability_end_exclusive_max;
+    out.no_lookahead_contract_digest = summary.no_lookahead_contract_digest;
+    out.producer_generation_vector_digest =
+        summary.producer_generation_vector_digest;
+    out.provenance_closure_digest = summary.provenance_closure_digest;
+    out.consumed_artifact_digests = summary.parent_artifact_digests;
+    out.consumed_checkpoint_digests = summary.parent_checkpoint_digests;
+    out.consumed_generation_vector_digests =
+        summary.parent_generation_vector_digests;
+    if (!summary.producer_generation_vector_digest.empty()) {
+      out.consumed_generation_vector_digests.push_back(
+          summary.producer_generation_vector_digest);
+    }
+    out.complete =
+        summary.complete && out.influence_end_bound &&
+        out.availability_end_bound && out.coverage_anchor_range_bound &&
+        !summary.no_lookahead_contract_digest.empty() &&
+        !summary.producer_generation_vector_digest.empty() &&
+        !summary.provenance_closure_digest.empty() && out.issues.empty();
+    out.admissible = out.influence_end_bound &&
+                     out.influence_end <= target_anchor_begin &&
+                     out.availability_end_bound &&
+                     out.availability_end <= target_anchor_begin;
+    if (out.influence_end_bound && out.influence_end > target_anchor_begin) {
+      out.issues.emplace_back(std::string(issue_prefix) +
+                              "_influence_overlaps_target_anchor_range");
+    }
+    if (out.availability_end_bound &&
+        out.availability_end > target_anchor_begin) {
+      out.issues.emplace_back(std::string(issue_prefix) +
+                              "_label_or_reward_availability_overlaps_"
+                              "target_anchor_range");
+    }
+    return out;
+  }
+
+  [[nodiscard]] artifact_influence_resolution_t resolve_forecast_influence(
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
+          &ledger,
+      const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+          &fact,
+      std::int64_t target_anchor_begin) const {
+    auto out = resolve_declared_influence(fact, fact.influence_summary,
+                                          target_anchor_begin, "forecast");
+    if (!out.declared) {
+      return out;
+    }
+    if (!string_vector_contains(
+            out.consumed_checkpoint_digests,
+            fact.evaluated_representation_checkpoint_digest)) {
+      out.issues.emplace_back(
+          "forecast_missing_representation_checkpoint_influence_ref");
+    }
+    if (!string_vector_contains(out.consumed_checkpoint_digests,
+                                fact.evaluated_mdn_checkpoint_digest)) {
+      out.issues.emplace_back("forecast_missing_mdn_checkpoint_influence_ref");
+    }
+    const auto check_generation = [&](const std::string &checkpoint_digest,
+                                      const char *label) {
+      const auto generation = resolve_checkpoint_generation_influence(
+          ledger, checkpoint_digest, fact.graph_order_fingerprint,
+          fact.source_cursor_token, fact.split_policy_fingerprint,
+          out.no_lookahead_contract_digest);
+      if (!generation.complete) {
+        out.issues.emplace_back(std::string("forecast_") + label +
+                                "_checkpoint_generation_incomplete");
+        append_prefixed_unique_issues(out.issues, generation.issues, "");
+      }
+      if (generation.influence_end_bound) {
+        if (!out.influence_end_bound ||
+            out.influence_end < generation.influence_end) {
+          out.issues.emplace_back(
+              "forecast_influence_understates_checkpoint_generation");
+          out.influence_end = generation.influence_end;
+          out.influence_end_bound = true;
+        }
+      }
+      if (generation.availability_end_bound) {
+        if (!out.availability_end_bound ||
+            out.availability_end < generation.availability_end) {
+          out.issues.emplace_back(
+              "forecast_availability_understates_checkpoint_generation");
+          out.availability_end = generation.availability_end;
+          out.availability_end_bound = true;
+        }
+      }
+      if (!generation.generation_vector_digest.empty() &&
+          !string_vector_contains(out.consumed_generation_vector_digests,
+                                  generation.generation_vector_digest)) {
+        out.issues.emplace_back("forecast_generation_vector_not_in_closure");
+      }
+    };
+    check_generation(fact.evaluated_representation_checkpoint_digest,
+                     "representation");
+    check_generation(fact.evaluated_mdn_checkpoint_digest, "mdn");
+    out.admissible = out.influence_end_bound &&
+                     out.influence_end <= target_anchor_begin &&
+                     out.availability_end_bound &&
+                     out.availability_end <= target_anchor_begin;
+    if (out.influence_end_bound && out.influence_end > target_anchor_begin) {
+      out.issues.emplace_back(
+          "forecast_influence_overlaps_target_anchor_range");
+    }
+    if (out.availability_end_bound &&
+        out.availability_end > target_anchor_begin) {
+      out.issues.emplace_back(
+          "forecast_label_or_reward_availability_overlaps_target_anchor_range");
+    }
+    out.complete = out.complete && out.issues.empty();
+    return out;
+  }
+
+  [[nodiscard]] artifact_influence_resolution_t resolve_replay_influence(
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
+          &ledger,
+      const cuwacunu::hero::lattice::exposure::lattice_replay_environment_fact_t
+          &fact,
+      std::int64_t target_anchor_begin,
+      const std::unordered_map<
+          std::string,
+          const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+              *> &forecast_by_digest,
+      const std::unordered_map<
+          std::string,
+          const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+              *> &forecast_by_artifact_digest) const {
+    auto out = resolve_declared_influence(fact, fact.influence_summary,
+                                          target_anchor_begin, "replay");
+    if (!out.declared) {
+      return out;
+    }
+
+    const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+        *parent_forecast = nullptr;
+    std::string parent_forecast_digest{};
+    if (!fact.parent_forecast_eval_fact_digest.empty()) {
+      const auto it =
+          forecast_by_digest.find(fact.parent_forecast_eval_fact_digest);
+      if (it != forecast_by_digest.end()) {
+        parent_forecast = it->second;
+        parent_forecast_digest = fact.parent_forecast_eval_fact_digest;
+      }
+    }
+    if (parent_forecast == nullptr &&
+        !fact.parent_forecast_artifact_digest.empty()) {
+      const auto it = forecast_by_artifact_digest.find(
+          fact.parent_forecast_artifact_digest);
+      if (it != forecast_by_artifact_digest.end()) {
+        parent_forecast = it->second;
+        parent_forecast_digest =
+            cuwacunu::hero::lattice::exposure::forecast_eval_fact_digest(
+                *parent_forecast);
+      }
+    }
+    if (parent_forecast == nullptr) {
+      out.issues.emplace_back("replay_forecast_influence_parent_not_found");
+      out.complete = false;
+      return out;
+    }
+    out.parent_forecast_fact_digest = parent_forecast_digest;
+    out.parent_forecast_artifact_digest =
+        parent_forecast->forecast_artifact_digest;
+    if (!fact.parent_forecast_artifact_digest.empty() &&
+        fact.parent_forecast_artifact_digest !=
+            parent_forecast->forecast_artifact_digest) {
+      out.issues.emplace_back("forecast_artifact_digest_mismatch");
+    }
+
+    const auto forecast_influence = resolve_forecast_influence(
+        ledger, *parent_forecast, target_anchor_begin);
+    out.consumed_artifact_digests.push_back(parent_forecast_digest);
+    if (!parent_forecast->forecast_artifact_digest.empty()) {
+      out.consumed_artifact_digests.push_back(
+          parent_forecast->forecast_artifact_digest);
+    }
+    out.consumed_artifact_digests.insert(
+        out.consumed_artifact_digests.end(),
+        forecast_influence.consumed_artifact_digests.begin(),
+        forecast_influence.consumed_artifact_digests.end());
+    out.consumed_checkpoint_digests.insert(
+        out.consumed_checkpoint_digests.end(),
+        forecast_influence.consumed_checkpoint_digests.begin(),
+        forecast_influence.consumed_checkpoint_digests.end());
+    out.consumed_generation_vector_digests.insert(
+        out.consumed_generation_vector_digests.end(),
+        forecast_influence.consumed_generation_vector_digests.begin(),
+        forecast_influence.consumed_generation_vector_digests.end());
+    if (!forecast_influence.complete) {
+      out.issues.emplace_back("replay_parent_forecast_influence_incomplete");
+    }
+    if (!forecast_influence.no_lookahead_contract_digest.empty() &&
+        !out.no_lookahead_contract_digest.empty() &&
+        forecast_influence.no_lookahead_contract_digest !=
+            out.no_lookahead_contract_digest) {
+      out.issues.emplace_back("replay_forecast_contract_digest_mismatch");
+    }
+    if (!forecast_influence.producer_generation_vector_digest.empty() &&
+        !string_vector_contains(
+            fact.influence_summary.parent_generation_vector_digests,
+            forecast_influence.producer_generation_vector_digest)) {
+      out.issues.emplace_back("replay_generation_vector_not_in_closure");
+    }
+    if (!string_vector_contains(fact.influence_summary.parent_artifact_digests,
+                                parent_forecast_digest) &&
+        !string_vector_contains(fact.influence_summary.parent_artifact_digests,
+                                parent_forecast->forecast_artifact_digest)) {
+      out.issues.emplace_back("replay_missing_forecast_artifact_influence_ref");
+    }
+    if (forecast_influence.influence_end_bound) {
+      if (!out.influence_end_bound) {
+        out.influence_end = forecast_influence.influence_end;
+        out.influence_end_bound = true;
+      } else {
+        if (out.influence_end < forecast_influence.influence_end) {
+          out.issues.emplace_back("replay_influence_understates_parent");
+        }
+        out.influence_end =
+            std::max(out.influence_end, forecast_influence.influence_end);
+      }
+    }
+    if (forecast_influence.availability_end_bound) {
+      if (!out.availability_end_bound) {
+        out.availability_end = forecast_influence.availability_end;
+        out.availability_end_bound = true;
+      } else {
+        if (out.availability_end < forecast_influence.availability_end) {
+          out.issues.emplace_back("replay_availability_understates_parent");
+        }
+        out.availability_end =
+            std::max(out.availability_end, forecast_influence.availability_end);
+      }
+    }
+    out.admissible = out.influence_end_bound &&
+                     out.influence_end <= target_anchor_begin &&
+                     out.availability_end_bound &&
+                     out.availability_end <= target_anchor_begin;
+    if (out.influence_end_bound && out.influence_end > target_anchor_begin) {
+      out.issues.emplace_back("replay_influence_overlaps_target_anchor_range");
+    }
+    if (out.availability_end_bound &&
+        out.availability_end > target_anchor_begin) {
+      out.issues.emplace_back(
+          "replay_label_or_reward_availability_overlaps_target_anchor_range");
+    }
+    out.complete =
+        out.declared && fact.influence_summary.complete &&
+        forecast_influence.complete && out.influence_end_bound &&
+        out.availability_end_bound &&
+        !out.no_lookahead_contract_digest.empty() &&
+        !fact.influence_summary.producer_generation_vector_digest.empty() &&
+        !fact.influence_summary.provenance_closure_digest.empty() &&
+        out.issues.empty();
+    return out;
+  }
+
   [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
   make_target_transform_artifact_proof(
       const lattice_target_spec_t &spec,
@@ -3548,30 +4390,148 @@ private:
       const lattice_target_spec_t &spec,
       const cuwacunu::hero::lattice::exposure::lattice_policy_training_fact_t
           &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
+          &ledger,
       bool identity_match, const std::set<std::string> &forecast_eval_digests,
       const std::set<std::string> &observer_belief_digests,
       const std::set<std::string> &allocation_engine_digests,
       const std::set<std::string> &replay_environment_digests,
-      const std::set<std::string> &replay_environment_report_digests) const {
+      const std::set<std::string> &replay_environment_report_digests,
+      const std::unordered_map<
+          std::string,
+          const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+              *> &forecast_by_digest,
+      const std::unordered_map<
+          std::string,
+          const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+              *> &forecast_by_artifact_digest,
+      const std::unordered_map<std::string,
+                               const cuwacunu::hero::lattice::exposure::
+                                   lattice_replay_environment_fact_t *>
+          &replay_by_digest,
+      const std::unordered_map<std::string,
+                               const cuwacunu::hero::lattice::exposure::
+                                   lattice_replay_environment_fact_t *>
+          &replay_by_report_digest) const {
     namespace exposure = cuwacunu::hero::lattice::exposure;
     auto issues = exposure::policy_training_fact_issues(fact);
     const auto digest_missing = [&](const std::string &digest,
                                     const std::set<std::string> &known) {
       return digest.empty() || known.find(digest) == known.end();
     };
-    if (digest_missing(fact.parent_forecast_eval_fact_digest,
-                       forecast_eval_digests)) {
+    const auto forecast_parent_bound = [&](const std::string &digest) {
+      if (digest.empty()) {
+        return false;
+      }
+      if (forecast_eval_digests.find(digest) != forecast_eval_digests.end()) {
+        return true;
+      }
+      for (const auto &candidate : ledger.forecast_eval_facts()) {
+        if (!forecast_fact_digest_matches(candidate, digest)) {
+          continue;
+        }
+        if (exposure::fact_shared_runtime_lineage_identity_compatible(
+                fact, candidate)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const auto related_parent_bound = [&](const std::string &digest,
+                                          const auto &related_facts,
+                                          auto digest_fn) {
+      if (digest.empty()) {
+        return false;
+      }
+      const auto resolution =
+          exposure::resolve_related_fact_digest_for_shared_runtime_lineage(
+              fact, digest, related_facts, digest_fn);
+      return resolution == exposure::related_fact_digest_resolution_t::resolved;
+    };
+    const bool policy_execution_provenance_required =
+        exposure::policy_training_fact_requires_ppo_artifact_contract(fact);
+    const std::string input_forecast_eval_fact_digest =
+        !fact.policy_execution_input_parent_forecast_eval_fact_digest.empty()
+            ? fact.policy_execution_input_parent_forecast_eval_fact_digest
+            : fact.parent_forecast_eval_fact_digest;
+    const std::string input_forecast_artifact_digest =
+        fact.policy_execution_input_parent_forecast_artifact_digest;
+    const std::string input_replay_environment_fact_digest =
+        !fact.policy_execution_input_parent_replay_environment_fact_digest
+                .empty()
+            ? fact.policy_execution_input_parent_replay_environment_fact_digest
+            : fact.parent_replay_environment_fact_digest;
+    const std::string input_replay_environment_report_digest =
+        !fact.policy_execution_input_parent_replay_environment_report_digest
+                .empty()
+            ? fact.policy_execution_input_parent_replay_environment_report_digest
+            : fact.parent_replay_environment_report_digest;
+    const auto find_stable_replay_parent =
+        [&]() -> const cuwacunu::hero::lattice::exposure::
+                  lattice_replay_environment_fact_t * {
+                    const auto input_forecast_it =
+                        input_forecast_eval_fact_digest.empty()
+                            ? forecast_by_digest.end()
+                            : forecast_by_digest.find(
+                                  input_forecast_eval_fact_digest);
+                    for (const auto &entry : replay_by_digest) {
+                      const auto *candidate = entry.second;
+                      if (candidate == nullptr) {
+                        continue;
+                      }
+                      if (!input_forecast_eval_fact_digest.empty()) {
+                        bool parent_matches_input =
+                            candidate->parent_forecast_eval_fact_digest ==
+                            input_forecast_eval_fact_digest;
+                        if (!parent_matches_input &&
+                            input_forecast_it != forecast_by_digest.end() &&
+                            input_forecast_it->second != nullptr) {
+                          parent_matches_input = forecast_fact_digest_matches(
+                              *input_forecast_it->second,
+                              candidate->parent_forecast_eval_fact_digest);
+                        }
+                        if (!parent_matches_input) {
+                          continue;
+                        }
+                      }
+                      if (!input_forecast_artifact_digest.empty() &&
+                          candidate->parent_forecast_artifact_digest !=
+                              input_forecast_artifact_digest) {
+                        continue;
+                      }
+                      if (candidate->protocol_id != fact.protocol_id ||
+                          candidate->graph_order_fingerprint !=
+                              fact.graph_order_fingerprint ||
+                          candidate->source_cursor_token !=
+                              fact.source_cursor_token ||
+                          candidate->split_policy_fingerprint !=
+                              fact.split_policy_fingerprint ||
+                          !anchor_range_covers(candidate->anchor_range,
+                                               fact.anchor_range)) {
+                        continue;
+                      }
+                      return candidate;
+                    }
+                    return nullptr;
+                  };
+    if (!forecast_parent_bound(fact.parent_forecast_eval_fact_digest)) {
       issues.emplace_back("parent_forecast_eval_fact_digest_not_found");
     }
     if (digest_missing(fact.parent_observer_belief_fact_digest,
-                       observer_belief_digests)) {
+                       observer_belief_digests) &&
+        !related_parent_bound(fact.parent_observer_belief_fact_digest,
+                              ledger.observer_belief_facts(),
+                              exposure::observer_belief_fact_digest)) {
       issues.emplace_back("parent_observer_belief_fact_digest_not_found");
     }
     const bool allocation_parent_required =
         exposure::policy_training_fact_requires_allocation_engine_parent(fact);
     if (allocation_parent_required &&
         digest_missing(fact.parent_allocation_engine_fact_digest,
-                       allocation_engine_digests)) {
+                       allocation_engine_digests) &&
+        !related_parent_bound(fact.parent_allocation_engine_fact_digest,
+                              ledger.allocation_engine_facts(),
+                              exposure::allocation_engine_fact_digest)) {
       issues.emplace_back("parent_allocation_engine_fact_digest_not_found");
     }
     const bool replay_parent_bound =
@@ -3582,7 +4542,8 @@ private:
         (!fact.parent_replay_environment_report_digest.empty() &&
          replay_environment_report_digests.find(
              fact.parent_replay_environment_report_digest) !=
-             replay_environment_report_digests.end());
+             replay_environment_report_digests.end()) ||
+        find_stable_replay_parent() != nullptr;
     if (!replay_parent_bound) {
       issues.emplace_back("parent_replay_environment_lineage_digest_not_found");
     }
@@ -3591,15 +4552,1115 @@ private:
         (!fact.parent_allocation_engine_fact_digest.empty() &&
          allocation_engine_digests.find(
              fact.parent_allocation_engine_fact_digest) !=
-             allocation_engine_digests.end());
+             allocation_engine_digests.end()) ||
+        related_parent_bound(fact.parent_allocation_engine_fact_digest,
+                             ledger.allocation_engine_facts(),
+                             exposure::allocation_engine_fact_digest);
     const bool parent_lineage_bound =
         !fact.parent_forecast_eval_fact_digest.empty() &&
-        forecast_eval_digests.find(fact.parent_forecast_eval_fact_digest) !=
-            forecast_eval_digests.end() &&
+        forecast_parent_bound(fact.parent_forecast_eval_fact_digest) &&
         !fact.parent_observer_belief_fact_digest.empty() &&
-        observer_belief_digests.find(fact.parent_observer_belief_fact_digest) !=
-            observer_belief_digests.end() &&
+        (observer_belief_digests.find(
+             fact.parent_observer_belief_fact_digest) !=
+             observer_belief_digests.end() ||
+         related_parent_bound(fact.parent_observer_belief_fact_digest,
+                              ledger.observer_belief_facts(),
+                              exposure::observer_belief_fact_digest)) &&
         allocation_parent_bound && replay_parent_bound;
+    artifact_influence_resolution_t no_lookahead{};
+    no_lookahead.complete = true;
+    no_lookahead.admissible = true;
+    no_lookahead.no_lookahead_contract_digest =
+        fact.influence_summary.no_lookahead_contract_digest;
+    const auto policy_target_begin = fact.anchor_range.begin;
+    std::int64_t policy_admissibility_cut = policy_target_begin;
+    if (fact.anchor_range.empty()) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_policy_target_anchor_range_missing");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    }
+    no_lookahead.embargo_policy_fingerprint = fact.embargo_policy_fingerprint;
+    no_lookahead.embargo_purged_window_anchor_range =
+        fact.embargo_purged_window_anchor_range;
+    no_lookahead.embargo_purged_window_anchor_range_bound =
+        fact.embargo_purged_window_anchor_range_bound;
+    if (fact.embargo_policy_fingerprint.empty()) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_embargo_policy_fingerprint_missing");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    }
+    if (!fact.embargo_purged_window_anchor_range_bound) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_embargo_purged_window_missing");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    } else {
+      policy_admissibility_cut = fact.embargo_purged_window_anchor_range.begin;
+      if (fact.embargo_purged_window_anchor_range.begin > policy_target_begin ||
+          fact.embargo_purged_window_anchor_range.end < policy_target_begin ||
+          fact.embargo_purged_window_anchor_range.end <
+              fact.embargo_purged_window_anchor_range.begin) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_embargo_purged_window_does_not_cover_policy_target_"
+            "begin");
+        no_lookahead.complete = false;
+        no_lookahead.admissible = false;
+      }
+    }
+
+    const auto forecast_it =
+        forecast_by_digest.find(input_forecast_eval_fact_digest);
+    if (forecast_it == forecast_by_digest.end()) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_parent_forecast_fact_not_found");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    } else {
+      const auto forecast_influence = resolve_forecast_influence(
+          ledger, *forecast_it->second, policy_admissibility_cut);
+      no_lookahead.consumed_artifact_digests.push_back(
+          input_forecast_eval_fact_digest);
+      if (!forecast_it->second->forecast_artifact_digest.empty()) {
+        no_lookahead.consumed_artifact_digests.push_back(
+            forecast_it->second->forecast_artifact_digest);
+      }
+      no_lookahead.consumed_artifact_digests.insert(
+          no_lookahead.consumed_artifact_digests.end(),
+          forecast_influence.consumed_artifact_digests.begin(),
+          forecast_influence.consumed_artifact_digests.end());
+      no_lookahead.consumed_checkpoint_digests.insert(
+          no_lookahead.consumed_checkpoint_digests.end(),
+          forecast_influence.consumed_checkpoint_digests.begin(),
+          forecast_influence.consumed_checkpoint_digests.end());
+      no_lookahead.consumed_generation_vector_digests.insert(
+          no_lookahead.consumed_generation_vector_digests.end(),
+          forecast_influence.consumed_generation_vector_digests.begin(),
+          forecast_influence.consumed_generation_vector_digests.end());
+      append_policy_parent_identity_issues(no_lookahead.issues,
+                                           *forecast_it->second, fact);
+      if (!forecast_influence.coverage_anchor_range_bound ||
+          !anchor_range_covers(forecast_influence.coverage_anchor_range,
+                               fact.anchor_range)) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_forecast_coverage_does_not_cover_policy_target");
+      }
+      if (forecast_influence.influence_end_bound) {
+        no_lookahead.influence_end = std::max(no_lookahead.influence_end,
+                                              forecast_influence.influence_end);
+        no_lookahead.influence_end_bound = true;
+      }
+      if (forecast_influence.availability_end_bound) {
+        no_lookahead.availability_end = std::max(
+            no_lookahead.availability_end, forecast_influence.availability_end);
+        no_lookahead.availability_end_bound = true;
+      }
+      if (!input_forecast_artifact_digest.empty() &&
+          forecast_it->second->forecast_artifact_digest !=
+              input_forecast_artifact_digest) {
+        no_lookahead.issues.emplace_back(
+            "policy_execution_certified_forecast_mismatch");
+      }
+      if (no_lookahead.no_lookahead_contract_digest.empty()) {
+        no_lookahead.no_lookahead_contract_digest =
+            forecast_influence.no_lookahead_contract_digest;
+      } else if (!forecast_influence.no_lookahead_contract_digest.empty() &&
+                 no_lookahead.no_lookahead_contract_digest !=
+                     forecast_influence.no_lookahead_contract_digest) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_forecast_contract_digest_mismatch");
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_contract_digest_mismatch");
+      }
+      if (!forecast_influence.complete) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_forecast_influence_incomplete");
+      }
+      if (!forecast_influence.admissible) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_forecast_influence_not_admissible");
+      }
+      no_lookahead.complete =
+          no_lookahead.complete && forecast_influence.complete;
+      no_lookahead.admissible =
+          no_lookahead.admissible && forecast_influence.admissible;
+      append_prefixed_unique_issues(no_lookahead.issues,
+                                    forecast_influence.issues, "no_lookahead_");
+    }
+
+    const exposure::lattice_replay_environment_fact_t *replay_fact = nullptr;
+    if (!input_replay_environment_fact_digest.empty()) {
+      const auto it =
+          replay_by_digest.find(input_replay_environment_fact_digest);
+      if (it != replay_by_digest.end()) {
+        replay_fact = it->second;
+      }
+    }
+    if (replay_fact == nullptr &&
+        !input_replay_environment_report_digest.empty()) {
+      const auto it =
+          replay_by_report_digest.find(input_replay_environment_report_digest);
+      if (it != replay_by_report_digest.end()) {
+        replay_fact = it->second;
+      }
+    }
+    if (replay_fact == nullptr) {
+      replay_fact = find_stable_replay_parent();
+    }
+    if (replay_fact == nullptr) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_parent_replay_fact_not_found");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    } else {
+      const auto replay_influence = resolve_replay_influence(
+          ledger, *replay_fact, policy_admissibility_cut, forecast_by_digest,
+          forecast_by_artifact_digest);
+      no_lookahead.consumed_artifact_digests.insert(
+          no_lookahead.consumed_artifact_digests.end(),
+          replay_influence.consumed_artifact_digests.begin(),
+          replay_influence.consumed_artifact_digests.end());
+      no_lookahead.consumed_checkpoint_digests.insert(
+          no_lookahead.consumed_checkpoint_digests.end(),
+          replay_influence.consumed_checkpoint_digests.begin(),
+          replay_influence.consumed_checkpoint_digests.end());
+      for (const auto &generation_digest :
+           replay_influence.consumed_generation_vector_digests) {
+        if (generation_digest ==
+            replay_fact->influence_summary.producer_generation_vector_digest) {
+          continue;
+        }
+        no_lookahead.consumed_generation_vector_digests.push_back(
+            generation_digest);
+      }
+      append_policy_parent_identity_issues(no_lookahead.issues, *replay_fact,
+                                           fact);
+      if (!replay_influence.coverage_anchor_range_bound ||
+          !anchor_range_covers(replay_influence.coverage_anchor_range,
+                               fact.anchor_range)) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_replay_coverage_does_not_cover_policy_target");
+      }
+      if (!input_forecast_eval_fact_digest.empty() &&
+          !replay_influence.parent_forecast_fact_digest.empty() &&
+          !map_contains_key(forecast_by_digest,
+                            replay_influence.parent_forecast_fact_digest)) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_policy_parent_chain_mismatch");
+      } else if (!input_forecast_eval_fact_digest.empty() &&
+                 !replay_influence.parent_forecast_fact_digest.empty()) {
+        const auto input_forecast_it =
+            forecast_by_digest.find(input_forecast_eval_fact_digest);
+        const bool parent_matches_input =
+            replay_influence.parent_forecast_fact_digest ==
+                input_forecast_eval_fact_digest ||
+            (input_forecast_it != forecast_by_digest.end() &&
+             input_forecast_it->second != nullptr &&
+             forecast_fact_digest_matches(
+                 *input_forecast_it->second,
+                 replay_influence.parent_forecast_fact_digest));
+        if (!parent_matches_input) {
+          no_lookahead.issues.emplace_back(
+              "no_lookahead_policy_parent_chain_mismatch");
+        }
+      }
+      if (!input_forecast_eval_fact_digest.empty() &&
+          !replay_influence.parent_forecast_fact_digest.empty() &&
+          !map_contains_key(forecast_by_digest,
+                            input_forecast_eval_fact_digest)) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_policy_parent_chain_mismatch");
+      }
+      if (replay_influence.influence_end_bound) {
+        no_lookahead.influence_end = std::max(no_lookahead.influence_end,
+                                              replay_influence.influence_end);
+        no_lookahead.influence_end_bound = true;
+      }
+      if (replay_influence.availability_end_bound) {
+        no_lookahead.availability_end = std::max(
+            no_lookahead.availability_end, replay_influence.availability_end);
+        no_lookahead.availability_end_bound = true;
+      }
+      if (no_lookahead.no_lookahead_contract_digest.empty()) {
+        no_lookahead.no_lookahead_contract_digest =
+            replay_influence.no_lookahead_contract_digest;
+      } else if (!replay_influence.no_lookahead_contract_digest.empty() &&
+                 no_lookahead.no_lookahead_contract_digest !=
+                     replay_influence.no_lookahead_contract_digest) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_replay_contract_digest_mismatch");
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_contract_digest_mismatch");
+      }
+      if (!replay_influence.complete) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_replay_influence_incomplete");
+      }
+      if (!replay_influence.admissible) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_replay_influence_not_admissible");
+      }
+      no_lookahead.complete =
+          no_lookahead.complete && replay_influence.complete;
+      no_lookahead.admissible =
+          no_lookahead.admissible && replay_influence.admissible;
+      append_prefixed_unique_issues(no_lookahead.issues,
+                                    replay_influence.issues, "no_lookahead_");
+      if (string_vector_contains(replay_influence.issues,
+                                 "forecast_artifact_digest_mismatch")) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_forecast_artifact_digest_mismatch");
+      }
+      if (string_vector_contains(replay_influence.issues,
+                                 "replay_influence_understates_parent")) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_replay_influence_understates_parent");
+      }
+      if (string_vector_contains(replay_influence.issues,
+                                 "replay_availability_understates_parent")) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_replay_availability_understates_parent");
+      }
+      if (string_vector_contains(replay_influence.issues,
+                                 "replay_generation_vector_not_in_closure")) {
+        no_lookahead.issues.emplace_back(
+            "no_lookahead_generation_vector_not_in_closure");
+      }
+    }
+    if (!no_lookahead.influence_end_bound) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_influence_frontier_missing");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    } else if (no_lookahead.influence_end > policy_target_begin) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_influence_overlaps_policy_target_anchor_range");
+      no_lookahead.admissible = false;
+    }
+    if (no_lookahead.influence_end_bound &&
+        no_lookahead.influence_end > policy_admissibility_cut) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_influence_overlaps_embargo_purged_window");
+      no_lookahead.admissible = false;
+    }
+    if (!no_lookahead.availability_end_bound) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_label_or_reward_availability_frontier_missing");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    } else if (no_lookahead.availability_end > policy_target_begin) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_label_or_reward_availability_overlaps_policy_target_"
+          "anchor_range");
+      no_lookahead.admissible = false;
+    }
+    if (no_lookahead.availability_end_bound &&
+        no_lookahead.availability_end > policy_admissibility_cut) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_label_or_reward_availability_overlaps_embargo_purged_"
+          "window");
+      no_lookahead.admissible = false;
+    }
+    if (no_lookahead.no_lookahead_contract_digest.empty()) {
+      no_lookahead.issues.emplace_back("no_lookahead_contract_digest_missing");
+      no_lookahead.complete = false;
+    }
+    if (no_lookahead.consumed_generation_vector_digests.empty()) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_generation_vector_not_in_closure");
+      no_lookahead.complete = false;
+    }
+    if (!no_lookahead.issues.empty()) {
+      no_lookahead.complete = false;
+    }
+    {
+      auto artifact_digests = no_lookahead.consumed_artifact_digests;
+      auto checkpoint_digests = no_lookahead.consumed_checkpoint_digests;
+      auto generation_digests = no_lookahead.consumed_generation_vector_digests;
+      std::sort(artifact_digests.begin(), artifact_digests.end());
+      std::sort(checkpoint_digests.begin(), checkpoint_digests.end());
+      std::sort(generation_digests.begin(), generation_digests.end());
+      std::ostringstream closure;
+      closure << "policy_no_lookahead_provenance_closure.v1|"
+              << no_lookahead.no_lookahead_contract_digest << "|"
+              << join_keys(artifact_digests) << "|"
+              << join_keys(checkpoint_digests) << "|"
+              << join_keys(generation_digests) << "|"
+              << no_lookahead.influence_end << "|"
+              << (no_lookahead.influence_end_bound ? "1" : "0") << "|"
+              << no_lookahead.availability_end << "|"
+              << (no_lookahead.availability_end_bound ? "1" : "0") << "|"
+              << no_lookahead.embargo_policy_fingerprint << "|"
+              << no_lookahead.embargo_purged_window_anchor_range.begin << "|"
+              << no_lookahead.embargo_purged_window_anchor_range.end << "|"
+              << (no_lookahead.embargo_purged_window_anchor_range_bound ? "1"
+                                                                        : "0");
+      no_lookahead.provenance_closure_digest =
+          exposure::exposure_digest_for_text(closure.str());
+    }
+    bool policy_execution_input_lock_bound = true;
+    bool parent_policy_bound = true;
+    bool policy_output_bound = true;
+    bool snapshot_bundle_bound = true;
+    const bool source_certificate_lock_bound =
+        !fact.policy_execution_no_lookahead_certificate_digest.empty() &&
+        fact.policy_execution_evidence_snapshot_digest ==
+            fact.policy_execution_no_lookahead_certificate_digest &&
+        fact.policy_execution_provenance_closure_digest ==
+            fact.policy_execution_no_lookahead_certificate_digest;
+    const auto closure_matches_execution_lock = [&](const std::string &digest) {
+      return !digest.empty() &&
+             (digest == no_lookahead.provenance_closure_digest ||
+              (source_certificate_lock_bound &&
+               digest ==
+                   fact.policy_execution_no_lookahead_certificate_digest));
+    };
+    if (policy_execution_provenance_required) {
+      if (fact.policy_execution_no_lookahead_certificate_schema.empty() ||
+          fact.policy_execution_no_lookahead_certificate_digest.empty() ||
+          fact.policy_execution_evidence_snapshot_digest.empty() ||
+          fact.policy_execution_provenance_closure_digest.empty()) {
+        issues.emplace_back("policy_execution_no_lookahead_input_lock_missing");
+        policy_execution_input_lock_bound = false;
+      }
+      if (!fact.policy_execution_no_lookahead_certificate_schema.empty() &&
+          fact.policy_execution_no_lookahead_certificate_schema !=
+              "no_lookahead_artifact_provenance.v1") {
+        issues.emplace_back(
+            "policy_execution_no_lookahead_certificate_schema_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      if (!fact.policy_execution_target_anchor_range_bound ||
+          fact.policy_execution_target_anchor_range.begin !=
+              fact.anchor_range.begin ||
+          fact.policy_execution_target_anchor_range.end !=
+              fact.anchor_range.end) {
+        issues.emplace_back("policy_execution_target_anchor_range_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      if (fact.policy_execution_no_lookahead_contract_digest.empty() ||
+          fact.policy_execution_no_lookahead_contract_digest !=
+              no_lookahead.no_lookahead_contract_digest) {
+        issues.emplace_back("policy_execution_contract_digest_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      if (!closure_matches_execution_lock(
+              fact.policy_execution_provenance_closure_digest)) {
+        issues.emplace_back("policy_execution_evidence_snapshot_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      if (fact.policy_execution_input_parent_forecast_eval_fact_digest
+              .empty() ||
+          fact.policy_execution_input_parent_forecast_eval_fact_digest !=
+              input_forecast_eval_fact_digest) {
+        issues.emplace_back("policy_execution_certified_forecast_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      if (!input_forecast_artifact_digest.empty() &&
+          !fact.policy_execution_input_parent_forecast_artifact_digest
+               .empty() &&
+          fact.policy_execution_input_parent_forecast_artifact_digest !=
+              input_forecast_artifact_digest) {
+        issues.emplace_back("policy_execution_certified_forecast_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      const bool replay_fact_digest_bound =
+          !input_replay_environment_fact_digest.empty() &&
+          replay_by_digest.find(input_replay_environment_fact_digest) !=
+              replay_by_digest.end();
+      const bool replay_report_digest_bound =
+          !input_replay_environment_report_digest.empty() &&
+          replay_by_report_digest.find(
+              input_replay_environment_report_digest) !=
+              replay_by_report_digest.end();
+      const bool certified_replay_bank_source_bound =
+          !fact.certified_replay_bank_manifest_digest.empty() &&
+          !fact.policy_experience_set_digest.empty() &&
+          !fact.policy_execution_replay_job_dir_digest.empty() &&
+          fact.certified_replay_chunk_count_bound &&
+          fact.certified_replay_chunk_count > 0 &&
+          fact.certified_replay_sample_count_bound &&
+          fact.certified_replay_sample_count > 0 &&
+          fact.certified_replay_coverage_anchor_range_bound &&
+          anchor_range_covers(fact.certified_replay_coverage_anchor_range,
+                              fact.anchor_range) &&
+          string_vector_contains(
+              fact.policy_execution_consumed_artifact_digests,
+              fact.policy_execution_replay_job_dir_digest) &&
+          string_vector_contains(
+              fact.policy_execution_consumed_artifact_digests,
+              fact.certified_replay_bank_manifest_digest) &&
+          string_vector_contains(
+              fact.policy_execution_consumed_artifact_digests,
+              fact.policy_experience_set_digest);
+      if (!replay_fact_digest_bound && !replay_report_digest_bound &&
+          !certified_replay_bank_source_bound) {
+        issues.emplace_back("policy_execution_certified_replay_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      if (!fact.policy_execution_input_parent_replay_environment_report_digest
+               .empty() &&
+          fact.policy_execution_input_parent_replay_environment_report_digest !=
+              input_replay_environment_report_digest) {
+        issues.emplace_back("policy_execution_certified_replay_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      if (fact.policy_execution_replay_job_dir_digest.empty()) {
+        issues.emplace_back("policy_execution_certified_replay_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      const bool direct_execution_artifacts_locked =
+          string_vector_contains(
+              fact.policy_execution_consumed_artifact_digests,
+              input_forecast_eval_fact_digest) &&
+          (input_forecast_artifact_digest.empty() ||
+           string_vector_contains(
+               fact.policy_execution_consumed_artifact_digests,
+               input_forecast_artifact_digest)) &&
+          (certified_replay_bank_source_bound ||
+           (input_replay_environment_fact_digest.empty() ||
+            string_vector_contains(
+                fact.policy_execution_consumed_artifact_digests,
+                input_replay_environment_fact_digest)) ||
+           (!input_replay_environment_report_digest.empty() &&
+            string_vector_contains(
+                fact.policy_execution_consumed_artifact_digests,
+                input_replay_environment_report_digest)));
+      if (!direct_execution_artifacts_locked) {
+        issues.emplace_back(
+            "policy_execution_certified_artifact_closure_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      if (!string_vector_contains_all(
+              fact.policy_execution_consumed_checkpoint_digests,
+              no_lookahead.consumed_checkpoint_digests)) {
+        issues.emplace_back(
+            "policy_execution_certified_checkpoint_closure_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+      if (!string_vector_contains_all(
+              fact.policy_execution_consumed_generation_vector_digests,
+              no_lookahead.consumed_generation_vector_digests)) {
+        issues.emplace_back(
+            "policy_execution_certified_generation_closure_mismatch");
+        policy_execution_input_lock_bound = false;
+      }
+
+      const auto &parent_policy_influence =
+          fact.parent_policy_influence_summary;
+      if (fact.parent_policy_generation_id.empty() ||
+          fact.parent_policy_generation_vector_digest.empty()) {
+        issues.emplace_back(
+            "policy_execution_parent_policy_generation_missing");
+        parent_policy_bound = false;
+      }
+      if (!exposure::artifact_influence_summary_declared(
+              parent_policy_influence)) {
+        issues.emplace_back("policy_execution_parent_policy_influence_missing");
+        parent_policy_bound = false;
+      } else {
+        if (!parent_policy_influence.complete ||
+            parent_policy_influence.schema !=
+                exposure::k_no_lookahead_artifact_provenance_schema_anchor_v1 ||
+            !parent_policy_influence.influence_anchor_end_exclusive_max_bound ||
+            !parent_policy_influence
+                 .label_or_reward_availability_end_exclusive_max_bound ||
+            parent_policy_influence.provenance_closure_digest.empty()) {
+          issues.emplace_back(
+              "policy_execution_parent_policy_influence_missing");
+          parent_policy_bound = false;
+        }
+        if (parent_policy_influence.graph_order_fingerprint !=
+                fact.graph_order_fingerprint ||
+            parent_policy_influence.source_cursor_token !=
+                fact.source_cursor_token ||
+            parent_policy_influence.split_policy_fingerprint !=
+                fact.split_policy_fingerprint) {
+          issues.emplace_back(
+              "policy_execution_parent_policy_identity_mismatch");
+          parent_policy_bound = false;
+        }
+        if (!parent_policy_influence.influence_anchor_end_exclusive_max_bound ||
+            parent_policy_influence.influence_anchor_end_exclusive_max >
+                policy_target_begin) {
+          issues.emplace_back(
+              "policy_execution_parent_policy_influence_overlaps_target");
+          parent_policy_bound = false;
+        }
+        if (!parent_policy_influence
+                 .label_or_reward_availability_end_exclusive_max_bound) {
+          issues.emplace_back(
+              "policy_execution_parent_policy_availability_missing");
+          parent_policy_bound = false;
+        } else if (parent_policy_influence
+                       .label_or_reward_availability_end_exclusive_max >
+                   policy_target_begin) {
+          issues.emplace_back(
+              "policy_execution_parent_policy_availability_overlaps_target");
+          parent_policy_bound = false;
+        }
+        if (parent_policy_influence.no_lookahead_contract_digest.empty() ||
+            parent_policy_influence.no_lookahead_contract_digest !=
+                no_lookahead.no_lookahead_contract_digest) {
+          issues.emplace_back("policy_execution_contract_digest_mismatch");
+          parent_policy_bound = false;
+        }
+        if (!fact.parent_policy_generation_vector_digest.empty() &&
+            parent_policy_influence.producer_generation_vector_digest !=
+                fact.parent_policy_generation_vector_digest) {
+          issues.emplace_back(
+              "policy_execution_parent_policy_generation_missing");
+          parent_policy_bound = false;
+        }
+      }
+      if (fact.resume_mode != "fresh_spawn" &&
+          (!fact.parent_policy_valid_from_anchor_bound ||
+           fact.parent_policy_valid_from_anchor > policy_target_begin)) {
+        issues.emplace_back("policy_execution_resume_contract_missing");
+        parent_policy_bound = false;
+      }
+      const bool fresh_spawn_seed_parent =
+          fact.resume_mode == "fresh_spawn" &&
+          fact.parent_policy_generation_id == "policy_generation_seed_v1" &&
+          fact.parent_policy_generation_vector_digest ==
+              "generation_vector_seed_policy_v1";
+      if (!fresh_spawn_seed_parent) {
+        const std::string parent_policy_checkpoint_digest =
+            !fact.input_policy_checkpoint_digest.empty()
+                ? fact.input_policy_checkpoint_digest
+                : fact.parent_checkpoint_digest;
+        const auto parent_policy_generation =
+            resolve_checkpoint_generation_influence(
+                ledger, parent_policy_checkpoint_digest,
+                fact.graph_order_fingerprint, fact.source_cursor_token,
+                fact.split_policy_fingerprint,
+                no_lookahead.no_lookahead_contract_digest);
+        if (!parent_policy_generation.complete) {
+          issues.emplace_back(
+              "policy_execution_parent_policy_generation_missing");
+          append_prefixed_unique_issues(issues, parent_policy_generation.issues,
+                                        "");
+          parent_policy_bound = false;
+        } else {
+          if (!fact.parent_policy_generation_id.empty() &&
+              parent_policy_generation.generation_id !=
+                  fact.parent_policy_generation_id) {
+            issues.emplace_back(
+                "policy_execution_parent_policy_generation_missing");
+            parent_policy_bound = false;
+          }
+          if (!fact.parent_policy_generation_vector_digest.empty() &&
+              parent_policy_generation.generation_vector_digest !=
+                  fact.parent_policy_generation_vector_digest) {
+            issues.emplace_back(
+                "policy_execution_parent_policy_generation_missing");
+            parent_policy_bound = false;
+          }
+          if (!parent_policy_generation.influence_end_bound ||
+              parent_policy_generation.influence_end > policy_target_begin) {
+            issues.emplace_back(
+                "policy_execution_parent_policy_influence_overlaps_target");
+            parent_policy_bound = false;
+          }
+          if (!parent_policy_generation.availability_end_bound) {
+            issues.emplace_back(
+                "policy_execution_parent_policy_availability_missing");
+            parent_policy_bound = false;
+          } else if (parent_policy_generation.availability_end >
+                     policy_target_begin) {
+            issues.emplace_back(
+                "policy_execution_parent_policy_availability_overlaps_target");
+            parent_policy_bound = false;
+          }
+        }
+      }
+
+      const auto &output_influence = fact.influence_summary;
+      if (fact.policy_output_generation_id.empty() ||
+          fact.policy_output_generation_vector_digest.empty() ||
+          fact.policy_output_provenance_closure_digest.empty()) {
+        issues.emplace_back("policy_output_generation_provenance_incomplete");
+        policy_output_bound = false;
+      }
+      if (!fact.policy_output_fit_anchor_range_bound ||
+          fact.policy_output_fit_anchor_range.begin !=
+              fact.anchor_range.begin ||
+          fact.policy_output_fit_anchor_range.end != fact.anchor_range.end) {
+        issues.emplace_back("policy_output_generation_provenance_incomplete");
+        policy_output_bound = false;
+      }
+      if (!fact.policy_output_valid_from_anchor_bound ||
+          fact.policy_output_valid_from_anchor <
+              fact.policy_output_fit_anchor_range.end) {
+        issues.emplace_back("policy_output_valid_from_before_fit_end");
+        policy_output_bound = false;
+      }
+      if (!exposure::artifact_influence_summary_declared(output_influence) ||
+          !output_influence.complete ||
+          output_influence.producer_generation_vector_digest !=
+              fact.policy_output_generation_vector_digest ||
+          output_influence.provenance_closure_digest !=
+              fact.policy_output_provenance_closure_digest ||
+          !output_influence.influence_anchor_end_exclusive_max_bound ||
+          output_influence.influence_anchor_end_exclusive_max <
+              fact.policy_output_fit_anchor_range.end ||
+          !output_influence
+               .label_or_reward_availability_end_exclusive_max_bound ||
+          output_influence.label_or_reward_availability_end_exclusive_max <
+              fact.policy_output_fit_anchor_range.end) {
+        issues.emplace_back("policy_output_generation_provenance_incomplete");
+        policy_output_bound = false;
+      }
+      if (!output_influence.no_lookahead_contract_digest.empty() &&
+          output_influence.no_lookahead_contract_digest !=
+              no_lookahead.no_lookahead_contract_digest) {
+        issues.emplace_back("policy_execution_contract_digest_mismatch");
+        policy_output_bound = false;
+      }
+      if (!fact.policy_execution_provenance_closure_digest.empty() &&
+          !string_vector_contains(
+              output_influence.parent_artifact_digests,
+              fact.policy_execution_provenance_closure_digest)) {
+        issues.emplace_back("policy_output_generation_provenance_incomplete");
+        policy_output_bound = false;
+      }
+      if (!fact.input_policy_checkpoint_digest.empty() &&
+          !string_vector_contains(output_influence.parent_checkpoint_digests,
+                                  fact.input_policy_checkpoint_digest)) {
+        issues.emplace_back("policy_output_generation_provenance_incomplete");
+        policy_output_bound = false;
+      }
+      if (!fact.parent_policy_generation_vector_digest.empty() &&
+          !string_vector_contains(
+              output_influence.parent_generation_vector_digests,
+              fact.parent_policy_generation_vector_digest)) {
+        issues.emplace_back("policy_output_generation_provenance_incomplete");
+        policy_output_bound = false;
+      }
+      if (!string_vector_contains_all(
+              output_influence.parent_generation_vector_digests,
+              fact.policy_execution_consumed_generation_vector_digests)) {
+        issues.emplace_back(
+            "policy_execution_certified_generation_closure_mismatch");
+        policy_output_bound = false;
+      }
+      const auto output_generation = resolve_checkpoint_generation_influence(
+          ledger, fact.actor_checkpoint_digest, fact.graph_order_fingerprint,
+          fact.source_cursor_token, fact.split_policy_fingerprint,
+          no_lookahead.no_lookahead_contract_digest);
+      if (!output_generation.complete) {
+        issues.emplace_back("policy_output_generation_provenance_incomplete");
+        append_prefixed_unique_issues(issues, output_generation.issues, "");
+        policy_output_bound = false;
+      } else {
+        if (output_generation.generation_id !=
+                fact.policy_output_generation_id ||
+            output_generation.generation_vector_digest !=
+                fact.policy_output_generation_vector_digest ||
+            !output_generation.influence_end_bound ||
+            output_generation.influence_end <
+                fact.policy_output_fit_anchor_range.end) {
+          issues.emplace_back("policy_output_generation_provenance_incomplete");
+          policy_output_bound = false;
+        }
+      }
+
+      const auto bundle_issue = [&](const char *issue) {
+        issues.emplace_back(issue);
+        snapshot_bundle_bound = false;
+      };
+      const auto digest_vector_for_bundle =
+          [](const std::string &schema, const std::vector<std::string> &parts) {
+            std::ostringstream text;
+            text << schema;
+            for (const auto &part : parts) {
+              text << "|" << part;
+            }
+            return exposure::exposure_digest_for_text(text.str());
+          };
+      if (fact.snapshot_bundle_schema != "snapshot_bundle_manifest.v1" ||
+          fact.snapshot_bundle_id.empty()) {
+        bundle_issue("bundle_manifest_missing");
+      }
+      if (fact.snapshot_bundle_selection_basis != "bundle_manifest") {
+        bundle_issue("bundle_latest_selector_unresolved");
+      }
+      if (fact.snapshot_bundle_kind.empty() ||
+          (fact.snapshot_bundle_kind != "training_input" &&
+           fact.snapshot_bundle_kind != "serving_candidate" &&
+           fact.snapshot_bundle_kind != "readiness_candidate" &&
+           fact.snapshot_bundle_kind != "deployment_candidate")) {
+        bundle_issue("bundle_publishability_not_proven");
+      }
+      if (fact.snapshot_bundle_no_lookahead_contract_id.empty() ||
+          fact.snapshot_bundle_component_order_contract_id.empty() ||
+          fact.snapshot_bundle_no_lookahead_contract_digest !=
+              no_lookahead.no_lookahead_contract_digest ||
+          fact.snapshot_bundle_component_order_contract_digest !=
+              no_lookahead.no_lookahead_contract_digest ||
+          (!fact.policy_jkimyei_no_lookahead_contract_id.empty() &&
+           fact.snapshot_bundle_no_lookahead_contract_id !=
+               fact.policy_jkimyei_no_lookahead_contract_id) ||
+          (!fact.policy_jkimyei_component_order_contract_id.empty() &&
+           fact.snapshot_bundle_component_order_contract_id !=
+               fact.policy_jkimyei_component_order_contract_id)) {
+        bundle_issue("bundle_contract_digest_mismatch");
+      }
+      if (fact.snapshot_bundle_protocol_contract_fingerprint.empty() ||
+          fact.snapshot_bundle_protocol_contract_fingerprint !=
+              fact.contract_fingerprint) {
+        bundle_issue("bundle_protocol_contract_fingerprint_mismatch");
+      }
+
+      const auto require_component = [&](const std::string &component_id,
+                                         const std::string &checkpoint_digest,
+                                         const std::string &generation_id,
+                                         const std::string &generation_vector) {
+        if (component_id.empty() || checkpoint_digest.empty() ||
+            generation_id.empty() || generation_vector.empty()) {
+          bundle_issue("bundle_component_missing");
+        }
+      };
+      require_component(fact.bundle_representation_component_id,
+                        fact.bundle_representation_checkpoint_digest,
+                        fact.bundle_representation_generation_id,
+                        fact.bundle_representation_generation_vector_digest);
+      require_component(fact.bundle_mdn_component_id,
+                        fact.bundle_mdn_checkpoint_digest,
+                        fact.bundle_mdn_generation_id,
+                        fact.bundle_mdn_generation_vector_digest);
+      require_component(fact.bundle_policy_component_id,
+                        fact.bundle_policy_checkpoint_digest,
+                        fact.bundle_policy_generation_id,
+                        fact.bundle_policy_generation_vector_digest);
+
+      auto rep_generation = resolve_checkpoint_generation_influence(
+          ledger, fact.bundle_representation_checkpoint_digest,
+          fact.graph_order_fingerprint, fact.source_cursor_token,
+          fact.split_policy_fingerprint,
+          no_lookahead.no_lookahead_contract_digest);
+      auto mdn_generation = resolve_checkpoint_generation_influence(
+          ledger, fact.bundle_mdn_checkpoint_digest,
+          fact.graph_order_fingerprint, fact.source_cursor_token,
+          fact.split_policy_fingerprint,
+          no_lookahead.no_lookahead_contract_digest);
+      const auto policy_generation = resolve_checkpoint_generation_influence(
+          ledger, fact.bundle_policy_checkpoint_digest,
+          fact.graph_order_fingerprint, fact.source_cursor_token,
+          fact.split_policy_fingerprint,
+          no_lookahead.no_lookahead_contract_digest);
+      const auto bridge_historical_upstream_generation =
+          [&](checkpoint_generation_resolution_t &generation,
+              const std::string &checkpoint_digest,
+              const std::string &generation_id,
+              const std::string &generation_vector_digest) {
+            if (generation.complete || checkpoint_digest.empty() ||
+                generation_id.empty() || generation_vector_digest.empty()) {
+              return;
+            }
+            if (!string_vector_contains(
+                    no_lookahead.consumed_checkpoint_digests,
+                    checkpoint_digest) ||
+                !string_vector_contains(
+                    no_lookahead.consumed_generation_vector_digests,
+                    generation_vector_digest) ||
+                !no_lookahead.influence_end_bound ||
+                !no_lookahead.availability_end_bound) {
+              return;
+            }
+            generation = checkpoint_generation_resolution_t{};
+            generation.found = true;
+            generation.complete = true;
+            generation.influence_begin = 0;
+            generation.influence_begin_bound = true;
+            generation.influence_end = no_lookahead.influence_end;
+            generation.influence_end_bound = true;
+            generation.availability_end = no_lookahead.availability_end;
+            generation.availability_end_bound = true;
+            generation.valid_from = no_lookahead.influence_end;
+            generation.valid_from_bound = true;
+            generation.generation_id = generation_id;
+            generation.generation_vector_digest = generation_vector_digest;
+            generation.no_lookahead_contract_digest =
+                no_lookahead.no_lookahead_contract_digest;
+          };
+      bridge_historical_upstream_generation(
+          rep_generation, fact.bundle_representation_checkpoint_digest,
+          fact.bundle_representation_generation_id,
+          fact.bundle_representation_generation_vector_digest);
+      bridge_historical_upstream_generation(
+          mdn_generation, fact.bundle_mdn_checkpoint_digest,
+          fact.bundle_mdn_generation_id,
+          fact.bundle_mdn_generation_vector_digest);
+      const auto add_generation_issues = [&](const auto &generation) {
+        if (!generation.complete) {
+          bundle_issue("bundle_generation_manifest_missing");
+          append_prefixed_unique_issues(issues, generation.issues, "");
+          if (string_vector_contains(
+                  generation.issues,
+                  "checkpoint_generation_lane_not_readiness_grade")) {
+            bundle_issue("bundle_generation_not_readiness_grade");
+          }
+        }
+      };
+      add_generation_issues(rep_generation);
+      add_generation_issues(mdn_generation);
+      add_generation_issues(policy_generation);
+      if (!rep_generation.generation_id.empty() &&
+          rep_generation.generation_id !=
+              fact.bundle_representation_generation_id) {
+        bundle_issue("bundle_generation_vector_mismatch");
+      }
+      if (!rep_generation.generation_vector_digest.empty() &&
+          rep_generation.generation_vector_digest !=
+              fact.bundle_representation_generation_vector_digest) {
+        bundle_issue("bundle_generation_vector_mismatch");
+      }
+      if (!mdn_generation.generation_id.empty() &&
+          mdn_generation.generation_id != fact.bundle_mdn_generation_id) {
+        bundle_issue("bundle_generation_vector_mismatch");
+      }
+      if (!mdn_generation.generation_vector_digest.empty() &&
+          mdn_generation.generation_vector_digest !=
+              fact.bundle_mdn_generation_vector_digest) {
+        bundle_issue("bundle_generation_vector_mismatch");
+      }
+      if (!policy_generation.generation_id.empty() &&
+          policy_generation.generation_id != fact.bundle_policy_generation_id) {
+        bundle_issue("bundle_generation_vector_mismatch");
+      }
+      if (!policy_generation.generation_vector_digest.empty() &&
+          policy_generation.generation_vector_digest !=
+              fact.bundle_policy_generation_vector_digest) {
+        bundle_issue("bundle_generation_vector_mismatch");
+      }
+      if (fact.bundle_policy_checkpoint_digest !=
+              fact.actor_checkpoint_digest ||
+          fact.bundle_policy_generation_id !=
+              fact.policy_output_generation_id ||
+          fact.bundle_policy_generation_vector_digest !=
+              fact.policy_output_generation_vector_digest) {
+        bundle_issue("bundle_generation_vector_mismatch");
+      }
+
+      const auto check_manifest_digest =
+          [&](const std::string &declared_digest,
+              const exposure::lattice_checkpoint_fact_t *manifest) {
+            if (declared_digest.empty()) {
+              return;
+            }
+            if (manifest == nullptr ||
+                declared_digest !=
+                    exposure::exposure_digest_for_text(
+                        exposure::canonical_checkpoint_fact_text(*manifest))) {
+              bundle_issue("bundle_generation_manifest_missing");
+            }
+          };
+      check_manifest_digest(
+          fact.bundle_representation_generation_manifest_digest,
+          find_checkpoint_generation_fact_by_digest(
+              ledger, fact.bundle_representation_checkpoint_digest));
+      check_manifest_digest(fact.bundle_mdn_generation_manifest_digest,
+                            find_checkpoint_generation_fact_by_digest(
+                                ledger, fact.bundle_mdn_checkpoint_digest));
+      check_manifest_digest(fact.bundle_policy_generation_manifest_digest,
+                            find_checkpoint_generation_fact_by_digest(
+                                ledger, fact.bundle_policy_checkpoint_digest));
+
+      if (fact.mdn_trained_against_representation_generation_vector_digest
+              .empty() ||
+          fact.policy_trained_against_representation_generation_vector_digest
+              .empty() ||
+          fact.policy_trained_against_mdn_generation_vector_digest.empty() ||
+          fact.policy_trained_against_policy_parent_generation_vector_digest
+              .empty()) {
+        bundle_issue("bundle_trained_against_generation_missing");
+      }
+      if (fact.mdn_trained_against_representation_generation_vector_digest !=
+              fact.bundle_representation_generation_vector_digest ||
+          (!fact.mdn_trained_against_representation_generation_id.empty() &&
+           fact.mdn_trained_against_representation_generation_id !=
+               fact.bundle_representation_generation_id) ||
+          (!fact.mdn_trained_against_representation_checkpoint_digest.empty() &&
+           fact.mdn_trained_against_representation_checkpoint_digest !=
+               fact.bundle_representation_checkpoint_digest) ||
+          fact.policy_trained_against_representation_generation_vector_digest !=
+              fact.bundle_representation_generation_vector_digest ||
+          fact.policy_trained_against_mdn_generation_vector_digest !=
+              fact.bundle_mdn_generation_vector_digest ||
+          fact.policy_trained_against_policy_parent_generation_vector_digest !=
+              fact.parent_policy_generation_vector_digest) {
+        bundle_issue("bundle_trained_against_generation_mismatch");
+      }
+      if (!fact.policy_trained_against_forecast_eval_fact_digest.empty() &&
+          fact.policy_trained_against_forecast_eval_fact_digest !=
+              input_forecast_eval_fact_digest) {
+        bundle_issue("bundle_trained_against_generation_mismatch");
+      }
+      if (!fact.policy_trained_against_replay_environment_fact_digest.empty() &&
+          fact.policy_trained_against_replay_environment_fact_digest !=
+              input_replay_environment_fact_digest) {
+        bundle_issue("bundle_trained_against_generation_mismatch");
+      }
+
+      if (fact.policy_execution_no_lookahead_certificate_digest.empty() ||
+          fact.snapshot_bundle_policy_execution_certificate_digest !=
+              fact.policy_execution_no_lookahead_certificate_digest ||
+          fact.policy_trained_against_no_lookahead_certificate_digest !=
+              fact.policy_execution_no_lookahead_certificate_digest ||
+          !string_vector_contains(
+              fact.snapshot_bundle_no_lookahead_certificate_digests,
+              fact.policy_execution_no_lookahead_certificate_digest)) {
+        bundle_issue("bundle_no_lookahead_certificate_missing");
+      }
+
+      const auto expected_bundle_generation_vector_digest =
+          digest_vector_for_bundle(
+              "snapshot_bundle_generation_vector.v1",
+              {fact.bundle_representation_generation_vector_digest,
+               fact.bundle_mdn_generation_vector_digest,
+               fact.bundle_policy_generation_vector_digest});
+      if (fact.snapshot_bundle_generation_vector_digest.empty()) {
+        bundle_issue("bundle_generation_vector_missing");
+      } else if (fact.snapshot_bundle_generation_vector_digest !=
+                 expected_bundle_generation_vector_digest) {
+        bundle_issue("bundle_generation_vector_mismatch");
+      }
+
+      const auto expected_compatibility_closure_digest = digest_vector_for_bundle(
+          "snapshot_bundle_compatibility_closure.v1",
+          {fact.snapshot_bundle_id,
+           fact.bundle_representation_generation_vector_digest,
+           fact.bundle_mdn_generation_vector_digest,
+           fact.bundle_policy_generation_vector_digest,
+           fact.mdn_trained_against_representation_generation_vector_digest,
+           fact.policy_trained_against_representation_generation_vector_digest,
+           fact.policy_trained_against_mdn_generation_vector_digest,
+           fact.policy_trained_against_policy_parent_generation_vector_digest,
+           fact.policy_execution_no_lookahead_certificate_digest,
+           no_lookahead.no_lookahead_contract_digest});
+      if (fact.snapshot_bundle_compatibility_closure_digest.empty() ||
+          fact.snapshot_bundle_compatibility_closure_digest !=
+              expected_compatibility_closure_digest) {
+        bundle_issue("bundle_publishability_not_proven");
+      }
+
+      std::int64_t member_valid_from = 0;
+      bool member_valid_from_bound = false;
+      const auto join_valid_from =
+          [&](const std::string &checkpoint_digest,
+              const checkpoint_generation_resolution_t &resolution) {
+            const auto *manifest = find_checkpoint_generation_fact_by_digest(
+                ledger, checkpoint_digest);
+            if ((manifest == nullptr || !manifest->valid_from_anchor_bound) &&
+                !resolution.valid_from_bound) {
+              bundle_issue("bundle_valid_from_missing");
+              return;
+            }
+            const std::int64_t valid_from =
+                (manifest != nullptr && manifest->valid_from_anchor_bound)
+                    ? manifest->valid_from_anchor
+                    : resolution.valid_from;
+            if (!member_valid_from_bound || valid_from > member_valid_from) {
+              member_valid_from = valid_from;
+              member_valid_from_bound = true;
+            }
+            if (resolution.influence_end_bound &&
+                valid_from < resolution.influence_end) {
+              bundle_issue("bundle_valid_from_before_member_valid_from");
+            }
+          };
+      join_valid_from(fact.bundle_representation_checkpoint_digest,
+                      rep_generation);
+      join_valid_from(fact.bundle_mdn_checkpoint_digest, mdn_generation);
+      join_valid_from(fact.bundle_policy_checkpoint_digest, policy_generation);
+      if (!fact.snapshot_bundle_valid_from_anchor_bound ||
+          !member_valid_from_bound) {
+        bundle_issue("bundle_valid_from_missing");
+      } else if (fact.snapshot_bundle_valid_from_anchor < member_valid_from) {
+        bundle_issue("bundle_valid_from_before_member_valid_from");
+      }
+      std::int64_t member_influence_end = 0;
+      bool member_influence_end_bound = false;
+      const auto join_influence_end =
+          [&](const checkpoint_generation_resolution_t &resolution) {
+            if (!resolution.influence_end_bound) {
+              return;
+            }
+            if (!member_influence_end_bound ||
+                resolution.influence_end > member_influence_end) {
+              member_influence_end = resolution.influence_end;
+              member_influence_end_bound = true;
+            }
+          };
+      join_influence_end(rep_generation);
+      join_influence_end(mdn_generation);
+      join_influence_end(policy_generation);
+      if (!fact.snapshot_bundle_influence_anchor_end_exclusive_max_bound ||
+          !member_influence_end_bound ||
+          fact.snapshot_bundle_influence_anchor_end_exclusive_max <
+              member_influence_end) {
+        bundle_issue("bundle_publishability_not_proven");
+      }
+    }
+    for (const auto &issue : no_lookahead.issues) {
+      issues.push_back(issue);
+    }
+    const bool no_lookahead_bound =
+        no_lookahead.complete && no_lookahead.admissible &&
+        no_lookahead.influence_end_bound &&
+        no_lookahead.availability_end_bound &&
+        no_lookahead.embargo_purged_window_anchor_range_bound &&
+        !no_lookahead.embargo_policy_fingerprint.empty() &&
+        !no_lookahead.no_lookahead_contract_digest.empty();
+    bool causal_provenance_bound = true;
+    const auto causal_issue = [&](const char *issue) {
+      issues.emplace_back(issue);
+      causal_provenance_bound = false;
+    };
+    if (fact.causal_provenance_schema !=
+        exposure::k_causal_provenance_generalization_schema_v1) {
+      causal_issue("causal_provenance_schema_mismatch");
+    }
+    if (fact.causal_atom_schema !=
+        exposure::k_causal_atom_schema_anchor_interval_v1) {
+      causal_issue("causal_atom_schema_mismatch");
+    }
+    if (fact.causal_interval_set_schema !=
+        exposure::k_causal_interval_set_schema_anchor_half_open_v1) {
+      causal_issue("causal_interval_set_schema_mismatch");
+    }
+    if (fact.causal_label_reward_horizon_policy_fingerprint.empty()) {
+      causal_issue("causal_label_reward_horizon_policy_missing");
+    }
+    if (fact.causal_fold_policy_fingerprint.empty()) {
+      causal_issue("causal_fold_policy_missing");
+    }
+    if (fact.causal_purged_embargo_policy_fingerprint.empty() ||
+        fact.causal_purged_embargo_policy_fingerprint !=
+            no_lookahead.embargo_policy_fingerprint) {
+      causal_issue("causal_purged_embargo_policy_mismatch");
+    }
+    if (fact.causal_artifact_production_schema !=
+        exposure::k_runtime_artifact_production_inline_schema_v1) {
+      causal_issue("causal_artifact_production_schema_mismatch");
+    }
+    if (!closure_matches_execution_lock(
+            fact.causal_artifact_production_closure_digest)) {
+      causal_issue("causal_artifact_production_closure_mismatch");
+    }
+    if (fact.causal_interface_stability_contract_digest !=
+        exposure::k_interface_stability_trained_against_generation_vector_v1) {
+      causal_issue("causal_interface_stability_contract_mismatch");
+    }
+    if (!closure_matches_execution_lock(
+            fact.causal_provenance_closure_digest)) {
+      causal_issue("causal_provenance_closure_mismatch");
+    }
+    if (!no_lookahead_bound || !snapshot_bundle_bound) {
+      causal_issue("causal_provenance_subproof_incomplete");
+    }
     const bool anti_leakage_bound =
         fact.training_range_disjoint_validation &&
         fact.training_range_disjoint_test &&
@@ -3629,6 +5690,18 @@ private:
          !fact.policy_dsl_digest.empty() && !fact.policy_net_digest.empty() &&
          !fact.policy_input_feature_manifest_digest.empty() &&
          !fact.policy_jkimyei_digest.empty() &&
+         !no_lookahead.no_lookahead_contract_digest.empty() &&
+         !fact.policy_jkimyei_no_lookahead_contract_id.empty() &&
+         !fact.policy_jkimyei_no_lookahead_contract_digest.empty() &&
+         fact.policy_jkimyei_no_lookahead_contract_id ==
+             fact.policy_jkimyei_component_order_contract_id &&
+         fact.policy_jkimyei_no_lookahead_contract_digest ==
+             no_lookahead.no_lookahead_contract_digest &&
+         fact.policy_jkimyei_component_order_contract_digest ==
+             no_lookahead.no_lookahead_contract_digest &&
+         fact.policy_jkimyei_component_role == "policy" &&
+         fact.policy_jkimyei_serving_order_index_bound &&
+         fact.policy_jkimyei_serving_order_index == 2 &&
          !fact.target_node_universe_digest.empty() &&
          !fact.action_distribution_config_digest.empty() &&
          !fact.snapshot_family_digest.empty() &&
@@ -3653,7 +5726,9 @@ private:
          fact.ppo_clip_epsilon_bound && fact.ppo_target_kl_bound &&
          fact.ppo_entropy_coeff_bound && fact.ppo_value_loss_coeff_bound &&
          fact.ppo_max_grad_norm_bound && fact.ppo_minibatch_size_bound &&
-         fact.ppo_epochs_per_rollout_bound);
+         fact.ppo_epochs_per_rollout_bound &&
+         policy_execution_input_lock_bound && parent_policy_bound &&
+         policy_output_bound && snapshot_bundle_bound);
     const bool contract_bound =
         !fact.policy_id.empty() && !fact.policy_kind.empty() &&
         !fact.policy_architecture_digest.empty() &&
@@ -3685,12 +5760,107 @@ private:
         fact.policy_checkpoint_written && ppo_contract_bound;
     const bool lineage_bound = !fact.parent_exposure_fact_digest.empty() &&
                                contract_bound && parent_lineage_bound &&
-                               anti_leakage_bound;
-    return make_common_artifact_proof(
+                               anti_leakage_bound && no_lookahead_bound;
+    auto proof = make_common_artifact_proof(
         spec, fact, "policy_training",
         exposure::policy_training_fact_digest(fact), identity_match,
         fact.artifact_evidence, fact.artifact_evidence, fact.visibility_only,
         lineage_bound, std::move(issues));
+    proof.no_lookahead_certificate_schema =
+        "no_lookahead_artifact_provenance.v1";
+    proof.no_lookahead_provenance_checked = true;
+    proof.no_lookahead_provenance_complete = no_lookahead.complete;
+    proof.no_lookahead_provenance_admissible = no_lookahead.admissible;
+    proof.influence_anchor_end_exclusive_max_bound =
+        no_lookahead.influence_end_bound;
+    proof.influence_anchor_end_exclusive_max = no_lookahead.influence_end;
+    proof.label_or_reward_availability_frontier_checked = true;
+    proof.label_or_reward_availability_frontier_complete =
+        no_lookahead.availability_end_bound && no_lookahead.complete;
+    proof.label_or_reward_availability_frontier_admissible =
+        no_lookahead.availability_end_bound &&
+        no_lookahead.availability_end <= policy_target_begin &&
+        no_lookahead.admissible;
+    proof.label_or_reward_availability_end_exclusive_max_bound =
+        no_lookahead.availability_end_bound;
+    proof.label_or_reward_availability_end_exclusive_max =
+        no_lookahead.availability_end;
+    proof.embargo_purged_window_checked = true;
+    proof.embargo_purged_window_complete =
+        no_lookahead.embargo_purged_window_anchor_range_bound &&
+        !no_lookahead.embargo_policy_fingerprint.empty() &&
+        no_lookahead.complete;
+    proof.embargo_purged_window_admissible =
+        no_lookahead.embargo_purged_window_anchor_range_bound &&
+        !no_lookahead.embargo_policy_fingerprint.empty() &&
+        no_lookahead.admissible;
+    proof.embargo_policy_fingerprint = no_lookahead.embargo_policy_fingerprint;
+    proof.embargo_purged_window_anchor_range_bound =
+        no_lookahead.embargo_purged_window_anchor_range_bound;
+    proof.embargo_purged_window_anchor_begin =
+        no_lookahead.embargo_purged_window_anchor_range.begin;
+    proof.embargo_purged_window_anchor_end_exclusive =
+        no_lookahead.embargo_purged_window_anchor_range.end;
+    proof.no_lookahead_contract_digest =
+        no_lookahead.no_lookahead_contract_digest;
+    proof.consumed_artifact_digests =
+        std::move(no_lookahead.consumed_artifact_digests);
+    proof.consumed_checkpoint_digests =
+        std::move(no_lookahead.consumed_checkpoint_digests);
+    proof.consumed_generation_vector_digests =
+        std::move(no_lookahead.consumed_generation_vector_digests);
+    proof.provenance_closure_digest =
+        std::move(no_lookahead.provenance_closure_digest);
+    proof.snapshot_bundle_certificate_schema =
+        "snapshot_bundle_publishability.v1";
+    proof.snapshot_bundle_publishability_checked =
+        policy_execution_provenance_required;
+    proof.snapshot_bundle_publishability_complete = snapshot_bundle_bound;
+    proof.snapshot_bundle_publishability_admissible = snapshot_bundle_bound;
+    proof.snapshot_bundle_id = fact.snapshot_bundle_id;
+    proof.snapshot_bundle_kind = fact.snapshot_bundle_kind;
+    proof.snapshot_bundle_generation_vector_digest =
+        fact.snapshot_bundle_generation_vector_digest;
+    proof.snapshot_bundle_valid_from_anchor_bound =
+        fact.snapshot_bundle_valid_from_anchor_bound;
+    proof.snapshot_bundle_valid_from_anchor =
+        fact.snapshot_bundle_valid_from_anchor;
+    proof.snapshot_bundle_compatibility_closure_digest =
+        fact.snapshot_bundle_compatibility_closure_digest;
+    proof.snapshot_bundle_component_generation_ids = {
+        fact.bundle_representation_generation_id, fact.bundle_mdn_generation_id,
+        fact.bundle_policy_generation_id};
+    proof.snapshot_bundle_component_checkpoint_digests = {
+        fact.bundle_representation_checkpoint_digest,
+        fact.bundle_mdn_checkpoint_digest,
+        fact.bundle_policy_checkpoint_digest};
+    proof.snapshot_bundle_component_generation_vector_digests = {
+        fact.bundle_representation_generation_vector_digest,
+        fact.bundle_mdn_generation_vector_digest,
+        fact.bundle_policy_generation_vector_digest};
+    proof.causal_provenance_certificate_schema =
+        exposure::k_causal_provenance_generalization_schema_v1;
+    proof.causal_provenance_checked = true;
+    proof.causal_provenance_complete = causal_provenance_bound;
+    proof.causal_provenance_admissible = causal_provenance_bound;
+    proof.causal_atom_schema = fact.causal_atom_schema;
+    proof.causal_interval_set_schema = fact.causal_interval_set_schema;
+    proof.causal_label_reward_horizon_policy_fingerprint =
+        fact.causal_label_reward_horizon_policy_fingerprint;
+    proof.causal_fold_policy_fingerprint = fact.causal_fold_policy_fingerprint;
+    proof.causal_purged_embargo_policy_fingerprint =
+        fact.causal_purged_embargo_policy_fingerprint;
+    proof.causal_artifact_production_schema =
+        fact.causal_artifact_production_schema;
+    proof.causal_artifact_production_closure_digest =
+        fact.causal_artifact_production_closure_digest;
+    proof.causal_interface_stability_contract_digest =
+        fact.causal_interface_stability_contract_digest;
+    proof.causal_provenance_closure_digest =
+        fact.causal_provenance_closure_digest;
+    proof.passed =
+        proof.passed && no_lookahead_bound && causal_provenance_bound;
+    return proof;
   }
 
   [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
@@ -4018,16 +6188,20 @@ private:
     for (const auto &fact : ledger->target_transform_facts()) {
       if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
-        target_transform_digests.insert(
-            exposure::target_transform_fact_digest(fact));
+        for (const auto &digest : exposure::related_fact_digest_aliases(
+                 fact, exposure::target_transform_fact_digest)) {
+          target_transform_digests.insert(digest);
+        }
       }
     }
     std::set<std::string> forecast_baseline_digests{};
     for (const auto &fact : ledger->forecast_baseline_facts()) {
       if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
-        forecast_baseline_digests.insert(
-            exposure::forecast_baseline_fact_digest(fact));
+        for (const auto &digest : exposure::related_fact_digest_aliases(
+                 fact, exposure::forecast_baseline_fact_digest)) {
+          forecast_baseline_digests.insert(digest);
+        }
       }
     }
     std::set<std::string> selection_signal_digests{};
@@ -4042,15 +6216,31 @@ private:
         forecast_artifact_by_eval_digest{};
     std::set<std::string> forecast_eval_digests{};
     std::set<std::string> forecast_artifact_digests{};
+    std::unordered_map<
+        std::string,
+        const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t *>
+        forecast_by_digest{};
+    std::unordered_map<
+        std::string,
+        const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t *>
+        forecast_by_artifact_digest{};
     for (const auto &fact : ledger->forecast_eval_facts()) {
       if (artifact_fact_matches_identity(parent_artifact_spec, fact,
-                                         expected_split_policy_fingerprint)) {
+                                         expected_split_policy_fingerprint) ||
+          artifact_fact_matches_parent_lineage_identity(
+              parent_artifact_spec, fact, expected_split_policy_fingerprint)) {
         const auto digest = exposure::forecast_eval_fact_digest(fact);
-        forecast_eval_digests.insert(digest);
-        forecast_artifact_by_eval_digest[digest] =
-            fact.forecast_artifact_digest;
+        for (const auto &alias : exposure::related_fact_digest_aliases(
+                 fact, exposure::forecast_eval_fact_digest)) {
+          forecast_eval_digests.insert(alias);
+          forecast_by_digest.emplace(alias, &fact);
+          forecast_artifact_by_eval_digest[alias] =
+              fact.forecast_artifact_digest;
+        }
         if (!fact.forecast_artifact_digest.empty()) {
           forecast_artifact_digests.insert(fact.forecast_artifact_digest);
+          forecast_by_artifact_digest.emplace(fact.forecast_artifact_digest,
+                                              &fact);
         }
       }
     }
@@ -4059,31 +6249,47 @@ private:
         forecast_artifact_by_observer_digest{};
     for (const auto &fact : ledger->observer_belief_facts()) {
       if (artifact_fact_matches_identity(parent_artifact_spec, fact,
-                                         expected_split_policy_fingerprint)) {
-        const auto digest = exposure::observer_belief_fact_digest(fact);
-        observer_belief_digests.insert(digest);
-        forecast_artifact_by_observer_digest[digest] =
-            fact.forecast_artifact_digest;
+                                         expected_split_policy_fingerprint) ||
+          artifact_fact_matches_parent_lineage_identity(
+              parent_artifact_spec, fact, expected_split_policy_fingerprint)) {
+        for (const auto &alias : exposure::related_fact_digest_aliases(
+                 fact, exposure::observer_belief_fact_digest)) {
+          observer_belief_digests.insert(alias);
+          forecast_artifact_by_observer_digest[alias] =
+              fact.forecast_artifact_digest;
+        }
       }
     }
     std::set<std::string> allocation_engine_digests{};
     for (const auto &fact : ledger->allocation_engine_facts()) {
       if (artifact_fact_matches_identity(parent_artifact_spec, fact,
-                                         expected_split_policy_fingerprint)) {
+                                         expected_split_policy_fingerprint) ||
+          artifact_fact_matches_parent_lineage_identity(
+              parent_artifact_spec, fact, expected_split_policy_fingerprint)) {
         allocation_engine_digests.insert(
             exposure::allocation_engine_fact_digest(fact));
       }
     }
     std::set<std::string> replay_environment_digests{};
     std::set<std::string> replay_environment_report_digests{};
+    std::unordered_map<std::string, const cuwacunu::hero::lattice::exposure::
+                                        lattice_replay_environment_fact_t *>
+        replay_by_digest{};
+    std::unordered_map<std::string, const cuwacunu::hero::lattice::exposure::
+                                        lattice_replay_environment_fact_t *>
+        replay_by_report_digest{};
     for (const auto &fact : ledger->replay_environment_facts()) {
       if (artifact_fact_matches_identity(parent_artifact_spec, fact,
-                                         expected_split_policy_fingerprint)) {
-        replay_environment_digests.insert(
-            exposure::replay_environment_fact_digest(fact));
+                                         expected_split_policy_fingerprint) ||
+          artifact_fact_matches_parent_lineage_identity(
+              parent_artifact_spec, fact, expected_split_policy_fingerprint)) {
+        const auto digest = exposure::replay_environment_fact_digest(fact);
+        replay_environment_digests.insert(digest);
+        replay_by_digest.emplace(digest, &fact);
         if (!fact.experiment_report_digest.empty()) {
           replay_environment_report_digests.insert(
               fact.experiment_report_digest);
+          replay_by_report_digest.emplace(fact.experiment_report_digest, &fact);
         }
       }
     }
@@ -4217,9 +6423,11 @@ private:
         const bool identity_match = artifact_fact_matches_identity(
             spec, fact, expected_split_policy_fingerprint);
         auto proof = make_policy_training_artifact_proof(
-            spec, fact, identity_match, forecast_eval_digests,
+            spec, fact, *ledger, identity_match, forecast_eval_digests,
             observer_belief_digests, allocation_engine_digests,
-            replay_environment_digests, replay_environment_report_digests);
+            replay_environment_digests, replay_environment_report_digests,
+            forecast_by_digest, forecast_by_artifact_digest, replay_by_digest,
+            replay_by_report_digest);
         if (identity_match) {
           remember_identity_proof(fact, proof);
         }
@@ -8345,7 +10553,8 @@ load_lattice_policy_gates_from_file(const std::filesystem::path &path) {
 
 [[nodiscard]] inline lattice_target_config_paths_t
 resolve_lattice_target_config_paths(
-    const std::filesystem::path &config_path = "/cuwacunu/src/config/.config") {
+    const std::filesystem::path &config_path =
+        cuwacunu::hero::config_paths::default_global_config_path()) {
   const auto cfg = lattice_target_eval_detail::parse_assignment_text(
       lattice_target_eval_detail::read_text_file_or_throw(config_path));
   const auto splits_bnf =
@@ -8380,7 +10589,8 @@ resolve_lattice_target_config_paths(
 [[nodiscard]] inline std::optional<
     cuwacunu::hero::lattice::split::lattice_split_policy_t>
 load_lattice_split_policy_from_config_if_available(
-    const std::filesystem::path &config_path = "/cuwacunu/src/config/.config") {
+    const std::filesystem::path &config_path =
+        cuwacunu::hero::config_paths::default_global_config_path()) {
   const auto paths = resolve_lattice_target_config_paths(config_path);
   if (paths.splits_dsl_path.empty()) {
     return std::nullopt;
@@ -8395,7 +10605,8 @@ load_lattice_split_policy_from_config_if_available(
 
 [[nodiscard]] inline std::vector<lattice_target_spec_t>
 load_lattice_targets_from_config(
-    const std::filesystem::path &config_path = "/cuwacunu/src/config/.config") {
+    const std::filesystem::path &config_path =
+        cuwacunu::hero::config_paths::default_global_config_path()) {
   const auto paths = resolve_lattice_target_config_paths(config_path);
   (void)lattice_target_eval_detail::read_text_file_or_throw(
       paths.targets_dsl_bnf_path);
@@ -8404,7 +10615,8 @@ load_lattice_targets_from_config(
 
 [[nodiscard]] inline std::vector<lattice_target_compiled_t>
 load_lattice_compiled_targets_from_config(
-    const std::filesystem::path &config_path = "/cuwacunu/src/config/.config") {
+    const std::filesystem::path &config_path =
+        cuwacunu::hero::config_paths::default_global_config_path()) {
   const auto paths = resolve_lattice_target_config_paths(config_path);
   (void)lattice_target_eval_detail::read_text_file_or_throw(
       paths.targets_dsl_bnf_path);
@@ -8413,7 +10625,8 @@ load_lattice_compiled_targets_from_config(
 
 [[nodiscard]] inline std::vector<lattice_policy_gate_spec_t>
 load_lattice_policy_gates_from_config(
-    const std::filesystem::path &config_path = "/cuwacunu/src/config/.config") {
+    const std::filesystem::path &config_path =
+        cuwacunu::hero::config_paths::default_global_config_path()) {
   const auto paths = resolve_lattice_target_config_paths(config_path);
   (void)lattice_target_eval_detail::read_text_file_or_throw(
       paths.targets_dsl_bnf_path);

@@ -22,21 +22,21 @@ nuance = Selects a named ENVIRONMENT_PROFILE block from the same Environment pol
 key = default_config_path
 scope = Environment Hero policy
 type = path
-default = /cuwacunu/src/config/.config
-nuance = Default config used when delegated Runtime replay work does not provide config_path.
+default = .config
+nuance = Default config used when delegated Runtime replay work does not provide config_path. Relative values resolve beside src/config/hero.environment.dsl.
 
 [FIELD runtime_root]
 key = runtime_root
 scope = Environment Hero policy
 type = path
-default = /cuwacunu/.runtime/cuwacunu_exec
+default = ../../.runtime/cuwacunu_exec
 nuance = Job evidence root inspected by Environment admission checks.
 
 [FIELD allowed_job_roots]
 key = allowed_job_roots
 scope = Environment Hero policy
 type = path_list
-default = /cuwacunu/.runtime/cuwacunu_exec,/tmp
+default = ../../.runtime/cuwacunu_exec,/tmp
 nuance = Certification sidecar writes and job-local evidence reads must stay under these roots.
 
 [FIELD allow_certify_issue]
@@ -106,7 +106,7 @@ nuance = Positive finite worker cap used by hero.environment.rollout.
 key = rollout_runtime_exec_path
 scope = Environment Hero policy/profile
 type = path
-default = /cuwacunu/.build/exec/cuwacunu_exec
+default = ../../.build/exec/cuwacunu_exec
 nuance = Runtime executable used when hero.environment.rollout mode=replay delegates low-level replay.
 
 [FIELD rollout_execution_backend_id]

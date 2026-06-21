@@ -32,8 +32,6 @@ GRAPH_NODE_ALLOCATION_NET {
   VALUE_HEAD_HIDDEN_DIM = 128;
   OUTPUT_HEAD = node_weight_logits;
   VALUE_HEAD = state_value;
-  ACTION_ADAPTER = target_node_weights_simplex.v1;
-  ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1;
   DIRICHLET_CONCENTRATION_HEAD = scalar_total_concentration;
   DIRICHLET_ALPHA_FLOOR = 0.0001;
   DIRICHLET_TOTAL_CONCENTRATION_MIN = 0.25;
@@ -44,5 +42,4 @@ GRAPH_NODE_ALLOCATION_NET {
   LOGISTIC_NORMAL_LOG_STD_MAX = 1.0;
   LOGISTIC_NORMAL_COORDINATE_POLICY = active_additive_log_ratio;
   LOGISTIC_NORMAL_ENTROPY_KIND = latent_normal_entropy;
-  PPO_EXECUTION_ALLOWED = true;
 };

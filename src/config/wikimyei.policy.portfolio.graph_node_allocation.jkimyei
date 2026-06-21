@@ -3,31 +3,25 @@
   ===========================================================
   Bounded PPO V0 training policy for graph-node allocation.
 
-  V1 requires causal walk-forward schedule identity and delegates executable
-  replay/paper collection and PPO update evidence to Runtime Hero. It does not
-  authorize live capital.
+  V1 derives causal walk-forward schedule identity from TASK and delegates
+  executable replay/paper collection, PPO update evidence, and fresh-spawn
+  seed lineage to Runtime Hero. It does not authorize live capital.
 */
 TRAINING {
-  VERSION = wikimyei.policy.portfolio.graph_node_allocation.jkimyei.v1;
   TRAINING_ID = graph_node_allocation_ppo_v0;
   TASK = policy_graph_node_allocation_ppo_v0;
-  COMPONENT_ASSEMBLY_ID = graph_node_allocation_v1;
-  ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1;
-  OPTIMIZER = ppo_clip;
-  LEARNING_RATE = 0.0003;
+  LEARNING_RATE = 0.00002;
   MAX_STEPS = 64;
   BATCH_SIZE = 32;
   GRAD_CLIP_NORM = 0.5;
+  PPO_GAMMA = 0.99;
+  PPO_GAE_LAMBDA = 0.95;
+  PPO_CLIP_EPSILON = 0.2;
+  PPO_TARGET_KL = 0.03;
+  PPO_ENTROPY_COEFF = 0.01;
+  PPO_VALUE_LOSS_COEFF = 0.5;
+  PPO_EPOCHS_PER_ROLLOUT = 2;
   CHECKPOINT_EVERY = 1;
   REPORT_EVERY = 1;
-  VALIDATION_EVERY = 0;
-  SEED = 43;
-  FREEZE_REPRESENTATION = true;
-  INPUT_REPRESENTATION_CHECKPOINT = ;
-  INPUT_MDN_CHECKPOINT = ;
-  ALLOW_UNTRAINED_REPRESENTATION = false;
-  TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1;
-  REQUIRE_CAUSAL_SCHEDULE = true;
-  PPO_EXECUTION_ALLOWED = true;
-  CHECKPOINT_KIND = ppo_v0_policy_adapter;
+  SEED = 20260614;
 };

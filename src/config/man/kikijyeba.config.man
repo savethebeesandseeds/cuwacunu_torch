@@ -34,5 +34,7 @@ surfaces under `[HERO]`.
     graph node, decomposed
     post-execution reward, direct-edge realized-return truth,
     projection-validation evidence, and audit replay reports.
+  - The replay environment DSL owns replay initial equity, max per-node target
+    weight, and L1 turnover bound used by Runtime-backed environment runs.
   - The replay environment is audit-only: it does not authorize allocation,
     execution, market readiness, or live capital.

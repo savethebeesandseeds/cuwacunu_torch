@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/marshal_hero/marshal/codex_assist.h"
 #include "hero/marshal_hero/marshal/dispatch_receipt.h"
 #include "hero/marshal_hero/marshal/operational_report.h"
@@ -2406,6 +2407,188 @@ parse_lattice_plan_basis(const std::string &raw,
   return out;
 }
 
+inline void
+parse_anchor_range_into_state(const std::map<std::string, std::string> &fields,
+                              const std::string &key,
+                              marshal_lattice_certificate_state_t *state) {
+  if (state == nullptr) {
+    return;
+  }
+  const auto raw = optional_raw(fields, key);
+  if (!raw.has_value()) {
+    return;
+  }
+  try {
+    const auto range = object_fields(*raw);
+    state->target_anchor_index_begin = optional_size(range, "begin");
+    state->target_anchor_index_end = optional_size(range, "end");
+  } catch (const std::exception &) {
+  }
+}
+
+[[nodiscard]] inline std::map<std::string, marshal_lattice_certificate_state_t>
+parse_lattice_certificate_states_from_result(
+    const std::map<std::string, std::string> &fields,
+    const std::string &structured_json) {
+  std::map<std::string, marshal_lattice_certificate_state_t> out;
+  const auto proof_raw = optional_non_null_raw(fields, "proof_certificate");
+  if (!proof_raw.has_value()) {
+    return out;
+  }
+  const auto proof_fields = object_fields(*proof_raw);
+  bool proof_certificate_check_passed = false;
+  if (const auto check_raw =
+          optional_non_null_raw(fields, "proof_certificate_check")) {
+    try {
+      const auto check_fields = object_fields(*check_raw);
+      proof_certificate_check_passed = optional_bool(check_fields, "passed");
+    } catch (const std::exception &) {
+    }
+  }
+  const std::string certificate_digest = first_non_empty(
+      {optional_string(proof_fields, "certificate_digest"),
+       marshal_digest_for_text("kikijyeba.marshal.lattice_certificate.v1",
+                               *proof_raw)});
+  const std::string certificate_ref =
+      first_non_empty({optional_string(proof_fields, "certificate_ref"),
+                       optional_string(proof_fields, "certificate_id"),
+                       optional_string(proof_fields, "proof_certificate_id")});
+  const std::string snapshot_digest = marshal_digest_for_text(
+      "kikijyeba.marshal.lattice_no_lookahead_evidence_snapshot.v1",
+      structured_json);
+
+  const auto artifacts_raw = optional_raw(proof_fields, "artifacts");
+  if (!artifacts_raw.has_value()) {
+    return out;
+  }
+  for (const auto &artifact_raw : array_values(*artifacts_raw)) {
+    try {
+      const auto artifact = object_fields(artifact_raw);
+      marshal_lattice_certificate_state_t state{};
+      state.schema =
+          optional_string(artifact, "no_lookahead_certificate_schema");
+      if (state.schema != k_marshal_no_lookahead_certificate_schema_v1) {
+        continue;
+      }
+      state.present = true;
+      state.certificate_ref = certificate_ref;
+      state.certificate_digest = certificate_digest;
+      state.target_id =
+          first_non_empty({optional_string(proof_fields, "target_id"),
+                           optional_string(fields, "target_id")});
+      parse_anchor_range_into_state(artifact, "completed_anchor_range", &state);
+      if (!state.target_anchor_index_begin.has_value() ||
+          !state.target_anchor_index_end.has_value()) {
+        parse_anchor_range_into_state(artifact, "anchor_range", &state);
+      }
+      state.no_lookahead_contract_digest =
+          optional_string(artifact, "no_lookahead_contract_digest");
+      state.no_lookahead_provenance_checked =
+          optional_bool(artifact, "no_lookahead_provenance_checked");
+      state.no_lookahead_provenance_complete =
+          optional_bool(artifact, "no_lookahead_provenance_complete");
+      state.no_lookahead_provenance_admissible =
+          optional_bool(artifact, "no_lookahead_provenance_admissible");
+      state.proof_certificate_check_passed = proof_certificate_check_passed;
+      state.influence_anchor_end_exclusive_max_bound =
+          optional_bool(artifact, "influence_anchor_end_exclusive_max_bound");
+      state.influence_anchor_end_exclusive_max =
+          optional_i64(artifact, "influence_anchor_end_exclusive_max", 0);
+      state.label_or_reward_availability_frontier_checked = optional_bool(
+          artifact, "label_or_reward_availability_frontier_checked");
+      state.label_or_reward_availability_frontier_complete = optional_bool(
+          artifact, "label_or_reward_availability_frontier_complete");
+      state.label_or_reward_availability_frontier_admissible = optional_bool(
+          artifact, "label_or_reward_availability_frontier_admissible");
+      state.label_or_reward_availability_end_exclusive_max_bound =
+          optional_bool(artifact,
+                        "label_or_reward_availability_end_exclusive_max_bound");
+      state.label_or_reward_availability_end_exclusive_max = optional_i64(
+          artifact, "label_or_reward_availability_end_exclusive_max", 0);
+      state.embargo_purged_window_checked =
+          optional_bool(artifact, "embargo_purged_window_checked");
+      state.embargo_purged_window_complete =
+          optional_bool(artifact, "embargo_purged_window_complete");
+      state.embargo_purged_window_admissible =
+          optional_bool(artifact, "embargo_purged_window_admissible");
+      state.embargo_policy_fingerprint =
+          optional_string(artifact, "embargo_policy_fingerprint");
+      state.embargo_purged_window_anchor_range_bound =
+          optional_bool(artifact, "embargo_purged_window_anchor_range_bound");
+      state.embargo_purged_window_anchor_begin =
+          optional_i64(artifact, "embargo_purged_window_anchor_begin", 0);
+      state.embargo_purged_window_anchor_end_exclusive = optional_i64(
+          artifact, "embargo_purged_window_anchor_end_exclusive", 0);
+      state.consumed_artifact_digests =
+          optional_string_array(artifact, "consumed_artifact_digests");
+      state.consumed_checkpoint_digests =
+          optional_string_array(artifact, "consumed_checkpoint_digests");
+      state.consumed_generation_vector_digests =
+          optional_string_array(artifact, "consumed_generation_vector_digests");
+      state.provenance_closure_digest =
+          optional_string(artifact, "provenance_closure_digest");
+      state.evidence_snapshot_digest = snapshot_digest;
+      state.snapshot_bundle_certificate_schema =
+          optional_string(artifact, "snapshot_bundle_certificate_schema");
+      state.snapshot_bundle_publishability_checked =
+          optional_bool(artifact, "snapshot_bundle_publishability_checked");
+      state.snapshot_bundle_publishability_complete =
+          optional_bool(artifact, "snapshot_bundle_publishability_complete");
+      state.snapshot_bundle_publishability_admissible =
+          optional_bool(artifact, "snapshot_bundle_publishability_admissible");
+      state.snapshot_bundle_id =
+          optional_string(artifact, "snapshot_bundle_id");
+      state.snapshot_bundle_kind =
+          optional_string(artifact, "snapshot_bundle_kind");
+      state.snapshot_bundle_generation_vector_digest =
+          optional_string(artifact, "snapshot_bundle_generation_vector_digest");
+      if (optional_bool(artifact, "snapshot_bundle_valid_from_anchor_bound")) {
+        state.snapshot_bundle_valid_from_anchor =
+            optional_i64(artifact, "snapshot_bundle_valid_from_anchor", 0);
+      }
+      state.snapshot_bundle_compatibility_closure_digest = optional_string(
+          artifact, "snapshot_bundle_compatibility_closure_digest");
+      state.snapshot_bundle_component_generation_ids = optional_string_array(
+          artifact, "snapshot_bundle_component_generation_ids");
+      state.snapshot_bundle_component_checkpoint_digests =
+          optional_string_array(artifact,
+                                "snapshot_bundle_component_checkpoint_digests");
+      state.snapshot_bundle_component_generation_vector_digests =
+          optional_string_array(
+              artifact, "snapshot_bundle_component_generation_vector_digests");
+      state.causal_provenance_certificate_schema =
+          optional_string(artifact, "causal_provenance_certificate_schema");
+      state.causal_provenance_checked =
+          optional_bool(artifact, "causal_provenance_checked");
+      state.causal_provenance_complete =
+          optional_bool(artifact, "causal_provenance_complete");
+      state.causal_provenance_admissible =
+          optional_bool(artifact, "causal_provenance_admissible");
+      state.causal_atom_schema =
+          optional_string(artifact, "causal_atom_schema");
+      state.causal_interval_set_schema =
+          optional_string(artifact, "causal_interval_set_schema");
+      state.causal_label_reward_horizon_policy_fingerprint = optional_string(
+          artifact, "causal_label_reward_horizon_policy_fingerprint");
+      state.causal_fold_policy_fingerprint =
+          optional_string(artifact, "causal_fold_policy_fingerprint");
+      state.causal_purged_embargo_policy_fingerprint =
+          optional_string(artifact, "causal_purged_embargo_policy_fingerprint");
+      state.causal_artifact_production_schema =
+          optional_string(artifact, "causal_artifact_production_schema");
+      state.causal_artifact_production_closure_digest = optional_string(
+          artifact, "causal_artifact_production_closure_digest");
+      state.causal_interface_stability_contract_digest = optional_string(
+          artifact, "causal_interface_stability_contract_digest");
+      state.causal_provenance_closure_digest =
+          optional_string(artifact, "causal_provenance_closure_digest");
+      out[state.schema] = std::move(state);
+    } catch (const std::exception &) {
+    }
+  }
+  return out;
+}
+
 [[nodiscard]] inline marshal_dispatch_advice_t
 materialize_advice_from_lattice_plan_result(
     const std::string &lattice_tool_result_json,
@@ -2471,6 +2654,8 @@ materialize_advice_from_lattice_plan_result(
                                      : source_lattice_timestamp;
   out.advice_receipt_digest = marshal_digest_for_text(
       "kikijyeba.marshal.materialized_lattice_plan_result.v1", structured_json);
+  out.lattice_certificate_states =
+      parse_lattice_certificate_states_from_result(fields, structured_json);
   return out;
 }
 
@@ -2842,6 +3027,147 @@ suggested_wave_json(const marshal_suggested_wave_t &wave) {
   return out.str();
 }
 
+[[nodiscard]] inline std::string lattice_certificate_state_json(
+    const marshal_lattice_certificate_state_t &state) {
+  std::ostringstream out;
+  out << "{\"present\":" << (state.present ? "true" : "false")
+      << ",\"schema\":" << detail::json_quote(state.schema)
+      << ",\"certificate_ref\":" << detail::json_quote(state.certificate_ref)
+      << ",\"certificate_digest\":"
+      << detail::json_quote(state.certificate_digest)
+      << ",\"target_id\":" << detail::json_quote(state.target_id)
+      << ",\"target_anchor_index_begin\":"
+      << optional_size_json(state.target_anchor_index_begin)
+      << ",\"target_anchor_index_end\":"
+      << optional_size_json(state.target_anchor_index_end)
+      << ",\"no_lookahead_contract_digest\":"
+      << detail::json_quote(state.no_lookahead_contract_digest)
+      << ",\"no_lookahead_provenance_checked\":"
+      << (state.no_lookahead_provenance_checked ? "true" : "false")
+      << ",\"no_lookahead_provenance_complete\":"
+      << (state.no_lookahead_provenance_complete ? "true" : "false")
+      << ",\"no_lookahead_provenance_admissible\":"
+      << (state.no_lookahead_provenance_admissible ? "true" : "false")
+      << ",\"proof_certificate_check_passed\":"
+      << (state.proof_certificate_check_passed ? "true" : "false")
+      << ",\"influence_anchor_end_exclusive_max_bound\":"
+      << (state.influence_anchor_end_exclusive_max_bound ? "true" : "false")
+      << ",\"influence_anchor_end_exclusive_max\":"
+      << state.influence_anchor_end_exclusive_max
+      << ",\"label_or_reward_availability_frontier_checked\":"
+      << (state.label_or_reward_availability_frontier_checked ? "true"
+                                                              : "false")
+      << ",\"label_or_reward_availability_frontier_complete\":"
+      << (state.label_or_reward_availability_frontier_complete ? "true"
+                                                               : "false")
+      << ",\"label_or_reward_availability_frontier_admissible\":"
+      << (state.label_or_reward_availability_frontier_admissible ? "true"
+                                                                 : "false")
+      << ",\"label_or_reward_availability_end_exclusive_max_bound\":"
+      << (state.label_or_reward_availability_end_exclusive_max_bound ? "true"
+                                                                     : "false")
+      << ",\"label_or_reward_availability_end_exclusive_max\":"
+      << state.label_or_reward_availability_end_exclusive_max
+      << ",\"embargo_purged_window_checked\":"
+      << (state.embargo_purged_window_checked ? "true" : "false")
+      << ",\"embargo_purged_window_complete\":"
+      << (state.embargo_purged_window_complete ? "true" : "false")
+      << ",\"embargo_purged_window_admissible\":"
+      << (state.embargo_purged_window_admissible ? "true" : "false")
+      << ",\"embargo_policy_fingerprint\":"
+      << detail::json_quote(state.embargo_policy_fingerprint)
+      << ",\"embargo_purged_window_anchor_range_bound\":"
+      << (state.embargo_purged_window_anchor_range_bound ? "true" : "false")
+      << ",\"embargo_purged_window_anchor_begin\":"
+      << state.embargo_purged_window_anchor_begin
+      << ",\"embargo_purged_window_anchor_end_exclusive\":"
+      << state.embargo_purged_window_anchor_end_exclusive
+      << ",\"consumed_artifact_digests\":"
+      << string_array_json(state.consumed_artifact_digests)
+      << ",\"consumed_checkpoint_digests\":"
+      << string_array_json(state.consumed_checkpoint_digests)
+      << ",\"consumed_generation_vector_digests\":"
+      << string_array_json(state.consumed_generation_vector_digests)
+      << ",\"provenance_closure_digest\":"
+      << detail::json_quote(state.provenance_closure_digest)
+      << ",\"evidence_snapshot_digest\":"
+      << detail::json_quote(state.evidence_snapshot_digest)
+      << ",\"snapshot_bundle_certificate_schema\":"
+      << detail::json_quote(state.snapshot_bundle_certificate_schema)
+      << ",\"snapshot_bundle_publishability_checked\":"
+      << (state.snapshot_bundle_publishability_checked ? "true" : "false")
+      << ",\"snapshot_bundle_publishability_complete\":"
+      << (state.snapshot_bundle_publishability_complete ? "true" : "false")
+      << ",\"snapshot_bundle_publishability_admissible\":"
+      << (state.snapshot_bundle_publishability_admissible ? "true" : "false")
+      << ",\"snapshot_bundle_id\":"
+      << detail::json_quote(state.snapshot_bundle_id)
+      << ",\"snapshot_bundle_kind\":"
+      << detail::json_quote(state.snapshot_bundle_kind)
+      << ",\"snapshot_bundle_generation_vector_digest\":"
+      << detail::json_quote(state.snapshot_bundle_generation_vector_digest)
+      << ",\"snapshot_bundle_valid_from_anchor\":";
+  if (state.snapshot_bundle_valid_from_anchor.has_value()) {
+    out << *state.snapshot_bundle_valid_from_anchor;
+  } else {
+    out << "null";
+  }
+  out << ",\"snapshot_bundle_compatibility_closure_digest\":"
+      << detail::json_quote(state.snapshot_bundle_compatibility_closure_digest)
+      << ",\"snapshot_bundle_component_generation_ids\":"
+      << string_array_json(state.snapshot_bundle_component_generation_ids)
+      << ",\"snapshot_bundle_component_checkpoint_digests\":"
+      << string_array_json(state.snapshot_bundle_component_checkpoint_digests)
+      << ",\"snapshot_bundle_component_generation_vector_digests\":"
+      << string_array_json(
+             state.snapshot_bundle_component_generation_vector_digests)
+      << ",\"causal_provenance_certificate_schema\":"
+      << detail::json_quote(state.causal_provenance_certificate_schema)
+      << ",\"causal_provenance_checked\":"
+      << (state.causal_provenance_checked ? "true" : "false")
+      << ",\"causal_provenance_complete\":"
+      << (state.causal_provenance_complete ? "true" : "false")
+      << ",\"causal_provenance_admissible\":"
+      << (state.causal_provenance_admissible ? "true" : "false")
+      << ",\"causal_atom_schema\":"
+      << detail::json_quote(state.causal_atom_schema)
+      << ",\"causal_interval_set_schema\":"
+      << detail::json_quote(state.causal_interval_set_schema)
+      << ",\"causal_label_reward_horizon_policy_fingerprint\":"
+      << detail::json_quote(
+             state.causal_label_reward_horizon_policy_fingerprint)
+      << ",\"causal_fold_policy_fingerprint\":"
+      << detail::json_quote(state.causal_fold_policy_fingerprint)
+      << ",\"causal_purged_embargo_policy_fingerprint\":"
+      << detail::json_quote(state.causal_purged_embargo_policy_fingerprint)
+      << ",\"causal_artifact_production_schema\":"
+      << detail::json_quote(state.causal_artifact_production_schema)
+      << ",\"causal_artifact_production_closure_digest\":"
+      << detail::json_quote(state.causal_artifact_production_closure_digest)
+      << ",\"causal_interface_stability_contract_digest\":"
+      << detail::json_quote(state.causal_interface_stability_contract_digest)
+      << ",\"causal_provenance_closure_digest\":"
+      << detail::json_quote(state.causal_provenance_closure_digest) << "}";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string lattice_certificate_states_json(
+    const std::map<std::string, marshal_lattice_certificate_state_t> &states) {
+  std::ostringstream out;
+  out << "{";
+  bool first = true;
+  for (const auto &[schema, state] : states) {
+    if (!first) {
+      out << ",";
+    }
+    first = false;
+    out << detail::json_quote(schema) << ":"
+        << lattice_certificate_state_json(state);
+  }
+  out << "}";
+  return out.str();
+}
+
 [[nodiscard]] inline std::string
 advice_json(const marshal_dispatch_advice_t &advice) {
   std::ostringstream out;
@@ -2872,6 +3198,8 @@ advice_json(const marshal_dispatch_advice_t &advice) {
       << ",\"advice_signature_key_id\":"
       << detail::json_quote(advice.advice_signature_key_id)
       << ",\"advice_signature\":" << detail::json_quote(advice.advice_signature)
+      << ",\"lattice_certificate_states\":"
+      << lattice_certificate_states_json(advice.lattice_certificate_states)
       << "}";
   return out.str();
 }
@@ -3229,9 +3557,9 @@ load_live_runtime_snapshots(const std::map<std::string, std::string> &args,
                             const marshal_dispatch_advice_t &advice,
                             marshal_runtime_policy_snapshot_t *policy,
                             marshal_runtime_wave_snapshot_t *wave) {
-  const std::filesystem::path global_config_path(
-      first_non_empty({optional_string(args, "config_path"), advice.config_path,
-                       std::string{"/cuwacunu/src/config/.config"}}));
+  const std::filesystem::path global_config_path(first_non_empty(
+      {optional_string(args, "config_path"), advice.config_path,
+       cuwacunu::hero::config_paths::default_global_config_path().string()}));
   const std::filesystem::path runtime_policy_path =
       cuwacunu::hero::marshal::detail::runtime_policy_path_from_global_config(
           global_config_path);
@@ -4822,6 +5150,8 @@ prepare_target_lattice_panel_json(const prepare_target_step_result_t &step) {
       << string_array_json(step.advice.plan_basis.deficit_keys)
       << ",\"required_plan_inputs\":"
       << string_array_json(step.advice.required_plan_inputs)
+      << ",\"lattice_certificate_states\":"
+      << lattice_certificate_states_json(step.advice.lattice_certificate_states)
       << ",\"materialized_plan_inputs\":"
       << (required_plan_inputs_resolved(step.model_state_inputs) ? "true"
                                                                  : "false");
@@ -5661,13 +5991,15 @@ marshal_inspect_result_tool(const std::map<std::string, std::string> &args,
 [[nodiscard]] inline std::filesystem::path
 inspect_runtime_root(const std::map<std::string, std::string> &args) {
   return std::filesystem::path(optional_string(
-      args, "runtime_root", "/cuwacunu/.runtime/cuwacunu_exec"));
+      args, "runtime_root",
+      cuwacunu::hero::config_paths::default_runtime_root_path().string()));
 }
 
 [[nodiscard]] inline std::filesystem::path
 inspect_config_path(const std::map<std::string, std::string> &args) {
-  return std::filesystem::path(
-      optional_string(args, "config_path", "/cuwacunu/src/config/.config"));
+  return std::filesystem::path(optional_string(
+      args, "config_path",
+      cuwacunu::hero::config_paths::default_global_config_path().string()));
 }
 
 [[nodiscard]] inline std::vector<operational_report_detail::job_summary_t>
@@ -6576,6 +6908,8 @@ inline void require_known_prepare_profile_fields(
       "require_signed_lattice_advice",
       "trusted_lattice_advice_key_id",
       "trusted_lattice_advice_verification_key",
+      "required_lattice_certificate_schemas",
+      "required_lattice_certificate_contract_digests",
   };
   for (const auto &[key, _] : fields) {
     if (kAllowed.find(key) == kAllowed.end()) {
@@ -6669,10 +7003,249 @@ struct resolved_marshal_rollout_profile_t {
   std::int64_t max_steps{250};
   std::int64_t max_parallel_jobs{4};
   std::filesystem::path runtime_exec_path{
-      "/cuwacunu/.build/exec/cuwacunu_exec"};
+      cuwacunu::hero::config_paths::default_runtime_exec_path()};
   int timeout_seconds{600};
   marshal_rollout_execution_profile_t execution_profile{};
 };
+
+struct parsed_environment_policy_text_t {
+  std::map<std::string, std::string> base{};
+  std::map<std::string, std::map<std::string, std::string>> profiles{};
+};
+
+[[nodiscard]] inline std::optional<std::string>
+read_ini_value(const std::filesystem::path &path, std::string_view section,
+               std::string_view key) {
+  std::ifstream in(path);
+  if (!in.is_open()) {
+    return std::nullopt;
+  }
+  std::string current_section;
+  std::string line;
+  while (std::getline(in, line)) {
+    line = trim_ascii(detail::strip_ini_comment(line));
+    if (line.empty()) {
+      continue;
+    }
+    if (line.front() == '[' && line.back() == ']') {
+      current_section =
+          trim_ascii(std::string_view(line).substr(1, line.size() - 2U));
+      continue;
+    }
+    if (current_section != section) {
+      continue;
+    }
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      continue;
+    }
+    const std::string lhs = trim_ascii(std::string_view(line).substr(0, eq));
+    if (lhs == key) {
+      return trim_ascii(std::string_view(line).substr(eq + 1U));
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] inline bool
+parse_environment_policy_text(std::string_view text,
+                              parsed_environment_policy_text_t *out,
+                              std::string *error) {
+  if (out == nullptr) {
+    if (error != nullptr) {
+      *error = "environment policy output pointer is null";
+    }
+    return false;
+  }
+  try {
+    parsed_environment_policy_text_t parsed{};
+    std::istringstream lines{std::string(text)};
+    std::string line;
+    std::size_t line_no = 0;
+    bool in_profile = false;
+    std::string active_profile_id;
+    std::ostringstream active_profile_text;
+    while (std::getline(lines, line)) {
+      ++line_no;
+      line = trim_ascii(strip_assignment_comment(std::move(line)));
+      if (line.empty()) {
+        continue;
+      }
+      if (!in_profile) {
+        constexpr std::string_view kProfilePrefix = "ENVIRONMENT_PROFILE";
+        if (line.rfind(std::string(kProfilePrefix), 0) == 0) {
+          std::string rest =
+              trim_ascii(std::string_view(line).substr(kProfilePrefix.size()));
+          if (rest.empty() || rest.back() != '{') {
+            throw std::runtime_error("ENVIRONMENT_PROFILE line " +
+                                     std::to_string(line_no) +
+                                     " must end with '{'");
+          }
+          rest.pop_back();
+          active_profile_id = trim_ascii(rest);
+          if (!valid_marshal_profile_id(active_profile_id)) {
+            throw std::runtime_error("invalid ENVIRONMENT_PROFILE id: " +
+                                     active_profile_id);
+          }
+          if (parsed.profiles.find(active_profile_id) !=
+              parsed.profiles.end()) {
+            throw std::runtime_error("duplicate ENVIRONMENT_PROFILE id: " +
+                                     active_profile_id);
+          }
+          active_profile_text.str(std::string{});
+          active_profile_text.clear();
+          in_profile = true;
+          continue;
+        }
+        const auto assignment =
+            parse_assignment_block_text(line, "environment policy");
+        for (const auto &[key, value] : assignment) {
+          parsed.base[key] = value;
+        }
+        continue;
+      }
+
+      if (line == "}" || line == "};") {
+        parsed.profiles.emplace(
+            active_profile_id, parse_assignment_block_text(
+                                   active_profile_text.str(),
+                                   "ENVIRONMENT_PROFILE " + active_profile_id));
+        active_profile_id.clear();
+        active_profile_text.str(std::string{});
+        active_profile_text.clear();
+        in_profile = false;
+        continue;
+      }
+      active_profile_text << line << '\n';
+    }
+    if (in_profile) {
+      throw std::runtime_error("unterminated ENVIRONMENT_PROFILE block: " +
+                               active_profile_id);
+    }
+    *out = std::move(parsed);
+    return true;
+  } catch (const std::exception &ex) {
+    if (error != nullptr) {
+      *error = ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] inline std::filesystem::path
+environment_policy_path_from_global_config(
+    const std::filesystem::path &global_config_path) {
+  const auto raw =
+      read_ini_value(global_config_path, "HERO", "environment_hero_dsl_path");
+  if (raw.has_value() && !trim_ascii(*raw).empty()) {
+    return detail::resolve_policy_path_against_config(global_config_path, *raw);
+  }
+  return cuwacunu::hero::config_paths::default_config_sibling_path(
+      global_config_path, "hero.environment.dsl");
+}
+
+[[nodiscard]] inline resolved_marshal_rollout_profile_t
+default_environment_rollout_profile() {
+  resolved_marshal_rollout_profile_t out{};
+  out.policy_tokens = {"numeraire", "current_weight", "equal_weight", "sdu"};
+  out.max_steps = 250;
+  out.max_parallel_jobs = 4;
+  out.runtime_exec_path =
+      cuwacunu::hero::config_paths::default_runtime_exec_path();
+  out.timeout_seconds = 86400;
+  out.execution_profile.execution_backend_id = "cajtucu.execution.paper.v1";
+  out.execution_profile.cost_model_id = "linear_transaction_cost_rate.v1";
+  out.execution_profile.allow_synthetic_direct_edges = false;
+  out.execution_profile.synthetic_edge_research_reason.clear();
+  out.execution_profile.linear_transaction_cost_rate = 0.001;
+  out.execution_profile.allow_partial_fills = false;
+  out.execution_profile.equity_mismatch_tolerance = 0.000001;
+  out.execution_profile.equity_mismatch_fail_tolerance = 0.01;
+  out.execution_profile.live_execution_allowed = false;
+  return out;
+}
+
+[[nodiscard]] inline resolved_marshal_rollout_profile_t
+environment_rollout_profile_from_config(
+    const std::filesystem::path &global_config_path) {
+  resolved_marshal_rollout_profile_t out =
+      default_environment_rollout_profile();
+  const std::filesystem::path config_path =
+      global_config_path.empty()
+          ? cuwacunu::hero::config_paths::default_global_config_path()
+          : global_config_path;
+  const std::filesystem::path environment_path =
+      environment_policy_path_from_global_config(config_path);
+  std::string text;
+  std::string read_error;
+  if (!read_text_file(environment_path, &text, &read_error)) {
+    return out;
+  }
+  parsed_environment_policy_text_t parsed{};
+  std::string parse_error;
+  if (!parse_environment_policy_text(text, &parsed, &parse_error)) {
+    throw std::runtime_error("failed to parse Environment rollout policy: " +
+                             parse_error);
+  }
+  std::map<std::string, std::string> fields = parsed.base;
+  std::string profile_id;
+  if (const auto raw =
+          read_ini_value(config_path, "HERO", "environment_hero_profile")) {
+    profile_id = trim_ascii(*raw);
+  }
+  if (profile_id.empty()) {
+    profile_id =
+        profile_string(parsed.base, "environment_profile", "operator_default");
+  }
+  const auto profile_it = parsed.profiles.find(profile_id);
+  if (profile_it != parsed.profiles.end()) {
+    for (const auto &[key, value] : profile_it->second) {
+      fields[key] = value;
+    }
+  }
+
+  const auto policy_set = profile_string(fields, "rollout_policy_set");
+  if (!policy_set.empty()) {
+    out.policy_tokens = split_assignment_string_list(policy_set);
+  }
+  out.max_steps = profile_i64(fields, "rollout_max_steps", out.max_steps);
+  out.max_parallel_jobs =
+      profile_i64(fields, "rollout_max_parallel_jobs", out.max_parallel_jobs);
+  const auto runtime_exec_path =
+      profile_string(fields, "rollout_runtime_exec_path");
+  if (!runtime_exec_path.empty()) {
+    out.runtime_exec_path = detail::resolve_policy_path_against_config(
+        environment_path, runtime_exec_path);
+  }
+  out.timeout_seconds = static_cast<int>(
+      profile_i64(fields, "max_runtime_seconds", out.timeout_seconds));
+  out.execution_profile.execution_backend_id =
+      profile_string(fields, "rollout_execution_backend_id",
+                     out.execution_profile.execution_backend_id);
+  out.execution_profile.cost_model_id = profile_string(
+      fields, "rollout_cost_model_id", out.execution_profile.cost_model_id);
+  out.execution_profile.allow_synthetic_direct_edges =
+      profile_bool(fields, "rollout_allow_synthetic_direct_edges",
+                   out.execution_profile.allow_synthetic_direct_edges);
+  out.execution_profile.synthetic_edge_research_reason =
+      profile_string(fields, "rollout_synthetic_edge_research_reason");
+  out.execution_profile.linear_transaction_cost_rate =
+      profile_double(fields, "rollout_linear_transaction_cost_rate",
+                     out.execution_profile.linear_transaction_cost_rate);
+  out.execution_profile.allow_partial_fills =
+      profile_bool(fields, "rollout_allow_partial_fills",
+                   out.execution_profile.allow_partial_fills);
+  out.execution_profile.equity_mismatch_tolerance =
+      profile_double(fields, "rollout_equity_mismatch_tolerance",
+                     out.execution_profile.equity_mismatch_tolerance);
+  out.execution_profile.equity_mismatch_fail_tolerance =
+      profile_double(fields, "rollout_equity_mismatch_fail_tolerance",
+                     out.execution_profile.equity_mismatch_fail_tolerance);
+  out.execution_profile.live_execution_allowed =
+      profile_bool(fields, "rollout_live_execution_allowed",
+                   out.execution_profile.live_execution_allowed);
+  return out;
+}
 
 inline void require_known_rollout_profile_fields(
     const std::map<std::string, std::string> &fields,
@@ -6704,19 +7277,25 @@ inline void require_known_rollout_profile_fields(
 [[nodiscard]] inline resolved_marshal_rollout_profile_t
 resolve_rollout_profile_from_fields(
     const std::string &profile_id,
-    const std::map<std::string, std::string> &fields) {
+    const std::map<std::string, std::string> &fields,
+    const std::filesystem::path &global_config_path = {}) {
   require_known_rollout_profile_fields(fields, profile_id);
-  resolved_marshal_rollout_profile_t out{};
+  resolved_marshal_rollout_profile_t out =
+      environment_rollout_profile_from_config(global_config_path);
   out.profile_id = profile_id;
-  out.policy_tokens =
-      split_assignment_string_list(profile_string(fields, "policy_set"));
+  const auto policy_set = profile_string(fields, "policy_set");
+  if (!policy_set.empty()) {
+    out.policy_tokens = split_assignment_string_list(policy_set);
+  }
   out.max_steps = profile_i64(fields, "max_steps", out.max_steps);
   out.max_parallel_jobs =
       profile_i64(fields, "max_parallel_jobs", out.max_parallel_jobs);
-  out.runtime_exec_path = std::filesystem::path(profile_string(
-      fields, "runtime_exec_path", out.runtime_exec_path.string()));
-  out.timeout_seconds =
-      static_cast<int>(profile_i64(fields, "timeout_seconds", 600));
+  if (fields.find("runtime_exec_path") != fields.end()) {
+    out.runtime_exec_path =
+        std::filesystem::path(profile_string(fields, "runtime_exec_path"));
+  }
+  out.timeout_seconds = static_cast<int>(
+      profile_i64(fields, "timeout_seconds", out.timeout_seconds));
   out.execution_profile.execution_backend_id =
       profile_string(fields, "execution_backend_id",
                      out.execution_profile.execution_backend_id);
@@ -6831,6 +7410,20 @@ resolve_prepare_profile_from_fields(
       profile_string(fields, "trusted_lattice_advice_key_id");
   out.validation_context.trusted_lattice_advice_verification_key =
       profile_string(fields, "trusted_lattice_advice_verification_key");
+  out.validation_context.required_lattice_certificate_schemas =
+      profile_string_vector(fields, "required_lattice_certificate_schemas");
+  for (const auto &entry : profile_string_vector(
+           fields, "required_lattice_certificate_contract_digests")) {
+    const auto pos = entry.find(':');
+    if (pos == std::string::npos || pos == 0 || pos + 1 >= entry.size()) {
+      throw std::runtime_error(
+          "required_lattice_certificate_contract_digests entries must use "
+          "schema:digest");
+    }
+    out.validation_context
+        .required_lattice_certificate_contract_digests[entry.substr(0, pos)] =
+        entry.substr(pos + 1);
+  }
   out.validation_context.allow_execute = out.driver_policy.allow_execute;
   out.validation_context.allow_execute_mode = out.driver_policy.allow_execute;
 
@@ -6930,7 +7523,7 @@ rollout_request_packet_text(const marshal_rollout_request_t &request) {
   request.requested_mode = requested_mode;
   request.config_path =
       policy.global_config_path.empty()
-          ? std::filesystem::path("/cuwacunu/src/config/.config")
+          ? cuwacunu::hero::config_paths::default_global_config_path()
           : policy.global_config_path;
   request.runtime_job_dir =
       std::filesystem::path(optional_string(args, "runtime_job_dir"));
@@ -6944,6 +7537,11 @@ rollout_request_packet_text(const marshal_rollout_request_t &request) {
   request.max_parallel_jobs = profile.max_parallel_jobs;
   request.timeout_seconds = profile.timeout_seconds;
   request.runtime_exec_path = profile.runtime_exec_path;
+  if (!request.runtime_exec_path.empty() &&
+      request.runtime_exec_path.is_relative()) {
+    request.runtime_exec_path = detail::resolve_policy_path_against_config(
+        policy.policy_path, request.runtime_exec_path.string());
+  }
   request.execution_profile = profile.execution_profile;
 
   const auto job_state = rollout_marshal_detail::read_kv_file(
@@ -7122,9 +7720,12 @@ paper_online_session_handoff_request_from_args(
 
 [[nodiscard]] inline std::filesystem::path
 resolve_marshal_hero_dsl_path(const std::filesystem::path &global_config_path) {
+  const std::filesystem::path fallback_policy_path =
+      cuwacunu::hero::config_paths::default_config_sibling_path(
+          global_config_path, "hero.marshal.dsl");
   std::ifstream in(global_config_path);
   if (!in.is_open()) {
-    return "/cuwacunu/src/config/hero.marshal.dsl";
+    return fallback_policy_path;
   }
   std::string section;
   std::string line;
@@ -7157,7 +7758,7 @@ resolve_marshal_hero_dsl_path(const std::filesystem::path &global_config_path) {
                                                         value);
     }
   }
-  return "/cuwacunu/src/config/hero.marshal.dsl";
+  return fallback_policy_path;
 }
 
 [[nodiscard]] inline const std::string &
@@ -7421,12 +8022,16 @@ load_marshal_policy(const std::filesystem::path &policy_path,
                                      tool_name);
         if (mode == "compare") {
           marshal_run_compare_options_t options{};
-          options.runtime_root = std::filesystem::path(
-              tool_detail::optional_string(inspect_args, "runtime_root",
-                                           "/cuwacunu/.runtime/cuwacunu_exec"));
+          options.runtime_root =
+              std::filesystem::path(tool_detail::optional_string(
+                  inspect_args, "runtime_root",
+                  cuwacunu::hero::config_paths::default_runtime_root_path()
+                      .string()));
           options.config_path =
               std::filesystem::path(tool_detail::optional_string(
-                  inspect_args, "config_path", "/cuwacunu/src/config/.config"));
+                  inspect_args, "config_path",
+                  cuwacunu::hero::config_paths::default_global_config_path()
+                      .string()));
           options.baseline_job_id =
               tool_detail::optional_string(inspect_args, "baseline_job_id");
           options.candidate_job_id =
@@ -7454,12 +8059,16 @@ load_marshal_policy(const std::filesystem::path &policy_path,
         } else if (mode == "latest_chain" || mode == "training_state" ||
                    mode == "single_job") {
           marshal_operational_report_options_t options{};
-          options.runtime_root = std::filesystem::path(
-              tool_detail::optional_string(inspect_args, "runtime_root",
-                                           "/cuwacunu/.runtime/cuwacunu_exec"));
+          options.runtime_root =
+              std::filesystem::path(tool_detail::optional_string(
+                  inspect_args, "runtime_root",
+                  cuwacunu::hero::config_paths::default_runtime_root_path()
+                      .string()));
           options.config_path =
               std::filesystem::path(tool_detail::optional_string(
-                  inspect_args, "config_path", "/cuwacunu/src/config/.config"));
+                  inspect_args, "config_path",
+                  cuwacunu::hero::config_paths::default_global_config_path()
+                      .string()));
           if (mode == "single_job") {
             const std::string job_id =
                 tool_detail::optional_string(inspect_args, "job_id");
@@ -7604,9 +8213,9 @@ load_marshal_policy(const std::filesystem::path &policy_path,
         const std::filesystem::path context_config =
             !ctx->global_config_path.empty() ? ctx->global_config_path
                                              : ctx->policy.global_config_path;
-        if (!context_config.empty() &&
-            request.config_path ==
-                std::filesystem::path("/cuwacunu/src/config/.config")) {
+        const std::filesystem::path default_config =
+            cuwacunu::hero::config_paths::default_global_config_path();
+        if (!context_config.empty() && request.config_path == default_config) {
           request.config_path = context_config;
         }
       }
@@ -8041,8 +8650,11 @@ load_marshal_policy(const std::filesystem::path &policy_path,
         throw std::runtime_error("mode must be plan or execute");
       }
       marshal_policy_t fallback_policy{};
-      fallback_policy.policy_path = "/cuwacunu/src/config/hero.marshal.dsl";
-      fallback_policy.global_config_path = "/cuwacunu/src/config/.config";
+      fallback_policy.global_config_path =
+          cuwacunu::hero::config_paths::default_global_config_path();
+      fallback_policy.policy_path =
+          cuwacunu::hero::config_paths::default_config_sibling_path(
+              fallback_policy.global_config_path, "hero.marshal.dsl");
       fallback_policy.values["protocol_layer"] =
           std::string(kProtocolLayerStdio);
       fallback_policy.values["prepare_profile"] = "single_wave_operator";
@@ -8067,8 +8679,8 @@ load_marshal_policy(const std::filesystem::path &policy_path,
         throw std::runtime_error("unknown rollout profile: " + profile_id);
       }
       const auto rollout_profile =
-          tool_detail::resolve_rollout_profile_from_fields(profile_id,
-                                                           profile_it->second);
+          tool_detail::resolve_rollout_profile_from_fields(
+              profile_id, profile_it->second, policy.global_config_path);
       const auto request = tool_detail::rollout_request_from_direct_args(
           args, policy, rollout_profile, requested_mode);
       const std::string environment_request_digest_domain =
@@ -8270,8 +8882,11 @@ load_marshal_policy(const std::filesystem::path &policy_path,
       }
 
       marshal_policy_t fallback_policy{};
-      fallback_policy.policy_path = "/cuwacunu/src/config/hero.marshal.dsl";
-      fallback_policy.global_config_path = "/cuwacunu/src/config/.config";
+      fallback_policy.global_config_path =
+          cuwacunu::hero::config_paths::default_global_config_path();
+      fallback_policy.policy_path =
+          cuwacunu::hero::config_paths::default_config_sibling_path(
+              fallback_policy.global_config_path, "hero.marshal.dsl");
       fallback_policy.values["protocol_layer"] =
           std::string(kProtocolLayerStdio);
       fallback_policy.values["prepare_profile"] = "single_wave_operator";

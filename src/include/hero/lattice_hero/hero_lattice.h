@@ -44,9 +44,9 @@ inline constexpr std::array<lattice_policy_descriptor_t,
 inline constexpr std::string_view kLatticePolicyTemplateText = R"(
 # Lattice Hero v0 policy
 protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO
-default_config_path:path = /cuwacunu/src/config/.config
-runtime_root:path = /cuwacunu/.runtime/cuwacunu_exec
-allowed_runtime_roots:path_list = /cuwacunu/.runtime/cuwacunu_exec,/tmp
+default_config_path:path = .config
+runtime_root:path = ../../.runtime/cuwacunu_exec
+allowed_runtime_roots:path_list = ../../.runtime/cuwacunu_exec,/tmp
 auto_build_exposure_ledger:bool = true
 max_fact_preview:int = 64
 max_closure_facts:int = 256

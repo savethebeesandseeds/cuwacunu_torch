@@ -10,15 +10,15 @@
 protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO
 
 # Default global config that contains Hero-owned Lattice target/split DSL paths.
-default_config_path:path = /cuwacunu/src/config/.config
+default_config_path:path = .config
 
 # Runtime artifact root scanned for job.manifest/job.state/report/checkpoint
 # evidence.
-runtime_root:path = /cuwacunu/.runtime/cuwacunu_exec
+runtime_root:path = ../../.runtime/cuwacunu_exec
 
 # Explicit runtime_root and checkpoint_path arguments must live below one of
 # these roots.
-allowed_runtime_roots:path_list = /cuwacunu/.runtime/cuwacunu_exec,/tmp
+allowed_runtime_roots:path_list = ../../.runtime/cuwacunu_exec,/tmp
 
 # Build an in-memory exposure ledger from normal runtime artifacts during
 # target evaluation. This should stay true unless a future DB index is used as a

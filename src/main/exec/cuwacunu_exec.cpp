@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/runtime_hero/runtime/job_runner.h"
 #include "kikijyeba/environment/runtime/experiment_driver.h"
 #include "kikijyeba/protocol/config_bundle.h"
@@ -21,9 +22,9 @@ namespace types = cuwacunu::ujcamei::source::registry::types;
 
 namespace {
 
-constexpr const char *kDefaultConfigPath = "/cuwacunu/src/config/.config";
-
 void print_usage(const char *argv0) {
+  const auto default_config_path =
+      cuwacunu::hero::config_paths::default_global_config_path(argv0).string();
   std::cerr << "usage: " << argv0
             << " [--config PATH] [--job-dir PATH] [--dry-run]\n"
             << "       [--replay-from-job-dir PATH]\n"
@@ -61,7 +62,7 @@ void print_usage(const char *argv0) {
             << "       [--replay-snapshot-family-digest DIGEST]\n"
             << "       [--replay-no-numeraire-only-policy]\n"
             << "       [--replay-no-sdu-policy]\n"
-            << "default config: " << kDefaultConfigPath << "\n"
+            << "default config: " << default_config_path << "\n"
             << "default accounting numeraire: "
                "[ACCOUNTING].accounting_numeraire_node_id from .config "
                "(override with --replay-accounting-numeraire-node for "
@@ -154,7 +155,10 @@ void print_replay_result(
 
 int main(int argc, char **argv) {
   try {
-    std::string config_path{kDefaultConfigPath};
+    const std::string default_config_path =
+        cuwacunu::hero::config_paths::default_global_config_path(argv[0])
+            .string();
+    std::string config_path{default_config_path};
     runtime::job_runner_options_t options{};
     env::runtime_job_replay_driver_options_t replay_options{};
     bool replay_job_dir_mode{false};
@@ -313,7 +317,7 @@ int main(int argc, char **argv) {
             "Runtime launch-only flags");
       }
       replay_options.config_path =
-          (config_path == kDefaultConfigPath) ? std::string{} : config_path;
+          (config_path == default_config_path) ? std::string{} : config_path;
       std::cerr
           << "[cuwacunu_exec] WARNING: direct --replay-from-job-dir launch is "
              "for debugging/recovery. It does not prove Marshal validated "

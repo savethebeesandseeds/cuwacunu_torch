@@ -5,9 +5,9 @@
 # read-only proof authority, and Marshal Hero remains the high-level operator.
 protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO
 environment_profile:enum = operator_default
-default_config_path:path = /cuwacunu/src/config/.config
-runtime_root:path = /cuwacunu/.runtime/cuwacunu_exec
-allowed_job_roots:path_list = /cuwacunu/.runtime/cuwacunu_exec,/tmp
+default_config_path:path = .config
+runtime_root:path = ../../.runtime/cuwacunu_exec
+allowed_job_roots:path_list = ../../.runtime/cuwacunu_exec,/tmp
 allow_certify_issue:bool = true
 allow_rollout_replay:bool = true
 allow_paper_online_session_run:bool = true
@@ -17,7 +17,7 @@ max_runtime_seconds:int = 86400
 rollout_policy_set:string = numeraire,current_weight,equal_weight,sdu
 rollout_max_steps:int = 250
 rollout_max_parallel_jobs:int = 4
-rollout_runtime_exec_path:path = /cuwacunu/.build/exec/cuwacunu_exec
+rollout_runtime_exec_path:path = ../../.build/exec/cuwacunu_exec
 rollout_execution_backend_id:string = cajtucu.execution.paper.v1
 rollout_cost_model_id:string = linear_transaction_cost_rate.v1
 rollout_allow_synthetic_direct_edges:bool = false
@@ -37,7 +37,7 @@ ENVIRONMENT_PROFILE operator_default {
   rollout_policy_set:string = numeraire,current_weight,equal_weight,sdu
   rollout_max_steps:int = 250
   rollout_max_parallel_jobs:int = 4
-  rollout_runtime_exec_path:path = /cuwacunu/.build/exec/cuwacunu_exec
+  rollout_runtime_exec_path:path = ../../.build/exec/cuwacunu_exec
   rollout_execution_backend_id:string = cajtucu.execution.paper.v1
   rollout_cost_model_id:string = linear_transaction_cost_rate.v1
   rollout_allow_synthetic_direct_edges:bool = false

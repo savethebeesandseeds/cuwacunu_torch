@@ -167,6 +167,15 @@ AGENT RUNBOOK
     protocol variant must not satisfy another. The catalog envelope is read-only,
     target_proof=false, dispatchable=false, runtime_executor=false, and
     fact_families_are_not_target_kinds=true.
+    Artifact-readiness targets may use ARTIFACT_SCOPE=cwu_02v_validation,
+    directly or through LATTICE_PROFILE, as the compact authoring form for
+    PROTOCOL_ID=cwu_02v,
+    SOURCE_RANGE=anchor_index, and OVER_SPLIT=validation_holdout.
+    Channel-MDN leakage guards may use
+    LEAKAGE_GUARD_SCOPE=channel_mdn_validation or
+    LEAKAGE_GUARD_SCOPE=channel_mdn_test as compact authoring forms for the
+    standard leakage_guard class, component, source range, protected split,
+    run mode, and zero-attempt plan defaults.
 
 	  explain_target
 	    Explains one compiled proof object without scanning runtime evidence. Use
@@ -176,7 +185,10 @@ AGENT RUNBOOK
     PLAN_INPUT_REPRESENTATION_CHECKPOINT are preserved as suggested-wave hints,
     not contract identity or proof evidence. They remain symbolic
     latest_satisfying source-target references until runtime reports prove the
-    exact loaded checkpoint paths. Their values do not alter
+    exact loaded checkpoint paths. Channel-MDN training plans derive
+    PLAN_INPUT_REPRESENTATION_CHECKPOINT from UPSTREAM_TARGET_ID, and evaluation
+    plans derive PLAN_INPUT_MDN_CHECKPOINT from EVALUATED_CHECKPOINT_SOURCE
+    unless a clause declares an explicit model-state hint. Their values do not alter
 	    target_spec_fingerprint. Advisory planning knobs such as WAVE_MODE,
 	    PLAN_MODE, PLAN_MAX_ATTEMPTS, and MAX_WAVES also do not alter
 	    target_spec_fingerprint. Non-blocking LATTICE_WARN clauses
@@ -423,13 +435,17 @@ AGENT RUNBOOK
     exposure_summary_available and node_support_summary_available mark which
     summary envelope is a real warning basis rather than an empty placeholder.
     Any LATTICE_WARN kind may use SPLIT or explicit ANCHOR_INDEX_BEGIN/END.
-    Warning measurements are scoped to that warning interval, defaulting to the
-    target range. If trusted completed coverage is unavailable, warning overlap
-    can use anchor-range visibility without making that evidence satisfy
-    readiness coverage. Each warning_result exposes the resolved interval as
-    warning_anchor_range; explain_target exposes the same pre-evaluation scope
-    as warning_scope_previews[].resolved_warning_anchor_range; and
-    warning_anchor_scope_policy_vocabulary documents the visibility-only
+    When a warning omits both, the compiler inherits the target
+    OVER_SPLIT/artifact-scope split where one exists and otherwise defaults to
+    the target range. Exposure-domain warnings also derive USE from target
+    kind/class defaults: representation targets use observed input, channel-MDN
+    training uses target supervision, and evaluation readiness uses evaluation
+    metrics with non-mutating warning effect. If trusted completed coverage is
+    unavailable, warning overlap can use anchor-range visibility without making
+    that evidence satisfy readiness coverage. Each warning_result exposes the
+    resolved interval as warning_anchor_range; explain_target exposes the same
+    pre-evaluation scope as warning_scope_previews[].resolved_warning_anchor_range;
+    and warning_anchor_scope_policy_vocabulary documents the visibility-only
     fallback for both surfaces. Node-support warnings derive a warning-range
     support matrix before applying USE/EFFECT filters, while the proof
     certificate keeps its target-range node_support_summaries.
@@ -822,7 +838,11 @@ AGENT RUNBOOK
     plan_advice_scope_policy_vocabulary records the same boundary in
     machine-readable form: plan_basis, suggested_wave, and PLAN_INPUT_* are
     advisory symbolic hints; PLAN_MAX_ATTEMPTS/MAX_WAVES are recommendation
-    guards; Runtime Hero remains the only executor.
+    guards; LATTICE_PLAN can inherit component, mode, split, and attempt budget
+    from the target/profile when it only needs to name the plan. Channel-MDN
+    training representation checkpoint hints derive from UPSTREAM_TARGET_ID, and
+    evaluation MDN hints derive from EVALUATED_CHECKPOINT_SOURCE unless
+    explicitly overridden; Runtime Hero remains the only executor.
     deficit_vector_planning_summary self-checks this boundary with ordered
     deficit-priority counts, advisory-policy counts, zero evidence/identity
     authority, zero Lattice execution authority, and a single Runtime Hero
@@ -1030,7 +1050,25 @@ AGENT RUNBOOK
 
   Agent invariants:
     - Never execute waves from Lattice Hero.
-    - Prefer OVER_SPLIT, PROTECT_SPLIT, and CURSOR_EPOCHS when authoring.
+    - Prefer OVER_SPLIT, PROTECT_SPLIT, CURSOR_EPOCHS, and
+      ARTIFACT_SCOPE=cwu_02v_validation or LEAKAGE_GUARD_SCOPE when authoring.
+    - Let readiness TARGET_KIND derive SUBJECT_COMPONENT; author explicit
+      component only for artifact or non-standard proof surfaces.
+    - Let LATTICE_DEPENDS default to loaded_representation_checkpoint with
+      exact loaded-checkpoint matching; declare dependency fields only for
+      non-standard bindings.
+    - Let LATTICE_REQUIRES exposure_coverage inherit the target split and
+      target-kind USE; declare SPLIT, USE, or EFFECT only when the requirement
+      intentionally uses different coverage semantics.
+    - Use LATTICE_REQUIRES_SET for repeated requirements with shared fields;
+      TARGET_IDS and REQUIREMENT_IDS are paired and lower to ordinary
+      LATTICE_REQUIRES clauses before validation and target fingerprinting.
+    - Let artifact fact LATTICE_WARN clauses derive KIND from
+      SUBJECT_FACT_FAMILY when they warn on the same forecast-baseline,
+      forecast-evaluation, observer-belief, or allocation-engine surface.
+    - Use LATTICE_WARN_SET for repeated warnings with a shared target and
+      threshold direction; WARNING_IDS, METRICS, and ABOVE_VALUES or
+      BELOW_VALUES lower to ordinary LATTICE_WARN clauses before validation.
     - Treat scan_exposure anchor-domain warnings as source availability
       visibility, not as automatic target failures.
     - Treat scan_exposure source_receipt_facts as audit/provenance visibility,

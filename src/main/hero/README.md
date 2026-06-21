@@ -24,29 +24,28 @@ Direct smoke:
 
 ```bash
 /cuwacunu/.build/hero/hero_config.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --tool hero.config.status \
   --args-json '{}'
 
 /cuwacunu/.build/hero/hero_runtime.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --tool hero.runtime.status \
   --args-json '{}'
 
 /cuwacunu/.build/hero/hero_environment.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --tool hero.environment.status \
   --args-json '{}'
 
 /cuwacunu/.build/hero/hero_lattice.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --tool hero.lattice.status \
   --args-json '{}'
 
 /cuwacunu/.build/hero/hero_marshal.mcp \
-  --global-config /cuwacunu/src/config/.config \
   --list-tools-json
 ```
+
+When `--global-config` is omitted, the binaries discover `src/config/.config`
+from the executable location or current working directory. Pass
+`--global-config <path>` only when using a non-default config bundle.
 
 MCP schema hygiene is a harness-safety gate. Tool catalogs emitted by the
 Config, Runtime, Environment, Lattice, and Marshal Heroes validate each
@@ -65,12 +64,9 @@ policy.
 The default policy paths are `[HERO].config_hero_dsl_path`,
 `[HERO].runtime_hero_dsl_path`, `[HERO].environment_hero_dsl_path`,
 `[HERO].lattice_hero_dsl_path`, and `[HERO].marshal_hero_dsl_path` in
-`src/config/.config`, falling back to
-`/cuwacunu/src/config/hero.config.dsl` and
-`/cuwacunu/src/config/hero.runtime.dsl` and
-`/cuwacunu/src/config/hero.environment.dsl` and
-`/cuwacunu/src/config/hero.lattice.dsl` and
-`/cuwacunu/src/config/hero.marshal.dsl`.
+the resolved global config, falling back to same-directory sibling files
+`hero.config.dsl`, `hero.runtime.dsl`, `hero.environment.dsl`,
+`hero.lattice.dsl`, and `hero.marshal.dsl`.
 
 ## Hero Authority Map
 
@@ -192,8 +188,11 @@ execute
 The selected `MARSHAL_PREPARE_PROFILE` in `hero.marshal.dsl` chooses the driver
 shape and controls: `drive_mode`, wave budget, wall-clock budget, Runtime
 execution gates, warning stops, timeout, plan-input materialization, and
-validation context. The default `single_wave_operator` profile returns the
-compact single-move packet; `bounded_operator` is the finite target driver.
+validation context. Profiles can also require structured Lattice certificate
+state, including `no_lookahead_artifact_provenance.v1` for readiness-grade
+handoff/promotion gates; certificate refs alone remain audit metadata. The
+default `single_wave_operator` profile returns the compact single-move packet;
+`bounded_operator` is the finite target driver.
 Both modes expose
 `operator_summary`, `stop_reason`, `wave_panel`, `runtime_panel`,
 `lattice_panel`, and `audit_panel` before detailed machine fields. Marshal
@@ -388,8 +387,9 @@ Runtime agent workflow:
    `artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index`.
    `hero.environment.rollout` and `hero.marshal.rollout` expose the small
    coordination request directly; policy set, finite limits, runtime exec path,
-   timeout, and Cajtucu execution profile come from their active rollout
-   profiles.
+   timeout, and Cajtucu execution profile come from the active Environment
+   rollout profile. Marshal rollout profiles only override those defaults when
+   they explicitly author a field.
    Runtime then delegates to `cuwacunu_exec --replay-from-job-dir`, writes replay reports and
    `runtime_replay_experiments.index`, and does not launch a new wave or mutate
    model checkpoints. Replay arguments can bind Cajtucu paper execution profile
@@ -429,19 +429,19 @@ Runtime agent workflow:
    checkpoint/update/rollout schemas, optimizer-state schema, CUDA policy,
    GAE estimator, causal-schedule schema, and no-future snapshot source.
    PPO-shaped policy contracts also bind policy DSL/net/features/jkimyei
-   digests, target-node universe digest, actor/critic architecture and
-   checkpoint digests, optimizer-state digest, PPO config digest,
+   digests, policy `.jkimyei` no-lookahead/order contract refs, target-node
+   universe digest, actor/critic architecture and checkpoint digests,
+   optimizer-state digest, PPO config digest,
    rollout-collection digest, PPO update-report digest, validation
    rollout-report digest, advantage-normalization identity, and PPO
-   hyperparameters. Schedule-less policy training, opaque cursor keys, late
+   hyperparameters. `ppo_learning_rate` is contract-bound for PPO V0 and drives
+   the combined policy/value Adam update reported as actor/critic learning
+   rates. Schedule-less policy training, opaque cursor keys, late
    target-label/reward/trajectory availability, and
    `offline_full_window_research` cannot satisfy readiness-grade contracts.
-   In this mode, `mode=execute` is available for
-   `policy_kind=noop_policy_training.v1` and the bounded
+   In this mode, `mode=execute` is available for the bounded
    `policy_kind=ppo_policy_adapter.v1` trainer under Runtime execute/train
-   policy. The noop path writes a no-op checkpoint, `policy_training.report`,
-   terminal Runtime facts, and `runtime.policy_training.fact` for Lattice
-   inspection. The PPO V0 path writes actor/critic checkpoints, a readable
+   policy. The PPO V0 path writes actor/critic checkpoints, a readable
    optimizer-state receipt plus a resumable Torch optimizer archive,
    rollout/update/validation reports, terminal Runtime facts, and a
    Lattice-readable `runtime.policy_training.fact`. PPO V0 execute requires
@@ -458,7 +458,12 @@ Runtime agent workflow:
    Runtime dispatches `cuwacunu_exec --replay-from-job-dir` with
    graph-node allocation in `on_policy_sample` mode, passes an explicit actor
    checkpoint artifact into policy forward, and ingests the generated training
-   collection report as `collection_source=kikijyeba_on_policy_replay`. After
+   collection report as `collection_source=kikijyeba_on_policy_replay`.
+   Runtime also derives a `certified_replay_bank_manifest.v1` from the completed
+   source replay job and binds the bank manifest digest, policy experience-set
+   digest, chunk count, sample count, coverage range, and experience mode in
+   the rollout report, policy report, performance profile, execution packet, and
+   `runtime.policy_training.fact`. After
    the bounded PPO V0 update writes the post-update actor checkpoint, Runtime
    dispatches a second deterministic cost-aware replay from the same completed
    replay job and writes
@@ -486,6 +491,80 @@ Runtime agent workflow:
    CUDA verification, and resume-mode evidence. Allocation-
    engine parent evidence is required only for policy kinds that declare that
    parent; PPO adapter facts bind replay lineage through the replay report path.
+   `policy_training_artifact_ready` also requires
+   `no_lookahead_artifact_provenance.v1` over the consumed forecast/replay
+   chain. In v1 this is an accepted-anchor proof: forecast, replay, and
+   policy-training facts carry inline artifact-production provenance with
+   coverage anchor range, inherited influence frontier, parent artifact and
+   checkpoint digests, generation-vector digests, and a no-lookahead contract
+   digest. Runtime forecast-eval emission reads minimal anchor-v1 checkpoint
+   generation refs from the loaded checkpoints' `lattice.checkpoint.fact`
+   sidecars; if a loaded checkpoint lacks complete influence evidence, forecast
+   no-lookahead provenance remains incomplete and the target fails closed.
+   Checkpoint influence is not trusted just because the sidecar declares a
+   clean frontier: `lattice.checkpoint.fact` now carries
+   `generation_manifest_schema=component_checkpoint_generation_manifest.v1`,
+   generation id/vector, fit range, valid-from anchor, direct read checkpoint
+   digests, generation lane, and the digest of a matching
+   `runtime.component_training_update.fact`. For readiness-grade checkpoints,
+   Lattice recomputes anchor-v1 influence from parent generation manifests plus
+   the producing update's fit range, requires `valid_from_anchor >= fit_end`,
+   rejects missing producer/update/parent generation evidence, and fails closed
+   if a declared checkpoint influence understates the recomputed frontier.
+   `frozen_init` and `bootstrap` lanes are explicit; smoke/research checkpoint
+   generations remain inspectable but not readiness-grade parents.
+   Config-bundle loading derives representation, MDN, and policy `.jkimyei`
+   no-lookahead/order refs from the canonical cwu_02v contract, while the
+   training-spec decoder supplies the canonical visibility, generation-lane,
+   valid-from, and artifact-provenance policies. Policy-training facts carry
+   the policy `.jkimyei` refs, and Lattice rejects readiness-grade policy
+   evidence when those refs are missing, drifted, or inconsistent with the
+   no-lookahead contract digest carried by Runtime evidence.
+   Replay-environment facts inherit forecast influence instead of inventing an
+   independent frontier. Lattice recomputes the inherited scalar frontier from
+   parent facts and requires
+   `influence_anchor_end_exclusive_max <= target_anchor_begin`. The same
+   anchor-v1 proof now also carries
+   `label_or_reward_availability_end_exclusive_max`; Lattice requires that
+   availability frontier to be present, inherited or recomputed through
+   checkpoint/forecast/replay/policy parents, and no later than the target
+   anchor begin. Policy-training readiness facts also carry
+   `embargo_policy_fingerprint` and a half-open
+   `embargo_purged_window_anchor_range`; Lattice evaluates parent influence and
+   availability against the window begin and includes the window in the
+   no-lookahead closure digest. Replay cannot understate its parent forecast
+   influence or availability, switch forecast parents, or omit the parent
+   generation vector from its closure. For actual PPO execution,
+   Runtime also records a policy-execution input lock that binds the certificate
+   digest, evidence snapshot, provenance closure, target anchor range, consumed
+   forecast/replay facts, consumed artifact/checkpoint/generation vectors, and
+   replay job digest before training. The final policy output is treated
+   differently from the consumed inputs: it legitimately includes the trained
+   slice in `policy_output_fit_anchor_range` and output influence, but must
+   declare `policy_output_valid_from_anchor` at or after the fit end and carry
+   the parent no-lookahead closure plus parent policy influence. Marshal
+   readiness-grade
+   handoff/promotion gates must consume the structured Lattice state for this
+   exact claim; a certificate ref alone is not sufficient. The required state is
+   `no_lookahead_artifact_provenance.v1` with checked, complete, admissible, and
+   proof-certificate-passed flags set, plus the target anchor range, contract
+   digest, consumed artifact/checkpoint/generation-vector digests, provenance
+   closure digest when exposed, and a Lattice evidence snapshot digest. The same
+   readiness-grade state now also includes
+   `snapshot_bundle_publishability.v1`: a concrete
+   `snapshot_bundle_manifest.v1` bundle id, representation/MDN/policy
+   generation-vector members, trained-against edges, a recomputed bundle
+   generation-vector digest, and a compatibility-closure digest. Marshal refuses
+   unresolved `latest_satisfying` selectors, loose latest checkpoint paths, or a
+   certificate ref without the passing bundle state. The same policy readiness
+   state now exposes `causal_provenance_generalization.v1`, an anchor-v1
+   aggregate over the no-lookahead, scalar label/reward availability, scalar
+   embargo, inline artifact-production closure, trained-against interface, and
+   bundle subproofs. This v1 does not yet prove full label/reward horizon
+   semantics beyond the scalar availability frontier, interval-set/fold embargo
+   correctness, or broad interface-stability compatibility; a future
+   `runtime.artifact_production.fact` should generalize the inline
+   forecast/replay/policy-training provenance across more artifact families.
    This is an artifact proof, not policy selection or policy-quality proof.
    Runtime still does not claim Lattice target satisfaction, policy quality,
    market readiness, deployment readiness, or live-capital authority.
@@ -664,12 +743,15 @@ Lattice Hero agent runbook:
 	   `target_surface_kind=evidence_catalog_artifact`,
 	   `dispatchable_target=false`, `runtime_wave_dispatchable=false`, and
 	   `recommended_operator_action=inspect` before any runtime
-	   scan. They also emit `kind=not_applicable`,
-	   `target_kind_applicable=false`, and `target_kind_effective=none` so the
-	   internal default enum cannot masquerade as a declared `TARGET_KIND`.
-	   Artifact-readiness targets cannot declare `UPSTREAM_TARGET_ID`,
-	   `LATTICE_DEPENDS`, `EVALUATED_CHECKPOINT_SOURCE`, or `PLAN_INPUT_*`
-	   checkpoint hints; artifact lineage comes from fact parent digests and proof
+   scan. They also emit `kind=not_applicable`,
+   `target_kind_applicable=false`, and `target_kind_effective=none` so the
+   internal default enum cannot masquerade as a declared `TARGET_KIND`.
+   Ordinary readiness targets derive `SUBJECT_COMPONENT` from `TARGET_KIND`;
+   explicit component fields are reserved for artifact or non-standard proof
+   surfaces.
+   Artifact-readiness targets cannot declare `UPSTREAM_TARGET_ID`,
+   `LATTICE_DEPENDS`, `EVALUATED_CHECKPOINT_SOURCE`, or `PLAN_INPUT_*`
+   checkpoint hints; artifact lineage comes from fact parent digests and proof
 	   templates rather than target-dependency scheduling. The explanation
 	   response is not live proof: `target_proof=false`,
 	   `dispatchable=false`, and `runtime_executor=false`.
@@ -733,6 +815,16 @@ Lattice Hero agent runbook:
    min/max dimension variance, condition number, and isotropy; treat these as
    visibility fields unless a target explicitly gates on them with
    `LATTICE_REQUIRES KIND=representation_geometry`.
+   Exposure-coverage requirements inherit the target `OVER_SPLIT` or
+   artifact-scope split and derive `USE` from target kind; only declare
+   requirement-local `SPLIT`, `USE`, or `EFFECT` when it intentionally differs
+   from the target semantics.
+   Repeated requirements with shared fields may use `LATTICE_REQUIRES_SET`;
+   paired `TARGET_IDS` and `REQUIREMENT_IDS` lower to ordinary
+   `LATTICE_REQUIRES` clauses before validation and target fingerprinting.
+   Repeated warning clauses with shared target and threshold direction may use
+   `LATTICE_WARN_SET`; paired `WARNING_IDS`, `METRICS`, and `ABOVE_VALUES` or
+   `BELOW_VALUES` lower to ordinary `LATTICE_WARN` clauses before validation.
    MTF-JEPA-MAE-VICReg jobs should emit the same compact identity/lineage
    fields plus representation-health facts such as finite loss/parameters,
    finite gradients, sample/channel support, valid latent rows, split
@@ -774,13 +866,20 @@ Lattice Hero agent runbook:
    observer/allocation consistency, lineage integrity, selection-signal audit,
    replay-environment diagnostics, and source health remain typed warning
    families, not implicit readiness gates.
+   Artifact fact warnings for forecast-baseline, forecast-evaluation,
+   observer-belief, and allocation-engine targets can derive `KIND` from
+   `SUBJECT_FACT_FAMILY` when they warn on the same typed fact surface.
    Each warning kind may use `SPLIT` or explicit `ANCHOR_INDEX_BEGIN` /
-   `ANCHOR_INDEX_END`; measurements are scoped to that warning interval and
-   default to the target range. If trusted completed coverage is unavailable,
-   warning overlap can use anchor-range visibility without making that evidence
-   satisfy readiness coverage. Hero JSON exposes the resolved interval as
-   `warning_results[].warning_anchor_range`; `hero.lattice.inspect.target`
-   exposes the same pre-evaluation scope as
+   `ANCHOR_INDEX_END`; when a warning omits both, the compiler inherits the
+   target `OVER_SPLIT`/artifact-scope split where one exists and otherwise
+   defaults to the target range. Exposure-domain warnings also derive `USE`
+   from target kind/class defaults: representation targets use observed input,
+   channel-MDN training uses target supervision, and evaluation readiness uses
+   evaluation metrics with non-mutating warning effect. If trusted completed
+   coverage is unavailable, warning overlap can use anchor-range visibility
+   without making that evidence satisfy readiness coverage. Hero JSON exposes
+   the resolved interval as `warning_results[].warning_anchor_range`;
+   `hero.lattice.inspect.target` exposes the same pre-evaluation scope as
    `warning_scope_previews[].resolved_warning_anchor_range`; and
    `warning_anchor_scope_policy_vocabulary` describes the visibility-only
    fallback for both surfaces.
@@ -1210,9 +1309,12 @@ Lattice Hero agent runbook:
    Hero JSON also exposes `plan_advice_scope_policy_vocabulary`, recording that
    `plan_basis`, `suggested_wave`, and `PLAN_INPUT_*` are advisory deficit
    projections only; `PLAN_MAX_ATTEMPTS`/`MAX_WAVES` guard recommendation
-   availability; `PLAN_INPUT_*` stays a symbolic source-target hint until a
-   runtime report proves the loaded checkpoint path; Runtime Hero remains the
-   executor.
+   availability; `LATTICE_PLAN` can inherit component, mode, split, and attempt
+   budget from the target/profile; channel-MDN training representation
+   checkpoint hints derive from `UPSTREAM_TARGET_ID`, and evaluation MDN hints
+   derive from `EVALUATED_CHECKPOINT_SOURCE` unless explicitly overridden;
+   `PLAN_INPUT_*` stays a symbolic source-target hint until a runtime report
+   proves the loaded checkpoint path; Runtime Hero remains the executor.
    Hero JSON also exposes `deficit_vector_planning_summary`, the compact
    self-check that the priority order and plan advice policies remain
    deterministic, non-evidence, non-identity, and non-executing for Lattice Hero.
@@ -1343,7 +1445,12 @@ Lattice Hero agent runbook:
    matching representation checkpoint lineage. Suggested waves may include
    symbolic model-state source hints such as `PLAN_INPUT_MDN_CHECKPOINT`, which
    Marshal must materialize into concrete Runtime handoff checkpoint inputs
-   before Runtime executes. The runtime report remains the proof.
+   before Runtime executes. When omitted from `LATTICE_PLAN`, channel-MDN
+   training representation checkpoint hints derive from `UPSTREAM_TARGET_ID`,
+   and evaluation MDN hints derive from `EVALUATED_CHECKPOINT_SOURCE`.
+   `LATTICE_DEPENDS` defaults to exact loaded representation-checkpoint binding,
+   so the catalog only declares non-standard dependency fields. The runtime
+   report remains the proof.
 6. Call `hero.lattice.inspect.checkpoint`
    for checkpoint lineage. A complete
    MDN closure should include the MDN exposure fact and the exact upstream

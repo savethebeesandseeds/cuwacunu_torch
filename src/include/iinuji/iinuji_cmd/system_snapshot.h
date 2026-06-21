@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "iinuji/iinuji_cmd/state.h"
 
 namespace cuwacunu {
@@ -376,10 +377,15 @@ collect_runtime_policy(const std::filesystem::path &config_root) {
   summary.policy_path = config_root / "hero.runtime.dsl";
   const auto kv = read_assignment_file(summary.policy_path);
   summary.protocol_layer = assignment_value(kv, "protocol_layer");
+  const auto config_path = config_root / ".config";
   summary.runtime_exec_path = assignment_value(
-      kv, "runtime_exec_path", "/cuwacunu/.build/exec/cuwacunu_exec");
-  summary.runtime_root =
-      assignment_value(kv, "runtime_root", "/cuwacunu/.runtime/cuwacunu_exec");
+      kv, "runtime_exec_path",
+      cuwacunu::hero::config_paths::default_runtime_exec_path(config_path)
+          .string());
+  summary.runtime_root = assignment_value(
+      kv, "runtime_root",
+      cuwacunu::hero::config_paths::default_runtime_root_path(config_path)
+          .string());
   summary.default_dry_run = assignment_value(kv, "default_dry_run");
   summary.allow_execute = assignment_value(kv, "allow_execute");
   summary.allow_train_execute = assignment_value(kv, "allow_train_execute");
@@ -664,7 +670,9 @@ inline void refresh_snapshots_with_progress(
   if (!state.global_config_path.empty())
     state.config_root = state.global_config_path.parent_path();
   if (state.config_root.empty())
-    state.config_root = "/cuwacunu/src/config";
+    state.config_root =
+        cuwacunu::hero::config_paths::default_global_config_path()
+            .parent_path();
   emit_snapshot_refresh_progress(progress_callback, 1u);
 
   state.runtime.policy = collect_runtime_policy(state.config_root);

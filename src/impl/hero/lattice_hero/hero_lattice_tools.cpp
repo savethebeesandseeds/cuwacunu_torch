@@ -1,5 +1,6 @@
 #include "hero/lattice_hero/hero_lattice_tools.h"
 
+#include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/hero_lattice.h"
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
@@ -41,9 +42,6 @@ namespace target = cuwacunu::hero::lattice::target;
     const exposure::lattice_fact_integrity_summary_t &summary);
 
 constexpr int kPolicyErrorCode = -32060;
-constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
-constexpr const char *kDefaultLatticePolicyPath =
-    "/cuwacunu/src/config/hero.lattice.dsl";
 constexpr const char *kDerivedQueryResultsSchema =
     "kikijyeba.lattice.derived_query_results.v1";
 constexpr const char *kDerivedQueryRuleVocabularyDigestSchema =
@@ -61,6 +59,7 @@ struct runtime_scan_session_cache_t {
   bool available{false};
   fs::path runtime_root{};
   std::string watched_file_metadata_digest{};
+  std::string split_policy_fingerprint{};
   exposure::exposure_ledger_scan_result_t scan{};
 };
 
@@ -993,6 +992,25 @@ map_get_or(const std::unordered_map<std::string, std::string> &map,
   return trim_ascii(value).empty() ? fallback : value;
 }
 
+[[nodiscard]] fs::path config_path_or_default_sibling(
+    const std::unordered_map<std::string, std::string> &config,
+    const fs::path &config_path, std::string_view key,
+    std::string_view fallback_filename) {
+  const auto value = map_get(config, key);
+  if (!trim_ascii(value).empty()) {
+    return resolve_against(config_path, value);
+  }
+
+  const fs::path active_sibling =
+      config_paths::default_config_sibling_path(config_path, fallback_filename);
+  std::error_code ec;
+  if (fs::exists(active_sibling, ec) && !ec) {
+    return active_sibling;
+  }
+  return config_paths::default_config_sibling_path(
+      config_paths::default_global_config_path(), fallback_filename);
+}
+
 [[nodiscard]] std::string policy_get(const lattice_policy_t &policy,
                                      std::string_view key) {
   const auto found = policy.values.find(std::string(key));
@@ -1265,6 +1283,50 @@ string_array_json(const std::vector<std::string> &xs) {
     out << json_quote(xs[i]);
   }
   out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string influence_summary_json_fields(
+    const exposure::lattice_artifact_influence_summary_t &summary) {
+  std::ostringstream out;
+  out << ",\"influence_schema\":" << json_quote(summary.schema)
+      << ",\"influence_complete\":" << bool_json(summary.complete)
+      << ",\"influence_graph_order_fingerprint\":"
+      << json_quote(summary.graph_order_fingerprint)
+      << ",\"influence_source_cursor_token\":"
+      << json_quote(summary.source_cursor_token)
+      << ",\"influence_split_policy_fingerprint\":"
+      << json_quote(summary.split_policy_fingerprint)
+      << ",\"coverage_anchor_range\":"
+      << interval_json(summary.coverage_anchor_range)
+      << ",\"coverage_anchor_range_bound\":"
+      << bool_json(summary.coverage_anchor_range_bound)
+      << ",\"influence_anchor_begin_min\":"
+      << summary.influence_anchor_begin_min
+      << ",\"influence_anchor_begin_min_bound\":"
+      << bool_json(summary.influence_anchor_begin_min_bound)
+      << ",\"influence_anchor_end_exclusive_max\":"
+      << summary.influence_anchor_end_exclusive_max
+      << ",\"influence_anchor_end_exclusive_max_bound\":"
+      << bool_json(summary.influence_anchor_end_exclusive_max_bound)
+      << ",\"label_or_reward_availability_end_exclusive_max\":"
+      << summary.label_or_reward_availability_end_exclusive_max
+      << ",\"label_or_reward_availability_end_exclusive_max_bound\":"
+      << bool_json(summary.label_or_reward_availability_end_exclusive_max_bound)
+      << ",\"influence_horizon\":" << summary.horizon
+      << ",\"influence_horizon_bound\":" << bool_json(summary.horizon_bound)
+      << ",\"producer_generation_vector_digest\":"
+      << json_quote(summary.producer_generation_vector_digest)
+      << ",\"parent_artifact_digests\":"
+      << string_array_json(summary.parent_artifact_digests)
+      << ",\"parent_checkpoint_digests\":"
+      << string_array_json(summary.parent_checkpoint_digests)
+      << ",\"parent_generation_vector_digests\":"
+      << string_array_json(summary.parent_generation_vector_digests)
+      << ",\"provenance_closure_digest\":"
+      << json_quote(summary.provenance_closure_digest)
+      << ",\"influence_no_lookahead_contract_digest\":"
+      << json_quote(summary.no_lookahead_contract_digest);
   return out.str();
 }
 
@@ -3230,6 +3292,102 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
       << ",\"raw_potential_tradable_return\":"
       << bool_json(proof.raw_potential_tradable_return)
       << ",\"replay_executor\":" << bool_json(proof.replay_executor)
+      << ",\"no_lookahead_certificate_schema\":"
+      << json_quote(proof.no_lookahead_certificate_schema)
+      << ",\"no_lookahead_provenance_checked\":"
+      << bool_json(proof.no_lookahead_provenance_checked)
+      << ",\"no_lookahead_provenance_complete\":"
+      << bool_json(proof.no_lookahead_provenance_complete)
+      << ",\"no_lookahead_provenance_admissible\":"
+      << bool_json(proof.no_lookahead_provenance_admissible)
+      << ",\"influence_anchor_end_exclusive_max_bound\":"
+      << bool_json(proof.influence_anchor_end_exclusive_max_bound)
+      << ",\"influence_anchor_end_exclusive_max\":"
+      << proof.influence_anchor_end_exclusive_max
+      << ",\"label_or_reward_availability_frontier_checked\":"
+      << bool_json(proof.label_or_reward_availability_frontier_checked)
+      << ",\"label_or_reward_availability_frontier_complete\":"
+      << bool_json(proof.label_or_reward_availability_frontier_complete)
+      << ",\"label_or_reward_availability_frontier_admissible\":"
+      << bool_json(proof.label_or_reward_availability_frontier_admissible)
+      << ",\"label_or_reward_availability_end_exclusive_max_bound\":"
+      << bool_json(proof.label_or_reward_availability_end_exclusive_max_bound)
+      << ",\"label_or_reward_availability_end_exclusive_max\":"
+      << proof.label_or_reward_availability_end_exclusive_max
+      << ",\"embargo_purged_window_checked\":"
+      << bool_json(proof.embargo_purged_window_checked)
+      << ",\"embargo_purged_window_complete\":"
+      << bool_json(proof.embargo_purged_window_complete)
+      << ",\"embargo_purged_window_admissible\":"
+      << bool_json(proof.embargo_purged_window_admissible)
+      << ",\"embargo_policy_fingerprint\":"
+      << json_quote(proof.embargo_policy_fingerprint)
+      << ",\"embargo_purged_window_anchor_range_bound\":"
+      << bool_json(proof.embargo_purged_window_anchor_range_bound)
+      << ",\"embargo_purged_window_anchor_begin\":"
+      << proof.embargo_purged_window_anchor_begin
+      << ",\"embargo_purged_window_anchor_end_exclusive\":"
+      << proof.embargo_purged_window_anchor_end_exclusive
+      << ",\"no_lookahead_contract_digest\":"
+      << json_quote(proof.no_lookahead_contract_digest)
+      << ",\"consumed_artifact_digests\":"
+      << string_array_json(proof.consumed_artifact_digests)
+      << ",\"consumed_checkpoint_digests\":"
+      << string_array_json(proof.consumed_checkpoint_digests)
+      << ",\"consumed_generation_vector_digests\":"
+      << string_array_json(proof.consumed_generation_vector_digests)
+      << ",\"provenance_closure_digest\":"
+      << json_quote(proof.provenance_closure_digest)
+      << ",\"snapshot_bundle_certificate_schema\":"
+      << json_quote(proof.snapshot_bundle_certificate_schema)
+      << ",\"snapshot_bundle_publishability_checked\":"
+      << bool_json(proof.snapshot_bundle_publishability_checked)
+      << ",\"snapshot_bundle_publishability_complete\":"
+      << bool_json(proof.snapshot_bundle_publishability_complete)
+      << ",\"snapshot_bundle_publishability_admissible\":"
+      << bool_json(proof.snapshot_bundle_publishability_admissible)
+      << ",\"snapshot_bundle_id\":" << json_quote(proof.snapshot_bundle_id)
+      << ",\"snapshot_bundle_kind\":" << json_quote(proof.snapshot_bundle_kind)
+      << ",\"snapshot_bundle_generation_vector_digest\":"
+      << json_quote(proof.snapshot_bundle_generation_vector_digest)
+      << ",\"snapshot_bundle_valid_from_anchor_bound\":"
+      << bool_json(proof.snapshot_bundle_valid_from_anchor_bound)
+      << ",\"snapshot_bundle_valid_from_anchor\":"
+      << proof.snapshot_bundle_valid_from_anchor
+      << ",\"snapshot_bundle_compatibility_closure_digest\":"
+      << json_quote(proof.snapshot_bundle_compatibility_closure_digest)
+      << ",\"snapshot_bundle_component_generation_ids\":"
+      << string_array_json(proof.snapshot_bundle_component_generation_ids)
+      << ",\"snapshot_bundle_component_checkpoint_digests\":"
+      << string_array_json(proof.snapshot_bundle_component_checkpoint_digests)
+      << ",\"snapshot_bundle_component_generation_vector_digests\":"
+      << string_array_json(
+             proof.snapshot_bundle_component_generation_vector_digests)
+      << ",\"causal_provenance_certificate_schema\":"
+      << json_quote(proof.causal_provenance_certificate_schema)
+      << ",\"causal_provenance_checked\":"
+      << bool_json(proof.causal_provenance_checked)
+      << ",\"causal_provenance_complete\":"
+      << bool_json(proof.causal_provenance_complete)
+      << ",\"causal_provenance_admissible\":"
+      << bool_json(proof.causal_provenance_admissible)
+      << ",\"causal_atom_schema\":" << json_quote(proof.causal_atom_schema)
+      << ",\"causal_interval_set_schema\":"
+      << json_quote(proof.causal_interval_set_schema)
+      << ",\"causal_label_reward_horizon_policy_fingerprint\":"
+      << json_quote(proof.causal_label_reward_horizon_policy_fingerprint)
+      << ",\"causal_fold_policy_fingerprint\":"
+      << json_quote(proof.causal_fold_policy_fingerprint)
+      << ",\"causal_purged_embargo_policy_fingerprint\":"
+      << json_quote(proof.causal_purged_embargo_policy_fingerprint)
+      << ",\"causal_artifact_production_schema\":"
+      << json_quote(proof.causal_artifact_production_schema)
+      << ",\"causal_artifact_production_closure_digest\":"
+      << json_quote(proof.causal_artifact_production_closure_digest)
+      << ",\"causal_interface_stability_contract_digest\":"
+      << json_quote(proof.causal_interface_stability_contract_digest)
+      << ",\"causal_provenance_closure_digest\":"
+      << json_quote(proof.causal_provenance_closure_digest)
       << ",\"lineage_bound\":" << bool_json(proof.lineage_bound)
       << ",\"passed\":" << bool_json(proof.passed)
       << ",\"issues\":" << string_array_json(proof.issues) << "}";
@@ -7621,7 +7779,8 @@ forecast_eval_fact_json(const exposure::lattice_forecast_eval_fact_t &fact) {
       << ",\"coverage_authority\":" << bool_json(fact.coverage_authority)
       << ",\"leakage_authority\":" << bool_json(fact.leakage_authority)
       << ",\"contract_identity_authority\":"
-      << bool_json(fact.contract_identity_authority) << ",\"issues\":"
+      << bool_json(fact.contract_identity_authority)
+      << influence_summary_json_fields(fact.influence_summary) << ",\"issues\":"
       << string_array_json(exposure::forecast_eval_fact_issues(fact))
       << ",\"digest\":" << json_quote(exposure::forecast_eval_fact_digest(fact))
       << "}";
@@ -8193,6 +8352,10 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << json_quote(fact.experiment_index_report_digest)
       << ",\"experiment_report_digest\":"
       << json_quote(fact.experiment_report_digest)
+      << ",\"parent_forecast_eval_fact_digest\":"
+      << json_quote(fact.parent_forecast_eval_fact_digest)
+      << ",\"parent_forecast_artifact_digest\":"
+      << json_quote(fact.parent_forecast_artifact_digest)
       << ",\"experiment_id\":" << json_quote(fact.experiment_id)
       << ",\"runtime_run_id\":" << json_quote(fact.runtime_run_id)
       << ",\"environment_run_id\":" << json_quote(fact.environment_run_id)
@@ -8369,7 +8532,8 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"coverage_authority\":" << bool_json(fact.coverage_authority)
       << ",\"leakage_authority\":" << bool_json(fact.leakage_authority)
       << ",\"contract_identity_authority\":"
-      << bool_json(fact.contract_identity_authority) << ",\"issues\":"
+      << bool_json(fact.contract_identity_authority)
+      << influence_summary_json_fields(fact.influence_summary) << ",\"issues\":"
       << string_array_json(exposure::replay_environment_fact_issues(fact))
       << ",\"digest\":"
       << json_quote(exposure::replay_environment_fact_digest(fact)) << "}";
@@ -8934,6 +9098,20 @@ policy_training_operator_issues_json(const std::vector<std::string> &issues) {
       << ",\"policy_input_feature_manifest_digest\":"
       << json_quote(fact.policy_input_feature_manifest_digest)
       << ",\"policy_jkimyei_digest\":" << json_quote(fact.policy_jkimyei_digest)
+      << ",\"policy_jkimyei_no_lookahead_contract_id\":"
+      << json_quote(fact.policy_jkimyei_no_lookahead_contract_id)
+      << ",\"policy_jkimyei_no_lookahead_contract_digest\":"
+      << json_quote(fact.policy_jkimyei_no_lookahead_contract_digest)
+      << ",\"policy_jkimyei_component_order_contract_id\":"
+      << json_quote(fact.policy_jkimyei_component_order_contract_id)
+      << ",\"policy_jkimyei_component_order_contract_digest\":"
+      << json_quote(fact.policy_jkimyei_component_order_contract_digest)
+      << ",\"policy_jkimyei_component_role\":"
+      << json_quote(fact.policy_jkimyei_component_role)
+      << ",\"policy_jkimyei_serving_order_index\":"
+      << fact.policy_jkimyei_serving_order_index
+      << ",\"policy_jkimyei_serving_order_index_bound\":"
+      << (fact.policy_jkimyei_serving_order_index_bound ? "true" : "false")
       << ",\"target_node_universe_digest\":"
       << json_quote(fact.target_node_universe_digest)
       << ",\"action_distribution_config_digest\":"
@@ -10682,7 +10860,29 @@ checkpoint_fact_json(const exposure::lattice_checkpoint_fact_t &f) {
       << ",\"checkpoint_path\":"
       << json_quote(f.checkpoint_path.lexically_normal().string())
       << ",\"checkpoint_file_digest\":" << json_quote(f.checkpoint_file_digest)
+      << ",\"generation_manifest_schema\":"
+      << json_quote(f.generation_manifest_schema)
+      << ",\"generation_id\":" << json_quote(f.generation_id)
+      << ",\"generation_vector_member_digest\":"
+      << json_quote(f.generation_vector_member_digest)
+      << ",\"parent_generation_ids\":"
+      << string_array_json(f.parent_generation_ids)
+      << ",\"parent_generation_vector_digests\":"
+      << string_array_json(f.parent_generation_vector_digests)
+      << ",\"read_checkpoint_digests\":"
+      << string_array_json(f.read_checkpoint_digests)
+      << ",\"read_generation_ids\":" << string_array_json(f.read_generation_ids)
+      << ",\"producer_component_update_fact_digest\":"
+      << json_quote(f.producer_component_update_fact_digest)
+      << ",\"generation_lane\":" << json_quote(f.generation_lane)
+      << ",\"fit_anchor_range\":" << interval_json(f.fit_anchor_range)
+      << ",\"fit_anchor_range_bound\":" << bool_json(f.fit_anchor_range_bound)
+      << ",\"valid_from_anchor\":" << f.valid_from_anchor
+      << ",\"valid_from_anchor_bound\":" << bool_json(f.valid_from_anchor_bound)
+      << ",\"no_lookahead_contract_digest\":"
+      << json_quote(f.no_lookahead_contract_digest)
       << ",\"component\":" << json_quote(f.component)
+      << ",\"component_role\":" << json_quote(f.component_role)
       << ",\"contract_fingerprint\":" << json_quote(f.contract_fingerprint)
       << ",\"protocol_id\":" << json_quote(f.protocol_id)
       << ",\"graph_order_fingerprint\":"
@@ -10696,7 +10896,8 @@ checkpoint_fact_json(const exposure::lattice_checkpoint_fact_t &f) {
       << json_quote(f.created_by_exposure_fact_id)
       << ",\"input_checkpoints\":" << path_array_json(f.input_checkpoints)
       << ",\"direct_exposure_digest\":" << json_quote(f.direct_exposure_digest)
-      << ",\"closure_digest\":" << json_quote(f.closure_digest) << "}";
+      << ",\"closure_digest\":" << json_quote(f.closure_digest)
+      << influence_summary_json_fields(f.influence_summary) << "}";
   return out.str();
 }
 
@@ -10761,6 +10962,9 @@ fact_identity_lineage_digest_fields(const std::string &family) {
             "policy_net_digest",
             "policy_input_feature_manifest_digest",
             "policy_jkimyei_digest",
+            "policy_jkimyei_no_lookahead_contract_digest",
+            "policy_jkimyei_component_order_contract_digest",
+            "policy_jkimyei_component_role",
             "target_node_universe_digest",
             "action_distribution_config_digest",
             "causal_schedule_digest",
@@ -11784,16 +11988,16 @@ void overlay_active_identity_from_config(
   }
   const auto config = parse_kv_file(config_path);
   if (id->protocol_id.empty()) {
-    const fs::path protocol_dsl_path =
-        map_get_or(config, "kikijyeba_protocol_dsl_path",
-                   "/cuwacunu/src/config/kikijyeba.protocol.cwu_01v.dsl");
+    const fs::path protocol_dsl_path = config_path_or_default_sibling(
+        config, config_path, "kikijyeba_protocol_dsl_path",
+        "kikijyeba.protocol.cwu_01v.dsl");
     const auto protocol_dsl = parse_kv_file(protocol_dsl_path);
     id->protocol_id = map_get_or(protocol_dsl, "PROTOCOL_ID", "cwu_01v");
   }
   if (id->mtf_jepa_mae_vicreg_assembly_fingerprint.empty()) {
-    const fs::path mtf_dsl_path = map_get_or(
-        config, "wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path",
-        "/cuwacunu/src/config/"
+    const fs::path mtf_dsl_path = config_path_or_default_sibling(
+        config, config_path,
+        "wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path",
         "wikimyei.representation.mtf_jepa_mae_vicreg.dsl");
     const auto mtf_dsl = parse_kv_file(mtf_dsl_path);
     const auto component_assembly_id =
@@ -11807,9 +12011,9 @@ void overlay_active_identity_from_config(
         cuwacunu::wikimyei::assembly::assembly_fingerprint(assembly);
   }
   if (id->vicreg_assembly_fingerprint.empty()) {
-    const fs::path vicreg_dsl_path =
-        map_get_or(config, "wikimyei_representation_vicreg_dsl_path",
-                   "/cuwacunu/src/config/wikimyei.representation.vicreg.dsl");
+    const fs::path vicreg_dsl_path = config_path_or_default_sibling(
+        config, config_path, "wikimyei_representation_vicreg_dsl_path",
+        "wikimyei.representation.vicreg.dsl");
     const auto vicreg_dsl = parse_kv_file(vicreg_dsl_path);
     const auto vicreg_component_assembly_id =
         map_get_or(vicreg_dsl, "COMPONENT_ASSEMBLY_ID", "vicreg_v1");
@@ -11822,10 +12026,9 @@ void overlay_active_identity_from_config(
         cuwacunu::wikimyei::assembly::assembly_fingerprint(vicreg_assembly);
   }
   if (id->mdn_assembly_fingerprint.empty()) {
-    const fs::path mdn_dsl_path =
-        map_get_or(config, "wikimyei_inference_expected_value_mdn_dsl_path",
-                   "/cuwacunu/src/config/"
-                   "wikimyei.inference.expected_value.mdn.dsl");
+    const fs::path mdn_dsl_path = config_path_or_default_sibling(
+        config, config_path, "wikimyei_inference_expected_value_mdn_dsl_path",
+        "wikimyei.inference.expected_value.mdn.dsl");
     const auto mdn_dsl = parse_kv_file(mdn_dsl_path);
     const auto mdn_component_assembly_id =
         map_get_or(mdn_dsl, "COMPONENT_ASSEMBLY_ID", "channel_mdn_v1");
@@ -11908,16 +12111,22 @@ active_identity_json(const target::lattice_target_active_identity_t &id) {
 }
 
 [[nodiscard]] const exposure::exposure_ledger_scan_result_t &
-session_scan_for_runtime_root(const fs::path &runtime_root) {
+session_scan_for_runtime_root(
+    const fs::path &runtime_root,
+    const exposure::exposure_build_context_t &context = {}) {
   const auto watched_digest =
       exposure::watched_runtime_metadata_digest(runtime_root);
   if (!g_runtime_scan_session_cache.available ||
       g_runtime_scan_session_cache.runtime_root != runtime_root ||
       g_runtime_scan_session_cache.watched_file_metadata_digest !=
-          watched_digest) {
+          watched_digest ||
+      g_runtime_scan_session_cache.split_policy_fingerprint !=
+          context.split_policy_fingerprint) {
     g_runtime_scan_session_cache.available = true;
     g_runtime_scan_session_cache.runtime_root = runtime_root;
     g_runtime_scan_session_cache.watched_file_metadata_digest = watched_digest;
+    g_runtime_scan_session_cache.split_policy_fingerprint =
+        context.split_policy_fingerprint;
     exposure::exposure_scan_options_t options{};
     // Interactive Hero queries read sidecars as the runtime evidence surface.
     // Sidecar-vs-derived parity belongs to audit mode, not default status.
@@ -11926,10 +12135,32 @@ session_scan_for_runtime_root(const fs::path &runtime_root) {
     // are derived from Runtime replay indexes and reports.
     options.derive_replay_environment_facts = true;
     g_runtime_scan_session_cache.scan =
-        exposure::scan_exposure_ledger_from_runtime_root(runtime_root, {},
+        exposure::scan_exposure_ledger_from_runtime_root(runtime_root, context,
                                                          options);
   }
   return g_runtime_scan_session_cache.scan;
+}
+
+[[nodiscard]] exposure::exposure_build_context_t
+scan_context_from_config_args(const std::string &args, lattice_context_t *ctx) {
+  exposure::exposure_build_context_t out{};
+  if (ctx == nullptr) {
+    return out;
+  }
+  std::string config_arg;
+  (void)extract_json_string_field(args, "config_path", &config_arg);
+  const fs::path config_path = effective_config_path(*ctx, config_arg);
+  try {
+    const auto split_policy =
+        target::load_lattice_split_policy_from_config_if_available(config_path);
+    if (split_policy.has_value()) {
+      out.split_policy_fingerprint =
+          cuwacunu::hero::lattice::split::lattice_split_policy_fingerprint(
+              *split_policy);
+    }
+  } catch (...) {
+  }
+  return out;
 }
 
 [[nodiscard]] exposure::lattice_runtime_index_cache_t
@@ -11997,9 +12228,20 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
   auto identity = derive_active_identity_from_runtime_root(runtime_root);
   overlay_active_identity_from_config(config_path, &identity);
   overlay_active_identity_from_args(args, &identity);
+  exposure::exposure_build_context_t scan_context{};
+  try {
+    const auto split_policy =
+        target::load_lattice_split_policy_from_config_if_available(config_path);
+    if (split_policy.has_value()) {
+      scan_context.split_policy_fingerprint =
+          cuwacunu::hero::lattice::split::lattice_split_policy_fingerprint(
+              *split_policy);
+    }
+  } catch (...) {
+  }
   exposure::exposure_ledger_scan_result_t scan{};
   if (policy_bool_or(ctx->policy, "auto_build_exposure_ledger", true)) {
-    scan = session_scan_for_runtime_root(runtime_root);
+    scan = session_scan_for_runtime_root(runtime_root, scan_context);
   }
   if (targets_out) {
     *targets_out = std::move(targets);
@@ -13307,7 +13549,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
     }
     return false;
   }
-  const auto scan = session_scan_for_runtime_root(runtime_root);
+  const auto scan = session_scan_for_runtime_root(
+      runtime_root, scan_context_from_config_args(args, ctx));
   const auto node_support_summaries =
       node_support_summaries_from_facts(scan.ledger.node_facts());
   const auto source_receipt_summary = exposure::summarize_source_receipts(
@@ -13539,7 +13782,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
     if (!resolve_runtime_root_arg(args, ctx, &runtime_root, err)) {
       return false;
     }
-    const auto scan = session_scan_for_runtime_root(runtime_root);
+    const auto scan = session_scan_for_runtime_root(
+        runtime_root, scan_context_from_config_args(args, ctx));
     json << ",\"runtime_root\":" << json_quote(runtime_root.string())
          << ",\"catalog_summary\":"
          << fact_catalog_summary_json(
@@ -13583,7 +13827,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
     return false;
   }
 
-  const auto scan = session_scan_for_runtime_root(runtime_root);
+  const auto scan = session_scan_for_runtime_root(
+      runtime_root, scan_context_from_config_args(args, ctx));
   const auto fact_integrity_summary =
       exposure::summarize_lattice_fact_integrity(scan.ledger, families);
   std::ostringstream json;
@@ -13636,7 +13881,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
     return false;
   }
 
-  const auto scan = session_scan_for_runtime_root(runtime_root);
+  const auto scan = session_scan_for_runtime_root(
+      runtime_root, scan_context_from_config_args(args, ctx));
   const auto fact_integrity_summary =
       exposure::summarize_lattice_fact_integrity(scan.ledger, families);
   std::ostringstream json;
@@ -13701,7 +13947,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
     return false;
   }
 
-  const auto scan = session_scan_for_runtime_root(runtime_root);
+  const auto scan = session_scan_for_runtime_root(
+      runtime_root, scan_context_from_config_args(args, ctx));
   const auto cache =
       exposure::make_runtime_index_cache_from_scan(runtime_root, scan);
   const auto selected_relations = relation_names_for_fact_families(families);
@@ -13837,7 +14084,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
     filter.fact_index = static_cast<std::size_t>(fact_index);
   }
 
-  const auto scan = session_scan_for_runtime_root(runtime_root);
+  const auto scan = session_scan_for_runtime_root(
+      runtime_root, scan_context_from_config_args(args, ctx));
   if (!filter.fact_digest_prefix.empty()) {
     const auto prefix_resolution = fact_family_digest_prefix_resolve(
         scan.ledger, *family, filter.fact_digest_prefix);
@@ -15216,7 +15464,8 @@ find_checkpoint_fact_for_path(
         return false;
       }
     }
-    const auto &scan = session_scan_for_runtime_root(runtime_root);
+    const auto &scan = session_scan_for_runtime_root(
+        runtime_root, scan_context_from_config_args(args, ctx));
     const auto closure =
         has_checkpoint_path
             ? scan.ledger.checkpoint_closure_result(checkpoint_path)
@@ -15383,7 +15632,8 @@ find_checkpoint_fact_for_path(
     }
     return false;
   }
-  const auto scan = session_scan_for_runtime_root(runtime_root);
+  const auto scan = session_scan_for_runtime_root(
+      runtime_root, scan_context_from_config_args(args, ctx));
   const auto closure =
       has_checkpoint_path
           ? scan.ledger.checkpoint_closure_result(checkpoint_path)
@@ -16213,7 +16463,8 @@ resolve_lattice_hero_dsl_path(const std::filesystem::path &global_config_path) {
           read_ini_value(global_config_path, "HERO", "lattice_hero_dsl_path")) {
     return resolve_against(global_config_path, *fresh);
   }
-  return kDefaultLatticePolicyPath;
+  return config_paths::default_config_sibling_path(global_config_path,
+                                                   "hero.lattice.dsl");
 }
 
 bool load_lattice_policy(const std::filesystem::path &policy_path,

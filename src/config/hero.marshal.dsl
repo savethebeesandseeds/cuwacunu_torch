@@ -42,18 +42,4 @@ MARSHAL_PREPARE_PROFILE bounded_operator {
 }
 
 MARSHAL_ROLLOUT_PROFILE replay_validation_default {
-  policy_set = numeraire,current_weight,equal_weight,sdu
-  max_steps = 250
-  max_parallel_jobs = 4
-  runtime_exec_path = /cuwacunu/.build/exec/cuwacunu_exec
-  timeout_seconds = 86400
-  execution_backend_id = cajtucu.execution.paper.v1
-  cost_model_id = linear_transaction_cost_rate.v1
-  allow_synthetic_direct_edges = false
-  synthetic_edge_research_reason =
-  linear_transaction_cost_rate = 0.001
-  allow_partial_fills = false
-  equity_mismatch_tolerance = 0.000001
-  equity_mismatch_fail_tolerance = 0.01
-  live_execution_allowed = false
 }

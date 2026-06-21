@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/marshal_hero/marshal/dispatch_adapter.h"
 #include "hero/mcp_cli_client.h"
 
@@ -165,9 +166,12 @@ runtime_policy_path_from_global_config(
   if (!override_policy_path.empty()) {
     return override_policy_path;
   }
+  const std::filesystem::path fallback_policy_path =
+      cuwacunu::hero::config_paths::default_config_sibling_path(
+          global_config_path, "hero.runtime.dsl");
   std::ifstream in(global_config_path);
   if (!in.is_open()) {
-    return "/cuwacunu/src/config/hero.runtime.dsl";
+    return fallback_policy_path;
   }
   std::string section;
   std::string line;
@@ -197,7 +201,7 @@ runtime_policy_path_from_global_config(
       return resolve_policy_path_against_config(global_config_path, value);
     }
   }
-  return "/cuwacunu/src/config/hero.runtime.dsl";
+  return fallback_policy_path;
 }
 
 [[nodiscard]] inline bool is_symbolic_model_state_input(std::string_view raw) {

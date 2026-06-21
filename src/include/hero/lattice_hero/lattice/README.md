@@ -1003,36 +1003,57 @@ report that warns when duplicate target selectors appear so accidental duplicate
 component/range targets are visible without blocking legitimate future
 multi-range targets.
 The target language also supports lightweight `LATTICE_PROFILE` and
-`LATTICE_GUARD` blocks. Profiles name reusable readiness defaults; guards remain
+`LATTICE_GUARD` blocks. Profiles name reusable target defaults, including
+artifact-readiness class/scope/component defaults; guards remain
 available for low-level reusable forbidden exposure policies, while ordinary
 holdout protection should prefer split-level `PROTECT_FROM_USES` plus target
 `PROTECT_SPLIT`. The decoder lowers these forms into the existing v0 scalar
 target fields, so they improve authoring and inspection without changing
-evaluator semantics. Preferred aliases are `SUBJECT_COMPONENT`, `OVER_SPLIT`,
-`WAVE_MODE`, and `PLAN_MAX_ATTEMPTS`; older names still load for compatibility
-and mixed old/new spellings produce validation warnings.
+evaluator semantics. Preferred aliases are `OVER_SPLIT`, `WAVE_MODE`, and
+`PLAN_MAX_ATTEMPTS`; older names still load for compatibility and mixed old/new
+spellings produce validation warnings. Ordinary readiness targets derive their
+component from `TARGET_KIND`; explicit `SUBJECT_COMPONENT` belongs to artifact
+or other non-standard proof surfaces.
 The first clause blocks are also supported and lower into the same v0 evaluator
 model:
 
 ```text
 LATTICE_DEPENDS
   declares the upstream target relationship, currently used by channel MDN to bind
-  to the loaded representation checkpoint proof.
+  to the loaded representation checkpoint proof. The default binding is
+  loaded_representation_checkpoint with exact loaded-checkpoint matching.
 
 LATTICE_REQUIRES
   declares artifact, metric, optimizer-effort, node-head-count,
-  valid-target-fraction, and exposure-coverage requirements.
+  valid-target-fraction, and exposure-coverage requirements. Exposure-coverage
+  requirements inherit the target OVER_SPLIT/artifact-scope split and derive
+  USE from target kind unless the clause declares those fields explicitly.
+  LATTICE_REQUIRES_SET is the compact authoring form for repeated requirements
+  that share the same fields; TARGET_IDS and REQUIREMENT_IDS are paired and
+  lowered to ordinary LATTICE_REQUIRES clauses before validation and target
+  fingerprinting.
 
 LATTICE_FORBIDS
   declares forbidden exposure overlap. V0 supports source-row-footprint checks
   over the checkpoint closure.
 
 LATTICE_PLAN
-  declares the suggested wave mode/range and planning attempt limit.
+  declares advisory plan identity and optional model-state hints. Suggested
+  wave mode, split/range, and planning attempt limit may be inherited from the
+  target/profile. Channel-MDN training plans can derive
+  PLAN_INPUT_REPRESENTATION_CHECKPOINT from UPSTREAM_TARGET_ID; evaluation plans
+  can derive PLAN_INPUT_MDN_CHECKPOINT from EVALUATED_CHECKPOINT_SOURCE unless a
+  clause declares an explicit model-state hint.
 
 LATTICE_WARN
   declares non-blocking warning checks over exposure load, effort density, or
   anchor-domain health, MDN node support, or VICReg representation health.
+  Artifact fact warnings for forecast-baseline, forecast-evaluation,
+  observer-belief, and allocation-engine targets can derive KIND from
+  SUBJECT_FACT_FAMILY. LATTICE_WARN_SET is the compact authoring form for
+  repeated warnings that share a target and threshold direction; WARNING_IDS,
+  METRICS, and ABOVE_VALUES or BELOW_VALUES are paired and lowered to ordinary
+  LATTICE_WARN clauses before validation.
   Warning clauses may use SPLIT or ANCHOR_INDEX_BEGIN/END to scope their
   measurement interval. They report evidence shape; they do not change readiness
   status or execute anything.
@@ -1078,11 +1099,18 @@ allocation-engine audit visibility from `allocation_engine`,
 weak/imbalanced/statistically thin MDN node support, or suspicious
 `representation_health` metrics without changing target status, `plan_ready`,
 suggested waves, `PLAN_MAX_ATTEMPTS` accounting, or `target_spec_fingerprint`.
+Artifact fact warnings whose kind matches the target `SUBJECT_FACT_FAMILY` can
+omit `KIND`; the compiler resolves the same typed warning surface before
+lowering.
 Every warning kind may use `SPLIT` or explicit `ANCHOR_INDEX_BEGIN` /
-`ANCHOR_INDEX_END`; measurements are scoped to that warning interval and fall
-back to the target range when no warning-local range is provided. If trusted
-completed coverage is unavailable, warning overlap can use anchor-range
-visibility; that does not make untrusted coverage satisfy readiness. Hero JSON
+`ANCHOR_INDEX_END`; when a warning omits both, the compiler inherits the target
+`OVER_SPLIT`/artifact-scope split where one exists and otherwise falls back to
+the target range. Exposure-domain warnings also derive `USE` from the target
+kind/class where possible: representation targets use observed input,
+channel-MDN training uses target supervision, and evaluation readiness uses
+evaluation metrics with non-mutating warning effect. If trusted completed
+coverage is unavailable, warning overlap can use anchor-range visibility; that
+does not make untrusted coverage satisfy readiness. Hero JSON
 returns the resolved interval as `warning_results[].warning_anchor_range`, while
 `hero.lattice.inspect.target` exposes the same pre-evaluation scope as
 `warning_scope_previews[].resolved_warning_anchor_range`.
@@ -1182,12 +1210,16 @@ for the run matches that checkpoint lineage. Suggested waves may carry
 `PLAN_INPUT_MDN_CHECKPOINT` and `PLAN_INPUT_REPRESENTATION_CHECKPOINT` model
 state hints, but those are symbolic `latest_satisfying` source-target
 references, not contract identity or proof evidence, and the concrete checkpoint
-loaded by runtime still must be proven by the resulting report/facts. Changing
-those plan-input hint values does not change `target_spec_fingerprint`; the
-fingerprint is reserved for the target proof obligation, not the checkpoint
-source hint used to run the next wave. Likewise, advisory planning knobs such as
-`WAVE_MODE`, `PLAN_MODE`, `PLAN_MAX_ATTEMPTS`, and `MAX_WAVES` lower into
-suggested-wave behavior but do not change `target_spec_fingerprint`.
+loaded by runtime still must be proven by the resulting report/facts. When a
+`LATTICE_PLAN` omits those hints, channel-MDN training plans derive the
+representation hint from `UPSTREAM_TARGET_ID`, and evaluation plans derive the
+MDN hint from `EVALUATED_CHECKPOINT_SOURCE`. Changing those plan-input hint
+values does not change `target_spec_fingerprint`; the fingerprint is reserved
+for the target proof obligation, not the checkpoint source hint used to run the
+next wave. Likewise, advisory planning knobs such as
+`WAVE_MODE`, `PLAN_MODE`, `PLAN_MAX_ATTEMPTS`, and `MAX_WAVES` may live on the
+target/profile and lower into suggested-wave behavior without changing
+`target_spec_fingerprint`.
 Hero JSON emits `contract_identity_boundary_vocabulary` to make the split
 machine-readable: protocol/graph/component/target proof fields are
 separate from runtime-loaded checkpoint paths, plan advice, warning visibility,
@@ -2065,8 +2097,13 @@ PROTECT_SPLIT = validation_holdout;
 CURSOR_EPOCHS = 0.95;
 ```
 
-The compiler lowers those fields into the same explicit proof clauses used by
-the evaluator. Do not bypass the proof layer by treating targets as schedules or
+Exposure-coverage clauses inherit the target split and default use: representation
+targets check `observed_input`, channel-MDN training targets check
+`target_supervision`, and evaluation-readiness targets check non-mutating
+`evaluation_metric`. `CURSOR_EPOCHS` only needs explicit `SPLIT`, `USE`, or
+`EFFECT` when it intentionally differs from those defaults. The compiler lowers
+those fields into the same explicit proof clauses used by the evaluator. Do not
+bypass the proof layer by treating targets as schedules or
 campaigns; a target may recommend a wave, but it must not dispatch it.
 
 The lattice DB is a rebuildable index/cache over durable evidence, not the

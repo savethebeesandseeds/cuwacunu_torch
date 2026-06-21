@@ -1,4 +1,5 @@
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
+#include "tests/bench/kikijyeba/test_support/canonical_protocol_fixture.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,6 +15,7 @@
 #include <unistd.h>
 
 namespace exposure = cuwacunu::hero::lattice::exposure;
+namespace protocol_fixture = cuwacunu::tests::kikijyeba::protocol_fixture;
 
 namespace {
 
@@ -1549,8 +1551,13 @@ int main() {
       fact_catalog_summary.families.end(), [](const auto &summary) {
         return summary.family == "paper_online_readiness";
       });
+  const auto representation_support_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(), [](const auto &summary) {
+        return summary.family == "representation_support";
+      });
   check(
-      fact_family_registry.size() == 17 &&
+      fact_family_registry.size() == 18 &&
           exposure::parse_lattice_fact_family("source_analytics").has_value() &&
           exposure::parse_lattice_fact_family(
               "kikijyeba.lattice.source_analytics.v1")
@@ -1601,7 +1608,12 @@ int main() {
           exposure::parse_lattice_fact_family(
               "kikijyeba.lattice.paper_online_readiness.v1")
               .has_value() &&
-          fact_catalog_summary.family_count == 17 &&
+          exposure::parse_lattice_fact_family("representation_support")
+              .has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.representation_support.v1")
+              .has_value() &&
+          fact_catalog_summary.family_count == 18 &&
           fact_catalog_summary.target_kind_family_count == 0 &&
           fact_catalog_summary.dispatchable_family_count == 0 &&
           fact_catalog_summary.runtime_executor_family_count == 0 &&
@@ -1728,21 +1740,34 @@ int main() {
           !paper_online_readiness_family->readiness_authority &&
           !paper_online_readiness_family->coverage_authority &&
           !paper_online_readiness_family->leakage_authority &&
-          !paper_online_readiness_family->contract_identity_authority,
+          !paper_online_readiness_family->contract_identity_authority &&
+          representation_support_family !=
+              fact_catalog_summary.families.end() &&
+          representation_support_family->fact_count == 4 &&
+          representation_support_family->parent_exposure_bound_count == 1 &&
+          representation_support_family->authority_model == "visibility_only" &&
+          !representation_support_family->target_kind &&
+          !representation_support_family->dispatchable &&
+          !representation_support_family->runtime_executor &&
+          !representation_support_family->readiness_authority &&
+          !representation_support_family->coverage_authority &&
+          !representation_support_family->leakage_authority &&
+          !representation_support_family->contract_identity_authority,
       "fact catalog lists source analytics, target transforms, and forecast "
       "baselines/evals plus observer/allocation evidence as non-target, "
       "non-dispatchable fact families while replay and paper-online readiness "
-      "remain parked by default");
+      "remain parked by default and representation support stays "
+      "visibility-only");
   check(fact_integrity_summary.schema ==
                 "kikijyeba.lattice.fact_integrity_summary.v1" &&
-            fact_integrity_summary.inspected_family_count == 17 &&
+            fact_integrity_summary.inspected_family_count == 18 &&
             fact_integrity_summary.reported_family_count == 4 &&
             fact_integrity_summary.relation_declared_count == 7 &&
-            fact_integrity_summary.relation_bound_count == 1 &&
-            fact_integrity_summary.unresolved_relation_count == 6 &&
+            fact_integrity_summary.relation_bound_count == 2 &&
+            fact_integrity_summary.unresolved_relation_count == 5 &&
             fact_integrity_summary.identity_mismatch_count == 0 &&
             fact_integrity_summary.digest_mismatch_count == 0 &&
-            fact_integrity_summary.warning_count == 7 &&
+            fact_integrity_summary.warning_count == 6 &&
             !fact_integrity_summary.relation_integrity_clean &&
             fact_integrity_summary.read_only &&
             !fact_integrity_summary.target_proof &&
@@ -1766,9 +1791,9 @@ int main() {
   check(forecast_eval_only_integrity.inspected_family_count == 1 &&
             forecast_eval_only_integrity.reported_family_count == 1 &&
             forecast_eval_only_integrity.relation_declared_count == 3 &&
-            forecast_eval_only_integrity.relation_bound_count == 0 &&
-            forecast_eval_only_integrity.unresolved_relation_count == 3 &&
-            forecast_eval_only_integrity.warning_count == 3 &&
+            forecast_eval_only_integrity.relation_bound_count == 1 &&
+            forecast_eval_only_integrity.unresolved_relation_count == 2 &&
+            forecast_eval_only_integrity.warning_count == 2 &&
             forecast_eval_only_integrity.families_with_unresolved_relation
                     .size() == 1 &&
             forecast_eval_only_integrity.families_with_unresolved_relation[0] ==
@@ -2047,6 +2072,8 @@ int main() {
       parked_environment_scan.ledger.observer_belief_facts().front();
   const auto &policy_parent_replay_environment =
       parked_environment_scan.ledger.replay_environment_facts().front();
+  const auto canonical_no_lookahead =
+      protocol_fixture::canonical_cwu_02v_no_lookahead_contract();
   std::ostringstream policy_training_sidecar;
   policy_training_sidecar
       << "schema=kikijyeba.lattice.policy_training.v1\n"
@@ -2068,8 +2095,7 @@ int main() {
       << "action_distribution_id=masked_dirichlet_simplex.v1\n"
       << "reward_contract_id=kikijyeba.environment.reward."
          "post_execution_ledger_log_growth_cost_drawdown.v1\n"
-      << "execution_profile_digest="
-      << policy_parent_replay_environment.execution_profile_digest << "\n"
+      << "execution_profile_digest=execution_profile_digest_1\n"
       << "ppo_policy_artifact_contract_id="
          "kikijyeba.runtime.ppo_policy_artifact_contract.v1\n"
       << "policy_family_id="
@@ -2081,6 +2107,69 @@ int main() {
       << "policy_input_feature_manifest_digest="
          "policy_input_manifest_digest_1\n"
       << "policy_jkimyei_digest=policy_jkimyei_digest_1\n"
+      << "policy_jkimyei_no_lookahead_contract_id="
+      << canonical_no_lookahead.contract_id << "\n"
+      << "policy_jkimyei_no_lookahead_contract_digest="
+      << canonical_no_lookahead.contract_digest << "\n"
+      << "policy_jkimyei_component_order_contract_id="
+      << canonical_no_lookahead.contract_id << "\n"
+      << "policy_jkimyei_component_order_contract_digest="
+      << canonical_no_lookahead.contract_digest << "\n"
+      << "policy_jkimyei_component_role=policy\n"
+      << "policy_jkimyei_serving_order_index=2\n"
+      << "policy_jkimyei_serving_order_index_bound=true\n"
+      << "snapshot_bundle_id=snapshot_bundle_policy_ready_1\n"
+      << "snapshot_bundle_kind=readiness_candidate\n"
+      << "snapshot_bundle_selection_basis=bundle_manifest\n"
+      << "snapshot_bundle_no_lookahead_contract_id="
+      << canonical_no_lookahead.contract_id << "\n"
+      << "snapshot_bundle_no_lookahead_contract_digest="
+      << canonical_no_lookahead.contract_digest << "\n"
+      << "snapshot_bundle_component_order_contract_id="
+      << canonical_no_lookahead.contract_id << "\n"
+      << "snapshot_bundle_component_order_contract_digest="
+      << canonical_no_lookahead.contract_digest << "\n"
+      << "snapshot_bundle_protocol_contract_fingerprint=contract_1\n"
+      << "snapshot_bundle_generation_vector_digest="
+         "snapshot_bundle_generation_vector_digest_1\n"
+      << "snapshot_bundle_valid_from_anchor=4\n"
+      << "snapshot_bundle_valid_from_anchor_bound=true\n"
+      << "snapshot_bundle_compatibility_closure_digest="
+         "snapshot_bundle_compatibility_closure_digest_1\n"
+      << "snapshot_bundle_policy_execution_certificate_digest="
+         "policy_no_lookahead_certificate_digest_1\n"
+      << "snapshot_bundle_no_lookahead_certificate_digests="
+         "policy_no_lookahead_certificate_digest_1\n"
+      << "bundle_representation_component_id="
+         "wikimyei.representation.encoding.mtf_jepa_mae_vicreg\n"
+      << "bundle_representation_checkpoint_digest="
+         "representation_checkpoint_digest_1\n"
+      << "bundle_representation_generation_id=rep_generation_prior_1\n"
+      << "bundle_representation_generation_vector_digest="
+         "representation_generation_vector_digest_1\n"
+      << "bundle_mdn_component_id=wikimyei.inference.expected_value.mdn\n"
+      << "bundle_mdn_checkpoint_digest=mdn_checkpoint_digest_1\n"
+      << "bundle_mdn_generation_id=mdn_generation_prior_1\n"
+      << "bundle_mdn_generation_vector_digest="
+         "mdn_generation_vector_digest_1\n"
+      << "bundle_policy_component_id="
+         "wikimyei.policy.portfolio.graph_node_allocation\n"
+      << "bundle_policy_checkpoint_digest=ppo_checkpoint_1\n"
+      << "bundle_policy_generation_id=policy_generation_ppo_1\n"
+      << "bundle_policy_generation_vector_digest="
+         "policy_generation_vector_digest_1\n"
+      << "mdn_trained_against_representation_generation_vector_digest="
+         "representation_generation_vector_digest_1\n"
+      << "policy_trained_against_representation_generation_vector_digest="
+         "representation_generation_vector_digest_1\n"
+      << "policy_trained_against_mdn_generation_vector_digest="
+         "mdn_generation_vector_digest_1\n"
+      << "policy_trained_against_policy_parent_generation_vector_digest="
+         "policy_parent_generation_vector_digest_1\n"
+      << "policy_trained_against_no_lookahead_certificate_digest="
+         "policy_no_lookahead_certificate_digest_1\n"
+      << "policy_execution_no_lookahead_contract_digest="
+      << canonical_no_lookahead.contract_digest << "\n"
       << "target_node_universe_digest=target_node_universe_digest_1\n"
       << "action_distribution_config_digest="
          "action_distribution_config_digest_1\n"
@@ -2152,7 +2241,17 @@ int main() {
       << "parent_observer_belief_fact_digest="
       << exposure::observer_belief_fact_digest(policy_parent_observer_belief)
       << "\n"
+      << "parent_replay_environment_fact_digest="
+      << exposure::replay_environment_fact_digest(
+             policy_parent_replay_environment)
+      << "\n"
       << "parent_replay_environment_report_digest="
+      << policy_parent_replay_environment.experiment_report_digest << "\n"
+      << "policy_execution_input_parent_replay_environment_fact_digest="
+      << exposure::replay_environment_fact_digest(
+             policy_parent_replay_environment)
+      << "\n"
+      << "policy_execution_input_parent_replay_environment_report_digest="
       << policy_parent_replay_environment.experiment_report_digest << "\n"
       << "random_seed=0\n"
       << "training_range_disjoint_validation=true\n"
@@ -2192,6 +2291,8 @@ int main() {
       policy_training_scan.ledger.observer_belief_facts(),
       policy_training_scan.ledger.allocation_engine_facts(),
       policy_training_scan.ledger.replay_environment_facts());
+  const auto policy_training_issues =
+      exposure::policy_training_fact_issues(policy_training_fact);
   check(
       policy_training_fact.random_seed == 0 &&
           policy_training_fact.random_seed_bound &&
@@ -2228,6 +2329,13 @@ int main() {
           policy_training_fact.policy_net_digest == "policy_net_digest_1" &&
           policy_training_fact.policy_jkimyei_digest ==
               "policy_jkimyei_digest_1" &&
+          policy_training_fact.policy_jkimyei_no_lookahead_contract_digest ==
+              canonical_no_lookahead.contract_digest &&
+          policy_training_fact.policy_jkimyei_component_order_contract_digest ==
+              canonical_no_lookahead.contract_digest &&
+          policy_training_fact.policy_jkimyei_component_role == "policy" &&
+          policy_training_fact.policy_jkimyei_serving_order_index == 2 &&
+          policy_training_fact.policy_jkimyei_serving_order_index_bound &&
           policy_training_fact.target_node_universe_digest ==
               "target_node_universe_digest_1" &&
           policy_training_fact.actor_architecture_digest ==
@@ -2275,7 +2383,7 @@ int main() {
           policy_training_fact.causal_schedule_readiness_eligible &&
           policy_training_fact.causal_schedule_no_future_snapshot_use &&
           !policy_training_fact.offline_full_window_research &&
-          exposure::policy_training_fact_issues(policy_training_fact).empty() &&
+          policy_training_issues.empty() &&
           policy_training_summary.policy_training_fact_count == 1 &&
           policy_training_summary.policy_id_bound_count == 1 &&
           policy_training_summary.training_config_digest_bound_count == 1 &&
@@ -2372,6 +2480,25 @@ int main() {
                           policy_training_missing_policy_surface),
                       "missing_policy_dsl_digest"),
         "PPO policy-training facts require policy DSL surface evidence");
+
+  auto policy_training_missing_jkimyei_contract = policy_training_fact;
+  policy_training_missing_jkimyei_contract
+      .policy_jkimyei_no_lookahead_contract_digest.clear();
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_missing_jkimyei_contract),
+                      "policy_jkimyei_no_lookahead_contract_digest_missing"),
+        "PPO policy-training facts require policy .jkimyei no-lookahead "
+        "contract evidence");
+
+  auto policy_training_jkimyei_contract_drift = policy_training_fact;
+  policy_training_jkimyei_contract_drift
+      .policy_jkimyei_component_order_contract_digest =
+      "other_no_lookahead_contract_digest";
+  check(
+      contains_text(exposure::policy_training_fact_issues(
+                        policy_training_jkimyei_contract_drift),
+                    "policy_jkimyei_component_order_contract_digest_mismatch"),
+      "PPO policy-training facts reject policy .jkimyei order-contract drift");
 
   auto policy_training_missing_input_checkpoint = policy_training_fact;
   policy_training_missing_input_checkpoint.input_policy_checkpoint_digest
@@ -3619,6 +3746,11 @@ int main() {
       scan.ledger.forecast_baseline_facts(),
       scan.ledger.selection_signal_facts());
   const auto &mdn_forecast_eval = scan.ledger.forecast_eval_facts().front();
+  const auto expected_mdn_selection_signal_digest =
+      scan.ledger.selection_signal_facts().empty()
+          ? std::string{}
+          : exposure::selection_signal_fact_digest(
+                scan.ledger.selection_signal_facts().front());
   check(
       mdn_forecast_eval.parent_exposure_fact_digest ==
               exposure::exposure_fact_digest(channel_mdn_fact) &&
@@ -3674,9 +3806,10 @@ int main() {
           mdn_forecast_eval.baseline_fact_digests.size() == 1 &&
           mdn_forecast_eval.baseline_fact_digests[0] ==
               "forecast_baseline_digest_1" &&
+          !scan.ledger.selection_signal_facts().empty() &&
           mdn_forecast_eval.selection_signal_fact_digests.size() == 1 &&
           mdn_forecast_eval.selection_signal_fact_digests[0] ==
-              "selection_signal_digest_1" &&
+              expected_mdn_selection_signal_digest &&
           mdn_forecast_eval.artifact_evidence &&
           mdn_forecast_eval.visibility_only &&
           !mdn_forecast_eval.model_state_mutation &&
@@ -3714,8 +3847,8 @@ int main() {
           scan_forecast_eval_summary.unresolved_baseline_count == 1 &&
           scan_forecast_eval_summary.baseline_identity_mismatch_count == 0 &&
           scan_forecast_eval_summary.selection_signal_declared_count == 1 &&
-          scan_forecast_eval_summary.selection_signal_audit_count == 0 &&
-          scan_forecast_eval_summary.unresolved_selection_signal_count == 1 &&
+          scan_forecast_eval_summary.selection_signal_audit_count == 1 &&
+          scan_forecast_eval_summary.unresolved_selection_signal_count == 0 &&
           scan_forecast_eval_summary.selection_signal_identity_mismatch_count ==
               0 &&
           scan_forecast_eval_summary.support_count_total == 42 &&

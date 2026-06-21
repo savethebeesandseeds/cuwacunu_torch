@@ -33,6 +33,8 @@ src/config/kikijyeba.environment.replay.dsl
 - Action shape: one target-weight vector over the ordered graph-node universe,
   including the accounting numeraire node, under
   `kikijyeba.environment.action.target_node_weights.v1`.
+- Replay/action defaults: the DSL owns initial equity, max per-node target
+  weight, and L1 turnover bound for Runtime-backed replay runs.
 - Reward: decomposed post-execution reward from log growth, drawdown,
   transaction cost, turnover, and invalid-action evidence.
 - Projection gate: replay can require projected log-return scenarios and

@@ -7,13 +7,19 @@
 #include <unordered_map>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
+
 namespace cuwacunu {
 namespace hero {
 namespace lattice {
 namespace runtime_report {
 
-inline constexpr std::string_view kRuntimeLlsGrammarPath =
-    "/cuwacunu/src/config/grammar/kikijyeba.lattice.runtime.bnf";
+[[nodiscard]] inline std::string runtime_lls_grammar_path() {
+  return cuwacunu::hero::config_paths::default_config_sibling_path(
+             cuwacunu::hero::config_paths::default_global_config_path(),
+             "grammar/kikijyeba.lattice.runtime.bnf")
+      .string();
+}
 
 struct runtime_lls_entry_t {
   std::string key{};
@@ -41,81 +47,69 @@ struct runtime_report_header_t {
 
 [[nodiscard]] std::string runtime_lls_grammar_text();
 
-[[nodiscard]] bool validate_runtime_lls_text(
-    std::string_view text,
-    std::string* error = nullptr);
+[[nodiscard]] bool validate_runtime_lls_text(std::string_view text,
+                                             std::string *error = nullptr);
 
-[[nodiscard]] bool parse_runtime_lls_text(
-    std::string_view text,
-    runtime_lls_document_t* out,
-    std::string* error = nullptr);
+[[nodiscard]] bool parse_runtime_lls_text(std::string_view text,
+                                          runtime_lls_document_t *out,
+                                          std::string *error = nullptr);
 
-[[nodiscard]] bool validate_runtime_lls_document(
-    const runtime_lls_document_t& document,
-    std::string* error = nullptr);
+[[nodiscard]] bool
+validate_runtime_lls_document(const runtime_lls_document_t &document,
+                              std::string *error = nullptr);
 
 [[nodiscard]] bool runtime_lls_document_to_kv_map(
-    const runtime_lls_document_t& document,
-    std::unordered_map<std::string, std::string>* out,
-    std::string* error = nullptr);
+    const runtime_lls_document_t &document,
+    std::unordered_map<std::string, std::string> *out,
+    std::string *error = nullptr);
 
 [[nodiscard]] bool parse_runtime_lls_text_fast_to_kv_map(
-    std::string_view text,
-    std::unordered_map<std::string, std::string>* out,
-    std::string* error = nullptr);
+    std::string_view text, std::unordered_map<std::string, std::string> *out,
+    std::string *error = nullptr);
 
-[[nodiscard]] std::string emit_runtime_lls_canonical(
-    const runtime_lls_document_t& document);
+[[nodiscard]] std::string
+emit_runtime_lls_canonical(const runtime_lls_document_t &document);
 
-[[nodiscard]] std::string normalize_runtime_report_semantic_taxon(
-    std::string_view semantic_taxon,
-    std::string_view schema = {});
+[[nodiscard]] std::string
+normalize_runtime_report_semantic_taxon(std::string_view semantic_taxon,
+                                        std::string_view schema = {});
 
 void append_runtime_report_header_entries(
-    runtime_lls_document_t* document,
-    const runtime_report_header_t& header);
+    runtime_lls_document_t *document, const runtime_report_header_t &header);
 
 [[nodiscard]] bool parse_runtime_report_header_from_kv(
-    const std::unordered_map<std::string, std::string>& kv,
-    runtime_report_header_t* out,
-    std::string* error = nullptr);
+    const std::unordered_map<std::string, std::string> &kv,
+    runtime_report_header_t *out, std::string *error = nullptr);
 
-[[nodiscard]] bool pack_runtime_wave_cursor(
-    std::uint64_t run_id,
-    std::uint64_t episode,
-    std::uint64_t batch,
-    std::uint64_t* out);
+[[nodiscard]] bool pack_runtime_wave_cursor(std::uint64_t run_id,
+                                            std::uint64_t episode,
+                                            std::uint64_t batch,
+                                            std::uint64_t *out);
 
-[[nodiscard]] runtime_lls_entry_t make_runtime_lls_entry(
-    std::string key,
-    std::string value,
-    std::string declared_type,
-    std::string declared_domain = {});
+[[nodiscard]] runtime_lls_entry_t
+make_runtime_lls_entry(std::string key, std::string value,
+                       std::string declared_type,
+                       std::string declared_domain = {});
 
-[[nodiscard]] runtime_lls_entry_t make_runtime_lls_string_entry(
-    std::string key,
-    std::string value);
+[[nodiscard]] runtime_lls_entry_t
+make_runtime_lls_string_entry(std::string key, std::string value);
 
-[[nodiscard]] runtime_lls_entry_t make_runtime_lls_bool_entry(
-    std::string key,
-    bool value);
+[[nodiscard]] runtime_lls_entry_t make_runtime_lls_bool_entry(std::string key,
+                                                              bool value);
 
-[[nodiscard]] runtime_lls_entry_t make_runtime_lls_int_entry(
-    std::string key,
-    std::int64_t value,
-    std::string declared_domain = "(-inf,+inf)");
+[[nodiscard]] runtime_lls_entry_t
+make_runtime_lls_int_entry(std::string key, std::int64_t value,
+                           std::string declared_domain = "(-inf,+inf)");
 
-[[nodiscard]] runtime_lls_entry_t make_runtime_lls_uint_entry(
-    std::string key,
-    std::uint64_t value,
-    std::string declared_domain = "(-inf,+inf)");
+[[nodiscard]] runtime_lls_entry_t
+make_runtime_lls_uint_entry(std::string key, std::uint64_t value,
+                            std::string declared_domain = "(-inf,+inf)");
 
-[[nodiscard]] runtime_lls_entry_t make_runtime_lls_double_entry(
-    std::string key,
-    double value,
-    std::string declared_domain = "(-inf,+inf)");
+[[nodiscard]] runtime_lls_entry_t
+make_runtime_lls_double_entry(std::string key, double value,
+                              std::string declared_domain = "(-inf,+inf)");
 
-}  // namespace runtime_report
-}  // namespace lattice
-}  // namespace hero
-}  // namespace cuwacunu
+} // namespace runtime_report
+} // namespace lattice
+} // namespace hero
+} // namespace cuwacunu

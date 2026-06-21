@@ -64,6 +64,9 @@ struct wave_settings_t {
   std::string policy_id{};
   std::string policy_kind{};
   std::string training_schedule_mode{};
+  std::string train_split_id{};
+  std::string validation_split_id{};
+  std::string test_split_id{};
   bool live_execution_allowed{false};
   std::optional<std::size_t> anchor_index_begin{std::nullopt};
   std::optional<std::size_t> anchor_index_end{std::nullopt};
@@ -722,6 +725,9 @@ resolve_source_range_to_anchor_indices(const wave_settings_t &settings,
   out.policy_kind = kv::optional(block, "POLICY_KIND", "");
   out.training_schedule_mode =
       kv::optional(block, "TRAINING_SCHEDULE_MODE", "");
+  out.train_split_id = kv::optional(block, "TRAIN_SPLIT", "");
+  out.validation_split_id = kv::optional(block, "VALIDATION_SPLIT", "");
+  out.test_split_id = kv::optional(block, "TEST_SPLIT", "");
   out.live_execution_allowed =
       parse_optional_bool(block, "LIVE_EXECUTION_ALLOWED", false);
   validate_wave_settings(out);

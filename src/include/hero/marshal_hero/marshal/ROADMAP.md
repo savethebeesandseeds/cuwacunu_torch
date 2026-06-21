@@ -11,7 +11,8 @@ hero.marshal.inspect
 ```
 
 This roadmap tracks future finite coordination work. It does not retain the
-completed V2 surface-collapse, cost-aware rollout, or pre-PPO rehearsal history.
+completed V2 surface-collapse, cost-aware rollout, or retired training rehearsal
+history.
 
 ## Boundary
 

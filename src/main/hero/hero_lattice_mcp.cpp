@@ -4,11 +4,10 @@
 #include <string>
 #include <string_view>
 
+#include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/hero_lattice_tools.h"
 
 namespace {
-
-constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   std::size_t begin = 0;
@@ -25,6 +24,13 @@ constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 }
 
 void print_help(const char *argv0) {
+  const auto default_global_config_path =
+      cuwacunu::hero::config_paths::default_global_config_path(argv0);
+  const auto default_global_config = default_global_config_path.string();
+  const auto default_policy_path =
+      cuwacunu::hero::config_paths::default_config_sibling_path(
+          default_global_config_path, "hero.lattice.dsl")
+          .string();
   std::cout
       << "Usage: " << argv0
       << " [--global-config <path>] [--config <hero_lattice_dsl>]"
@@ -32,7 +38,9 @@ void print_help(const char *argv0) {
          " [--list-tools] [--list-tools-json]\n"
       << "  default mode: JSON-RPC over stdio\n"
       << "  default policy path: [HERO].lattice_hero_dsl_path in "
-         "--global-config, then /cuwacunu/src/config/hero.lattice.dsl\n"
+         "--global-config, then "
+      << default_policy_path << "\n"
+      << "  default global config: " << default_global_config << "\n"
       << "\n"
       << "Agent runbook:\n"
       << "  Lattice Hero is read-only. It scans runtime evidence, "
@@ -96,69 +104,69 @@ void print_help(const char *argv0) {
       << "    or authorizes market/deployment decisions.\n"
       << "\n"
       << "Common direct calls:\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.status --args-json '{}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.inspect.targets --args-json '{}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.inspect.target --args-json "
          "'{\"target_id\":\"channel_mdn_train_core_ready\"}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.inspect.exposure --args-json "
          "'{\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\"}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.inspect.facts.scan --args-json "
          "'{"
          "\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\","
          "\"family\":\"allocation_engine\"}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.inspect.facts.lineage --args-json "
          "'{"
          "\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\","
          "\"family\":\"forecast_eval\"}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.inspect.index.status --args-json "
          "'{"
          "\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\"}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.inspect.index.query --args-json "
          "'{"
          "\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\","
          "\"relation\":\"checkpoint\"}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.inspect.index.query.unproven_cache --args-json "
          "'{"
          "\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\","
          "\"relation\":\"checkpoint\","
          "\"validation_strength\":\"header_only\"}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.evaluate.targets --args-json "
          "'{\"target_ids\":[\"vicreg_train_core_ready\","
          "\"channel_mdn_train_core_ready\"]}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.compare --args-json "
          "'{\"args_path\":\"/tmp/hero_lattice_compare.kv\"}'\n"
       << "      # /tmp/hero_lattice_compare.kv contains "
          "left_target_id=channel_mdn_train_core_no_validation_leakage and "
          "right_target_id=channel_mdn_train_core_no_test_leakage\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.inspect.derived.target_satisfied --args-json "
          "'{"
          "\"target_id\":\"channel_mdn_validation_eval_ready\"}'\n"
-      << "  " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "  " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.lattice.evaluate.latest_satisfying_checkpoint.hint --args-json "
          "'{\"symbolic_hint\":\"latest_satisfying:vicreg_train_core_ready\"}'\n"
       << "\n"
@@ -176,7 +184,8 @@ void print_help(const char *argv0) {
 } // namespace
 
 int main(int argc, char **argv) {
-  std::filesystem::path global_config_path = kDefaultGlobalConfigPath;
+  std::filesystem::path global_config_path =
+      cuwacunu::hero::config_paths::default_global_config_path(argv[0]);
   std::filesystem::path policy_path;
   bool policy_overridden = false;
   bool list_tools = false;

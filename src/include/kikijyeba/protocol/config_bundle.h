@@ -2,11 +2,14 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <vector>
 
@@ -449,6 +452,19 @@ inline void append_training_contract_fields(
   out << prefix << "_task=" << training_task_name(training.task) << "\n";
   out << prefix << "_component_assembly_id=" << training.component_assembly_id
       << "\n";
+  out << prefix
+      << "_no_lookahead_contract_id=" << training.no_lookahead_contract_id
+      << "\n";
+  out << prefix << "_no_lookahead_contract_digest="
+      << training.no_lookahead_contract_digest << "\n";
+  out << prefix
+      << "_component_order_contract_id=" << training.component_order_contract_id
+      << "\n";
+  out << prefix << "_component_order_contract_digest="
+      << training.component_order_contract_digest << "\n";
+  out << prefix << "_component_role=" << training.component_role << "\n";
+  out << prefix << "_serving_order_index=" << training.serving_order_index
+      << "\n";
   out << prefix << "_optimizer=" << optimizer_name(training.optimizer) << "\n";
   out << prefix << "_learning_rate=" << training.learning_rate << "\n";
   out << prefix << "_max_steps=" << training.max_steps << "\n";
@@ -468,6 +484,41 @@ inline void append_training_contract_fields(
   out << prefix << "_ppo_execution_allowed=" << training.ppo_execution_allowed
       << "\n";
   out << prefix << "_checkpoint_kind=" << training.checkpoint_kind << "\n";
+  out << prefix
+      << "_training_visibility_policy=" << training.training_visibility_policy
+      << "\n";
+  out << prefix << "_generation_lane_policy=" << training.generation_lane_policy
+      << "\n";
+  out << prefix << "_valid_from_policy=" << training.valid_from_policy << "\n";
+  out << prefix
+      << "_artifact_provenance_policy=" << training.artifact_provenance_policy
+      << "\n";
+}
+
+[[nodiscard]] inline cuwacunu::jkimyei::training::training_contract_defaults_t
+training_contract_defaults_from_protocol(const protocol_variant_t &variant) {
+  namespace training = cuwacunu::jkimyei::training;
+  auto defaults = training::canonical_training_contract_defaults();
+  if (protocol_no_lookahead_contract_declared(variant.no_lookahead_contract)) {
+    defaults.no_lookahead_contract_id =
+        variant.no_lookahead_contract.contract_id;
+    defaults.no_lookahead_contract_digest =
+        variant.no_lookahead_contract.contract_digest;
+    defaults.component_order_contract_id =
+        variant.no_lookahead_contract.contract_id;
+    defaults.component_order_contract_digest =
+        variant.no_lookahead_contract.contract_digest;
+  }
+  return defaults;
+}
+
+[[nodiscard]] inline cuwacunu::jkimyei::training::training_contract_defaults_t
+training_contract_defaults_for_component(
+    const protocol_variant_t &variant,
+    const std::string &component_assembly_id) {
+  auto defaults = training_contract_defaults_from_protocol(variant);
+  defaults.component_assembly_id = component_assembly_id;
+  return defaults;
 }
 
 } // namespace config_bundle_detail
@@ -1245,10 +1296,32 @@ inline void validate_channel_graph_first_protocol_contract(
     throw std::runtime_error(
         "[channel_graph_first_config] expected seven Wikimyei assemblies");
   }
-  training::validate_training_run_spec(bundle.vicreg_training);
-  training::validate_training_run_spec(bundle.mtf_jepa_mae_vicreg_training);
-  training::validate_training_run_spec(bundle.channel_mdn_training);
-  training::validate_training_run_spec(bundle.graph_node_allocation_training);
+  if (cuwacunu::piaabo::parse::simple_kv::lowercase(
+          cuwacunu::piaabo::parse::simple_kv::trim(
+              bundle.protocol_variant.protocol_status)) != "legacy" &&
+      !protocol_no_lookahead_contract_declared(
+          bundle.protocol_variant.no_lookahead_contract)) {
+    throw std::runtime_error("[channel_graph_first_config] non-legacy "
+                             "protocol must define NO_LOOKAHEAD_CONTRACT");
+  }
+  training::validate_training_run_spec(
+      bundle.vicreg_training,
+      config_bundle_detail::training_contract_defaults_for_component(
+          bundle.protocol_variant, bundle.vicreg.component_assembly_id));
+  training::validate_training_run_spec(
+      bundle.mtf_jepa_mae_vicreg_training,
+      config_bundle_detail::training_contract_defaults_for_component(
+          bundle.protocol_variant,
+          bundle.mtf_jepa_mae_vicreg.component_assembly_id));
+  training::validate_training_run_spec(
+      bundle.channel_mdn_training,
+      config_bundle_detail::training_contract_defaults_for_component(
+          bundle.protocol_variant, bundle.channel_mdn.component_assembly_id));
+  training::validate_training_run_spec(
+      bundle.graph_node_allocation_training,
+      config_bundle_detail::training_contract_defaults_for_component(
+          bundle.protocol_variant,
+          bundle.graph_node_allocation.component_assembly_id));
   cuwacunu::hero::runtime::settings::validate_wave_settings(
       bundle.wave_settings);
   if (bundle.source_universe.empty()) {
@@ -1368,6 +1441,24 @@ namespace graph_first_config_detail {
 
 namespace kv = cuwacunu::piaabo::parse::simple_kv;
 
+[[nodiscard]] inline bool ends_with(std::string_view text,
+                                    std::string_view suffix) {
+  return text.size() >= suffix.size() &&
+         text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+[[nodiscard]] inline std::string
+resolve_config_relative_path(const std::string &config_path,
+                             const std::string &raw_path) {
+  std::filesystem::path path(kv::trim(raw_path));
+  if (path.empty() || path.is_absolute()) {
+    return path.string();
+  }
+  return (std::filesystem::path(config_path).parent_path() / path)
+      .lexically_normal()
+      .string();
+}
+
 [[nodiscard]] inline std::string
 read_text_file_or_throw(const std::string &path) {
   std::ifstream in(path);
@@ -1406,6 +1497,9 @@ parse_assignment_config(const std::string &config_path) {
       throw std::runtime_error("[graph_first_config] invalid config line " +
                                std::to_string(line_number) +
                                ": empty key or value");
+    }
+    if (ends_with(key, "_path")) {
+      value = resolve_config_relative_path(config_path, value);
     }
     out[std::move(key)] = std::move(value);
   }
@@ -1471,6 +1565,25 @@ optional_config_value(const std::unordered_map<std::string, std::string> &cfg,
     return fallback;
   }
   return it->second;
+}
+
+[[nodiscard]] inline std::string optional_config_path_value(
+    const std::unordered_map<std::string, std::string> &cfg,
+    const std::string &key, const std::string &config_path,
+    const std::string &fallback_relative_path) {
+  const std::string active_bundle_fallback =
+      resolve_config_relative_path(config_path, fallback_relative_path);
+  std::error_code ec;
+  if (!active_bundle_fallback.empty() &&
+      std::filesystem::exists(active_bundle_fallback, ec)) {
+    return optional_config_value(cfg, key, active_bundle_fallback);
+  }
+  const std::string default_config_path =
+      cuwacunu::ujcamei::source::contract::default_source_config_path();
+  return optional_config_value(
+      cfg, key,
+      resolve_config_relative_path(default_config_path,
+                                   fallback_relative_path));
 }
 
 } // namespace graph_first_config_detail
@@ -1586,25 +1699,23 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_representation_vicreg_net_path", config_path);
   out.wikimyei_representation_mtf_jepa_mae_vicreg_dsl_bnf_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_dsl_bnf_path",
-          "/cuwacunu/src/config/grammar/"
-          "wikimyei.representation.mtf_jepa_mae_vicreg.dsl.bnf");
+          config_path,
+          "grammar/wikimyei.representation.mtf_jepa_mae_vicreg.dsl.bnf");
   out.wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path",
-          "/cuwacunu/src/config/"
-          "wikimyei.representation.mtf_jepa_mae_vicreg.dsl");
+          config_path, "wikimyei.representation.mtf_jepa_mae_vicreg.dsl");
   out.wikimyei_representation_mtf_jepa_mae_vicreg_net_bnf_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_net_bnf_path",
-          "/cuwacunu/src/config/grammar/"
-          "wikimyei.representation.mtf_jepa_mae_vicreg.net.bnf");
+          config_path,
+          "grammar/wikimyei.representation.mtf_jepa_mae_vicreg.net.bnf");
   out.wikimyei_representation_mtf_jepa_mae_vicreg_net_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_net_path",
-          "/cuwacunu/src/config/"
-          "wikimyei.representation.mtf_jepa_mae_vicreg.net");
+          config_path, "wikimyei.representation.mtf_jepa_mae_vicreg.net");
   out.wikimyei_inference_expected_value_mdn_dsl_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_inference_expected_value_mdn_dsl_bnf_path",
@@ -1620,50 +1731,54 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_inference_expected_value_mdn_net_path", config_path);
   out.wikimyei_observer_belief_dsl_bnf_path =
-      graph_first_config_detail::required_config_value(
-          cfg, "wikimyei_observer_belief_dsl_bnf_path", config_path);
+      graph_first_config_detail::optional_config_path_value(
+          cfg, "wikimyei_observer_belief_dsl_bnf_path", config_path,
+          "grammar/wikimyei.observer.belief.dsl.bnf");
   out.wikimyei_observer_belief_dsl_path =
-      graph_first_config_detail::required_config_value(
-          cfg, "wikimyei_observer_belief_dsl_path", config_path);
+      graph_first_config_detail::optional_config_path_value(
+          cfg, "wikimyei_observer_belief_dsl_path", config_path,
+          "wikimyei.observer.belief.dsl");
   out.wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path =
-      graph_first_config_detail::required_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg,
           "wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path",
-          config_path);
+          config_path,
+          "grammar/wikimyei.policy.portfolio.spot_distributional_utility.dsl."
+          "bnf");
   out.wikimyei_policy_portfolio_spot_distributional_utility_dsl_path =
-      graph_first_config_detail::required_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_policy_portfolio_spot_distributional_utility_dsl_path",
-          config_path);
+          config_path,
+          "wikimyei.policy.portfolio.spot_distributional_utility.dsl");
   out.wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path",
-          "/cuwacunu/src/config/grammar/"
-          "wikimyei.policy.portfolio.graph_node_allocation.dsl.bnf");
+          config_path,
+          "grammar/wikimyei.policy.portfolio.graph_node_allocation.dsl.bnf");
   out.wikimyei_policy_portfolio_graph_node_allocation_dsl_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_policy_portfolio_graph_node_allocation_dsl_path",
-          "/cuwacunu/src/config/"
-          "wikimyei.policy.portfolio.graph_node_allocation.dsl");
+          config_path, "wikimyei.policy.portfolio.graph_node_allocation.dsl");
   out.wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path",
-          "/cuwacunu/src/config/grammar/"
-          "wikimyei.policy.portfolio.graph_node_allocation.net.bnf");
+          config_path,
+          "grammar/wikimyei.policy.portfolio.graph_node_allocation.net.bnf");
   out.wikimyei_policy_portfolio_graph_node_allocation_net_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_policy_portfolio_graph_node_allocation_net_path",
-          "/cuwacunu/src/config/"
-          "wikimyei.policy.portfolio.graph_node_allocation.net");
+          config_path, "wikimyei.policy.portfolio.graph_node_allocation.net");
   out.wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg,
           "wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path",
-          "/cuwacunu/src/config/grammar/"
+          config_path,
+          "grammar/"
           "wikimyei.policy.portfolio.graph_node_allocation.features.dsl.bnf");
   out.wikimyei_policy_portfolio_graph_node_allocation_features_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_policy_portfolio_graph_node_allocation_features_path",
-          "/cuwacunu/src/config/"
+          config_path,
           "wikimyei.policy.portfolio.graph_node_allocation.features.dsl");
   out.wikimyei_representation_vicreg_jkimyei_bnf_path =
       graph_first_config_detail::required_config_value(
@@ -1672,15 +1787,14 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_representation_vicreg_jkimyei_path", config_path);
   out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path",
-          "/cuwacunu/src/config/grammar/"
-          "wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei.bnf");
+          config_path,
+          "grammar/wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei.bnf");
   out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path",
-          "/cuwacunu/src/config/"
-          "wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei");
+          config_path, "wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei");
   out.wikimyei_inference_expected_value_mdn_jkimyei_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_inference_expected_value_mdn_jkimyei_bnf_path",
@@ -1690,16 +1804,17 @@ load_channel_graph_first_protocol_contract_from_config(
           cfg, "wikimyei_inference_expected_value_mdn_jkimyei_path",
           config_path);
   out.wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg,
           "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_"
           "path",
-          "/cuwacunu/src/config/grammar/"
+          config_path,
+          "grammar/"
           "wikimyei.policy.portfolio.graph_node_allocation.jkimyei.bnf");
   out.wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path =
-      graph_first_config_detail::optional_config_value(
+      graph_first_config_detail::optional_config_path_value(
           cfg, "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path",
-          "/cuwacunu/src/config/"
+          config_path,
           "wikimyei.policy.portfolio.graph_node_allocation.jkimyei");
   out.runtime_wave_dsl_bnf_path =
       graph_first_config_detail::required_config_value(
@@ -1721,13 +1836,13 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_first_config_detail::required_config_value(
           cfg, "kikijyeba_protocol_dsl_path", config_path);
   out.kikijyeba_environment_replay_dsl_bnf_path =
-      graph_first_config_detail::optional_config_value(
-          cfg, "kikijyeba_environment_replay_dsl_bnf_path",
-          "/cuwacunu/src/config/grammar/kikijyeba.environment.replay.dsl.bnf");
+      graph_first_config_detail::optional_config_path_value(
+          cfg, "kikijyeba_environment_replay_dsl_bnf_path", config_path,
+          "grammar/kikijyeba.environment.replay.dsl.bnf");
   out.kikijyeba_environment_replay_dsl_path =
-      graph_first_config_detail::optional_config_value(
-          cfg, "kikijyeba_environment_replay_dsl_path",
-          "/cuwacunu/src/config/kikijyeba.environment.replay.dsl");
+      graph_first_config_detail::optional_config_path_value(
+          cfg, "kikijyeba_environment_replay_dsl_path", config_path,
+          "kikijyeba.environment.replay.dsl");
 
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_expression_nodelift_srl_dsl_bnf_path);
@@ -1863,19 +1978,29 @@ load_channel_graph_first_protocol_contract_from_config(
   out.vicreg_training =
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
-              out.wikimyei_representation_vicreg_jkimyei_path));
+              out.wikimyei_representation_vicreg_jkimyei_path),
+          config_bundle_detail::training_contract_defaults_for_component(
+              out.protocol_variant, out.vicreg.component_assembly_id));
   out.mtf_jepa_mae_vicreg_training =
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
-              out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path));
+              out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path),
+          config_bundle_detail::training_contract_defaults_for_component(
+              out.protocol_variant,
+              out.mtf_jepa_mae_vicreg.component_assembly_id));
   out.channel_mdn_training =
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
-              out.wikimyei_inference_expected_value_mdn_jkimyei_path));
+              out.wikimyei_inference_expected_value_mdn_jkimyei_path),
+          config_bundle_detail::training_contract_defaults_for_component(
+              out.protocol_variant, out.channel_mdn.component_assembly_id));
   out.graph_node_allocation_training =
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
-              out.wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path));
+              out.wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path),
+          config_bundle_detail::training_contract_defaults_for_component(
+              out.protocol_variant,
+              out.graph_node_allocation.component_assembly_id));
 
   populate_channel_graph_first_source_plan(out);
   out.dock_binding = make_channel_graph_first_dock_binding(out);

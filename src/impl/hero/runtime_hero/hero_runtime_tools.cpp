@@ -1,7 +1,10 @@
 #include "hero/runtime_hero/hero_runtime_tools.h"
 
+#include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
+#include "hero/lattice_hero/lattice/split/split_policy.h"
 #include "hero/marshal_hero/marshal/digest.h"
+#include "hero/marshal_hero/marshal/rollout_marshal.h"
 #include "hero/mcp_schema_compat.h"
 #include "hero/mcp_stdio_transport.h"
 #include "hero/runtime_hero/hero_runtime.h"
@@ -9,7 +12,12 @@
 #include "hero/runtime_hero/runtime/policy_training_job_contract.h"
 #include "hero/runtime_hero/runtime/wave_settings.h"
 #include "hero/short_ref.h"
+#include "jkimyei/api/training_spec.h"
+#include "kikijyeba/protocol/config_bundle.h"
+#include "kikijyeba/protocol/protocol_variant.h"
+#include "kikijyeba/topology/graph/graph_topology_decoder.h"
 #include "wikimyei/assembly.h"
+#include "wikimyei/policy/portfolio/graph_node_allocation/spec.h"
 #include "wikimyei/policy/portfolio/graph_node_allocation/torch_policy_module.h"
 
 #include <algorithm>
@@ -27,6 +35,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -45,11 +54,10 @@ namespace {
 
 namespace fs = std::filesystem;
 namespace display = cuwacunu::hero::display;
+namespace exposure = cuwacunu::hero::lattice::exposure;
+namespace lattice_split = cuwacunu::hero::lattice::split;
 
 constexpr int kPolicyErrorCode = -32050;
-constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
-constexpr const char *kDefaultRuntimePolicyPath =
-    "/cuwacunu/src/config/hero.runtime.dsl";
 
 struct tool_descriptor_t {
   const char *name;
@@ -81,12 +89,12 @@ constexpr tool_descriptor_t kTools[] = {
      R"({"type":"object","required":["path"],"properties":{"path":{"type":"string"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
     {"hero.runtime.run",
      "Runtime wave execution with mode=dry_run|execute. Policy component "
-     "waves use the contract-backed graph_node_allocation driver inside "
+     "waves use the graph_node_allocation policy-training driver inside "
      "this same surface; wave launch evidence is bound by an optional "
-     "runtime_handoff_path artifact, and policy-training execution is bound by "
-     "an optional contract_path artifact. Execute supports the bounded "
-     "noop_policy_training.v1 smoke trainer and the PPO V0 "
-     "ppo_policy_adapter.v1 trainer. Operators should use "
+     "runtime_handoff_path artifact, policy-training dry-runs derive their "
+     "sparse contract from Runtime state, and policy-training execution is "
+     "bound by an optional contract_path artifact. Execute supports the "
+     "bounded PPO V0 ppo_policy_adapter.v1 trainer. Operators should use "
      "hero.environment.rollout for replay admission.",
      R"({"type":"object","required":["mode"],"properties":{"mode":{"type":"string","enum":["dry_run","execute"]},"runtime_handoff_path":{"type":"string"},"runtime_handoff_digest":{"type":"string"},"contract_path":{"type":"string"},"contract_digest":{"type":"string"}},"additionalProperties":false})"},
     {"hero.runtime.reset",
@@ -214,6 +222,18 @@ constexpr tool_descriptor_t kTools[] = {
     }
   }
   return out;
+}
+
+[[nodiscard]] std::string
+csv_from_strings(const std::vector<std::string> &values) {
+  std::ostringstream out;
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << trim_ascii(values[i]);
+  }
+  return out.str();
 }
 
 [[nodiscard]] std::string json_quote(std::string_view s) {
@@ -993,6 +1013,11 @@ struct runtime_profile_blocks_t {
   std::unordered_map<std::string, std::string> profile_text_by_id{};
 };
 
+struct environment_profile_blocks_t {
+  std::string base_text{};
+  std::unordered_map<std::string, std::string> profile_text_by_id{};
+};
+
 [[nodiscard]] bool valid_runtime_profile_id(std::string_view raw) {
   const std::string value = trim_ascii(raw);
   if (value.empty()) {
@@ -1087,6 +1112,97 @@ struct runtime_profile_blocks_t {
   if (in_profile) {
     if (error) {
       *error = "unterminated RUNTIME_PROFILE block: " + active_profile_id;
+    }
+    return false;
+  }
+
+  *out = std::move(parsed);
+  return true;
+}
+
+[[nodiscard]] bool
+split_environment_profile_blocks(std::string_view text,
+                                 environment_profile_blocks_t *out,
+                                 std::string *error) {
+  if (!out) {
+    if (error) {
+      *error = "environment profile block output pointer is null";
+    }
+    return false;
+  }
+
+  environment_profile_blocks_t parsed{};
+  std::istringstream lines{std::string(text)};
+  std::string line;
+  bool in_profile = false;
+  std::string active_profile_id;
+  std::ostringstream active_profile_text;
+  std::size_t line_no = 0;
+
+  while (std::getline(lines, line)) {
+    ++line_no;
+    const std::string trimmed = trim_ascii(strip_ini_comment(line));
+    if (!in_profile) {
+      if (trimmed.rfind("ENVIRONMENT_PROFILE", 0) != 0) {
+        parsed.base_text += line;
+        parsed.base_text.push_back('\n');
+        continue;
+      }
+
+      const std::size_t brace = trimmed.find('{');
+      if (brace == std::string::npos) {
+        if (error) {
+          *error = "ENVIRONMENT_PROFILE missing opening brace at line " +
+                   std::to_string(line_no);
+        }
+        return false;
+      }
+      active_profile_id = trim_ascii(trimmed.substr(
+          std::string_view{"ENVIRONMENT_PROFILE"}.size(),
+          brace - std::string_view{"ENVIRONMENT_PROFILE"}.size()));
+      const std::string after_brace = trim_ascii(trimmed.substr(brace + 1));
+      if (!valid_runtime_profile_id(active_profile_id)) {
+        if (error) {
+          *error = "invalid ENVIRONMENT_PROFILE id at line " +
+                   std::to_string(line_no) + ": " + active_profile_id;
+        }
+        return false;
+      }
+      if (!after_brace.empty()) {
+        if (error) {
+          *error =
+              "ENVIRONMENT_PROFILE opening line must end after `{` at line " +
+              std::to_string(line_no);
+        }
+        return false;
+      }
+      if (parsed.profile_text_by_id.count(active_profile_id) != 0) {
+        if (error) {
+          *error = "duplicate ENVIRONMENT_PROFILE id: " + active_profile_id;
+        }
+        return false;
+      }
+      in_profile = true;
+      active_profile_text.str(std::string{});
+      active_profile_text.clear();
+      continue;
+    }
+
+    if (trimmed == "}" || trimmed == "};") {
+      parsed.profile_text_by_id.emplace(active_profile_id,
+                                        active_profile_text.str());
+      active_profile_id.clear();
+      active_profile_text.str(std::string{});
+      active_profile_text.clear();
+      in_profile = false;
+      continue;
+    }
+    active_profile_text << line << '\n';
+  }
+
+  if (in_profile) {
+    if (error) {
+      *error = "unterminated ENVIRONMENT_PROFILE block: " + active_profile_id;
     }
     return false;
   }
@@ -1589,10 +1705,2922 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
   return true;
 }
 
+[[nodiscard]] bool canonicalize_policy_training_target_node_ids_from_graph(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path = trim_ascii(contract->config_path);
+  if (config_path.empty()) {
+    return true;
+  }
+
+  const auto graph_path_raw = read_ini_value(
+      fs::path(config_path), "KIKIJYEBA", "kikijyeba_topology_graph_dsl_path");
+  if (!graph_path_raw.has_value() || trim_ascii(*graph_path_raw).empty()) {
+    return true;
+  }
+  const fs::path graph_path =
+      resolve_against(fs::path(config_path), *graph_path_raw);
+  const auto graph_bnf_path_raw =
+      read_ini_value(fs::path(config_path), "KIKIJYEBA",
+                     "kikijyeba_topology_graph_dsl_bnf_path");
+  if (!graph_bnf_path_raw.has_value() ||
+      trim_ascii(*graph_bnf_path_raw).empty()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_IDS_GRAPH_GRAMMAR_"
+             "MISSING: kikijyeba_topology_graph_dsl_bnf_path is required "
+             "when kikijyeba_topology_graph_dsl_path is configured";
+    }
+    return false;
+  }
+  const fs::path graph_bnf_path =
+      resolve_against(fs::path(config_path), *graph_bnf_path_raw);
+
+  std::string graph_grammar_text;
+  std::string grammar_read_error;
+  if (!read_text_file(graph_bnf_path, &graph_grammar_text,
+                      &grammar_read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_IDS_GRAPH_GRAMMAR_READ_"
+             "FAILED: " +
+             grammar_read_error;
+    }
+    return false;
+  }
+
+  std::string graph_text;
+  std::string read_error;
+  if (!read_text_file(graph_path, &graph_text, &read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_IDS_GRAPH_READ_FAILED: " +
+             read_error;
+    }
+    return false;
+  }
+
+  std::vector<std::string> nodes;
+  try {
+    namespace graph = cuwacunu::kikijyeba::topology::graph;
+    graph::graph_topology_decoder_t decoder(graph_grammar_text);
+    const auto topology = decoder.decode(graph_text);
+    nodes.reserve(topology.graph_node_forms.size());
+    for (const auto &node : topology.graph_node_forms) {
+      const std::string node_id = trim_ascii(node.node_id);
+      if (!node_id.empty() &&
+          lowercase_ascii(trim_ascii(node.active)) == "true") {
+        nodes.push_back(node_id);
+      }
+    }
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string("E_RUNTIME_POLICY_TRAINING_TARGET_NODE_IDS_GRAPH_"
+                         "DECODE_FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+
+  if (nodes.empty()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_IDS_EMPTY_GRAPH: " +
+             graph_path.string() + " has no active graph nodes";
+    }
+    return false;
+  }
+  const std::string target_node_ids = csv_from_strings(nodes);
+
+  const std::string supplied =
+      csv_from_strings(split_csv(contract->target_node_ids));
+  if (supplied.empty()) {
+    contract->target_node_ids = target_node_ids;
+  } else if (supplied != target_node_ids) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_IDS_NOT_CANONICAL: contract "
+          "target_node_ids=" +
+          supplied + " but configured graph derives " + target_node_ids;
+    }
+    return false;
+  }
+  contract->target_node_ids = target_node_ids;
+
+  const std::string accounting_numeraire_node_id =
+      trim_ascii(contract->accounting_numeraire_node_id);
+  if (accounting_numeraire_node_id.empty()) {
+    return true;
+  }
+  if (std::find(nodes.begin(), nodes.end(), accounting_numeraire_node_id) ==
+      nodes.end()) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_UNIVERSE_NUMERAIRE_MISSING: "
+          "configured accounting numeraire " +
+          accounting_numeraire_node_id +
+          " is not present in configured graph target nodes " + target_node_ids;
+    }
+    return false;
+  }
+
+  const std::string expected_universe_digest =
+      cuwacunu::hero::marshal::rollout_asset_universe_digest(
+          accounting_numeraire_node_id, nodes);
+  const std::string supplied_universe_digest =
+      trim_ascii(contract->target_node_universe_digest);
+  if (supplied_universe_digest.empty()) {
+    contract->target_node_universe_digest = expected_universe_digest;
+    return true;
+  }
+  if (supplied_universe_digest != expected_universe_digest) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_UNIVERSE_DIGEST_NOT_"
+             "CANONICAL: contract target_node_universe_digest=" +
+             supplied_universe_digest + " but configured graph derives " +
+             expected_universe_digest;
+    }
+    return false;
+  }
+  contract->target_node_universe_digest = expected_universe_digest;
+  return true;
+}
+
+[[nodiscard]] bool
+canonicalize_policy_training_accounting_numeraire_from_config(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path = trim_ascii(contract->config_path);
+  if (config_path.empty()) {
+    return true;
+  }
+
+  const auto configured_numeraire = read_ini_value(
+      fs::path(config_path), "ACCOUNTING", "accounting_numeraire_node_id");
+  if (!configured_numeraire.has_value() ||
+      trim_ascii(*configured_numeraire).empty()) {
+    return true;
+  }
+
+  const std::string expected = trim_ascii(*configured_numeraire);
+  const std::string supplied =
+      trim_ascii(contract->accounting_numeraire_node_id);
+  if (supplied.empty()) {
+    contract->accounting_numeraire_node_id = expected;
+    return true;
+  }
+  if (supplied != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_ACCOUNTING_NUMERAIRE_NOT_CANONICAL: "
+             "contract accounting_numeraire_node_id=" +
+             supplied + " but configured accounting derives " + expected;
+    }
+    return false;
+  }
+  contract->accounting_numeraire_node_id = expected;
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_policy_surface_default(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_POLICY_SURFACE_DEFAULT_MISMATCH: "
+             "contract " +
+             std::string(field_name) + "=" + current +
+             " but graph-node allocation DSL derives " + expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_source_identity(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_POLICY_SOURCE_IDENTITY_MISMATCH: "
+             "contract " +
+             std::string(field_name) + "=" + current +
+             " but configured policy source derives " + expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_policy_surface_from_config(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path = trim_ascii(contract->config_path);
+  if (config_path.empty()) {
+    return true;
+  }
+
+  auto policy_surface_path_raw =
+      read_ini_value(fs::path(config_path), "WIKIMYEI",
+                     "wikimyei_policy_portfolio_graph_node_allocation_"
+                     "dsl_path");
+  if (!policy_surface_path_raw.has_value() ||
+      trim_ascii(*policy_surface_path_raw).empty()) {
+    policy_surface_path_raw =
+        read_ini_value(fs::path(config_path), "KIKIJYEBA",
+                       "wikimyei_policy_portfolio_graph_node_allocation_"
+                       "dsl_path");
+  }
+  if (!policy_surface_path_raw.has_value() ||
+      trim_ascii(*policy_surface_path_raw).empty()) {
+    return true;
+  }
+  const fs::path policy_surface_path =
+      resolve_against(fs::path(config_path), *policy_surface_path_raw);
+  std::string policy_surface_text;
+  std::string read_error;
+  if (!read_text_file(policy_surface_path, &policy_surface_text, &read_error)) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_POLICY_SURFACE_READ_FAILED: " + read_error;
+    }
+    return false;
+  }
+
+  try {
+    namespace allocation =
+        cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
+    const auto spec = allocation::decode_graph_node_allocation_spec_from_dsl(
+        policy_surface_text);
+    return assign_or_confirm_policy_training_policy_surface_default(
+               &contract->observation_schema_digest,
+               "observation_schema_digest", spec.policy_input_schema, err) &&
+           assign_or_confirm_policy_training_policy_surface_default(
+               &contract->policy_input_schema_id, "policy_input_schema_id",
+               spec.policy_input_schema, err) &&
+           assign_or_confirm_policy_training_policy_surface_default(
+               &contract->action_schema_digest, "action_schema_digest",
+               spec.action_schema, err) &&
+           assign_or_confirm_policy_training_policy_surface_default(
+               &contract->action_adapter_id, "action_adapter_id",
+               spec.action_adapter, err) &&
+           assign_or_confirm_policy_training_policy_surface_default(
+               &contract->action_distribution_id, "action_distribution_id",
+               spec.action_distribution, err) &&
+           assign_or_confirm_policy_training_policy_surface_default(
+               &contract->reward_contract_digest, "reward_contract_digest",
+               spec.reward_contract, err) &&
+           assign_or_confirm_policy_training_policy_surface_default(
+               &contract->reward_contract_id, "reward_contract_id",
+               spec.reward_contract, err);
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string("E_RUNTIME_POLICY_TRAINING_POLICY_SURFACE_DECODE_"
+                         "FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] std::optional<fs::path>
+configured_policy_source_path(const fs::path &config_path,
+                              std::string_view section, std::string_view key) {
+  const auto raw = read_ini_value(config_path, section, key);
+  if (!raw.has_value() || trim_ascii(*raw).empty()) {
+    return std::nullopt;
+  }
+  return resolve_against(config_path, *raw);
+}
+
+struct policy_training_environment_rollout_defaults_t {
+  std::optional<double> linear_transaction_cost_rate;
+  std::optional<std::int64_t> max_parallel_jobs;
+  std::optional<double> initial_equity_numeraire;
+  std::optional<double> max_node_weight;
+  std::optional<double> max_turnover_l1;
+};
+
+[[nodiscard]] bool configured_environment_rollout_defaults(
+    const fs::path &config_path,
+    policy_training_environment_rollout_defaults_t *out, std::string *err) {
+  if (out == nullptr) {
+    if (err != nullptr) {
+      *err = "environment rollout defaults output pointer is null";
+    }
+    return false;
+  }
+  *out = {};
+  const auto environment_dsl_path = configured_policy_source_path(
+      config_path, "HERO", "environment_hero_dsl_path");
+  if (!environment_dsl_path.has_value()) {
+    return true;
+  }
+  std::string environment_text;
+  std::string read_error;
+  if (!read_text_file(*environment_dsl_path, &environment_text, &read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_READ_FAILED: " +
+             read_error;
+    }
+    return false;
+  }
+
+  environment_profile_blocks_t profile_blocks{};
+  if (!split_environment_profile_blocks(environment_text, &profile_blocks,
+                                        err)) {
+    if (err != nullptr && err->rfind("E_RUNTIME_", 0) != 0) {
+      *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_DECODE_FAILED: " +
+             *err;
+    }
+    return false;
+  }
+
+  std::unordered_map<std::string, std::string> values{
+      {"environment_profile", "operator_default"},
+      {"rollout_max_parallel_jobs", "4"},
+      {"rollout_linear_transaction_cost_rate", "0.001"}};
+  for (auto &[key, value] : parse_assignment_text(
+           strip_dsl_comments(profile_blocks.base_text), false)) {
+    values[std::move(key)] = std::move(value);
+  }
+
+  std::string selected_profile;
+  if (const auto configured =
+          read_ini_value(config_path, "HERO", "environment_hero_profile")) {
+    selected_profile = trim_ascii(*configured);
+  }
+  if (selected_profile.empty()) {
+    selected_profile = trim_ascii(values["environment_profile"]);
+  }
+  if (selected_profile.empty()) {
+    selected_profile = "operator_default";
+  }
+  if (!valid_runtime_profile_id(selected_profile)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_DECODE_FAILED: "
+             "invalid "
+             "environment profile id: " +
+             selected_profile;
+    }
+    return false;
+  }
+
+  const auto profile_it =
+      profile_blocks.profile_text_by_id.find(selected_profile);
+  if (profile_it == profile_blocks.profile_text_by_id.end() &&
+      !(profile_blocks.profile_text_by_id.empty() &&
+        selected_profile == "operator_default")) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_DECODE_FAILED: "
+             "unknown "
+             "environment profile `" +
+             selected_profile +
+             "` in policy file: " + environment_dsl_path->string();
+    }
+    return false;
+  }
+  if (profile_it != profile_blocks.profile_text_by_id.end()) {
+    for (auto &[key, value] :
+         parse_assignment_text(strip_dsl_comments(profile_it->second), false)) {
+      if (key == "environment_profile") {
+        if (err != nullptr) {
+          *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_DECODE_FAILED: "
+                 "ENVIRONMENT_PROFILE block must not set environment_profile";
+        }
+        return false;
+      }
+      values[std::move(key)] = std::move(value);
+    }
+  }
+
+  const auto value_it = values.find("rollout_linear_transaction_cost_rate");
+  if (value_it != values.end() && !trim_ascii(value_it->second).empty()) {
+    try {
+      const std::string raw = trim_ascii(value_it->second);
+      std::size_t parsed_count = 0;
+      const double parsed = std::stod(raw, &parsed_count);
+      if (parsed_count != raw.size() || !std::isfinite(parsed) ||
+          parsed < 0.0) {
+        if (err != nullptr) {
+          *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_DECODE_"
+                 "FAILED: invalid rollout_linear_transaction_cost_rate";
+        }
+        return false;
+      }
+      out->linear_transaction_cost_rate = parsed;
+    } catch (const std::exception &ex) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_DECODE_FAILED: "
+               "invalid "
+               "rollout_linear_transaction_cost_rate: " +
+               std::string(ex.what());
+      }
+      return false;
+    }
+  }
+
+  const auto max_parallel_jobs_it = values.find("rollout_max_parallel_jobs");
+  if (max_parallel_jobs_it != values.end() &&
+      !trim_ascii(max_parallel_jobs_it->second).empty()) {
+    const std::string raw = trim_ascii(max_parallel_jobs_it->second);
+    std::int64_t parsed = 0;
+    if (!parse_int64(raw, &parsed) || parsed <= 0) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_DECODE_FAILED: "
+               "invalid rollout_max_parallel_jobs";
+      }
+      return false;
+    }
+    out->max_parallel_jobs = parsed;
+  }
+  return true;
+}
+
+[[nodiscard]] bool configured_replay_environment_contract_defaults(
+    const fs::path &config_path,
+    policy_training_environment_rollout_defaults_t *out, std::string *err) {
+  if (out == nullptr) {
+    if (err != nullptr) {
+      *err = "environment replay defaults output pointer is null";
+    }
+    return false;
+  }
+  const auto replay_dsl_path = configured_policy_source_path(
+      config_path, "KIKIJYEBA", "kikijyeba_environment_replay_dsl_path");
+  if (!replay_dsl_path.has_value()) {
+    return true;
+  }
+
+  std::string replay_text;
+  std::string read_error;
+  if (!read_text_file(*replay_dsl_path, &replay_text, &read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_READ_FAILED: " +
+             read_error;
+    }
+    return false;
+  }
+
+  try {
+    const auto replay_spec = cuwacunu::kikijyeba::environment::
+        decode_replay_environment_spec_from_dsl(replay_text);
+    out->initial_equity_numeraire = replay_spec.initial_equity_numeraire;
+    out->max_node_weight = replay_spec.max_node_weight;
+    out->max_turnover_l1 = replay_spec.max_turnover_l1;
+    return true;
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string("E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_"
+                         "DECODE_FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] std::optional<fs::path>
+configured_graph_node_allocation_dsl_path(const fs::path &config_path) {
+  auto policy_dsl_path = configured_policy_source_path(
+      config_path, "WIKIMYEI",
+      "wikimyei_policy_portfolio_graph_node_allocation_dsl_path");
+  if (!policy_dsl_path.has_value()) {
+    policy_dsl_path = configured_policy_source_path(
+        config_path, "KIKIJYEBA",
+        "wikimyei_policy_portfolio_graph_node_allocation_dsl_path");
+  }
+  return policy_dsl_path;
+}
+
+[[nodiscard]] std::optional<fs::path>
+configured_graph_node_allocation_jkimyei_path(const fs::path &config_path) {
+  auto policy_jkimyei_path = configured_policy_source_path(
+      config_path, "JKIMYEI",
+      "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path");
+  if (!policy_jkimyei_path.has_value()) {
+    policy_jkimyei_path = configured_policy_source_path(
+        config_path, "WIKIMYEI",
+        "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path");
+  }
+  return policy_jkimyei_path;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_policy_source_identity(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path_text = trim_ascii(contract->config_path);
+  if (config_path_text.empty()) {
+    return true;
+  }
+  const fs::path config_path(config_path_text);
+
+  const auto policy_dsl_path =
+      configured_graph_node_allocation_dsl_path(config_path);
+  if (policy_dsl_path.has_value()) {
+    std::string policy_dsl_text;
+    std::string read_error;
+    if (!read_text_file(*policy_dsl_path, &policy_dsl_text, &read_error)) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_POLICY_SOURCE_IDENTITY_READ_"
+               "FAILED: " +
+               read_error;
+      }
+      return false;
+    }
+    if (!assign_or_confirm_policy_training_source_identity(
+            &contract->policy_dsl_digest, "policy_dsl_digest",
+            cuwacunu::hero::marshal::digest_detail::sha256_hex(policy_dsl_text),
+            err)) {
+      return false;
+    }
+  }
+
+  const auto features_path = configured_policy_source_path(
+      config_path, "WIKIMYEI",
+      "wikimyei_policy_portfolio_graph_node_allocation_features_path");
+  if (features_path.has_value()) {
+    std::string features_text;
+    std::string read_error;
+    if (!read_text_file(*features_path, &features_text, &read_error)) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_POLICY_SOURCE_IDENTITY_READ_"
+               "FAILED: " +
+               read_error;
+      }
+      return false;
+    }
+    if (!assign_or_confirm_policy_training_source_identity(
+            &contract->policy_input_feature_manifest_digest,
+            "policy_input_feature_manifest_digest",
+            cuwacunu::hero::marshal::digest_detail::sha256_hex(features_text),
+            err)) {
+      return false;
+    }
+  }
+
+  const auto policy_jkimyei_path =
+      configured_graph_node_allocation_jkimyei_path(config_path);
+  if (policy_jkimyei_path.has_value()) {
+    std::string policy_jkimyei_text;
+    std::string read_error;
+    if (!read_text_file(*policy_jkimyei_path, &policy_jkimyei_text,
+                        &read_error)) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_POLICY_SOURCE_IDENTITY_READ_"
+               "FAILED: " +
+               read_error;
+      }
+      return false;
+    }
+    const std::string policy_jkimyei_digest =
+        cuwacunu::hero::marshal::digest_detail::sha256_hex(policy_jkimyei_text);
+    if (!assign_or_confirm_policy_training_source_identity(
+            &contract->policy_jkimyei_digest, "policy_jkimyei_digest",
+            policy_jkimyei_digest, err) ||
+        !assign_or_confirm_policy_training_source_identity(
+            &contract->training_config_digest, "training_config_digest",
+            policy_jkimyei_digest, err)) {
+      return false;
+    }
+  }
+
+  const auto net_path = configured_policy_source_path(
+      config_path, "WIKIMYEI",
+      "wikimyei_policy_portfolio_graph_node_allocation_net_path");
+  if (!net_path.has_value()) {
+    return true;
+  }
+  std::string net_text;
+  std::string read_error;
+  if (!read_text_file(*net_path, &net_text, &read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_POLICY_SOURCE_IDENTITY_READ_FAILED: " +
+             read_error;
+    }
+    return false;
+  }
+
+  try {
+    namespace allocation =
+        cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
+    const auto net_spec =
+        allocation::decode_graph_node_allocation_net_spec_from_dsl(net_text);
+    const std::string architecture_digest =
+        allocation::torch_policy_detail::architecture_digest(net_spec);
+    const std::string policy_net_digest =
+        cuwacunu::hero::marshal::digest_detail::sha256_hex(net_text);
+    return assign_or_confirm_policy_training_source_identity(
+               &contract->policy_architecture_digest,
+               "policy_architecture_digest", architecture_digest, err) &&
+           assign_or_confirm_policy_training_source_identity(
+               &contract->policy_net_digest, "policy_net_digest",
+               policy_net_digest, err) &&
+           assign_or_confirm_policy_training_source_identity(
+               &contract->action_distribution_config_digest,
+               "action_distribution_config_digest",
+               "masked_dirichlet_simplex.graph_node_allocation.v1", err) &&
+           assign_or_confirm_policy_training_source_identity(
+               &contract->actor_architecture_digest,
+               "actor_architecture_digest",
+               "graph_node_allocation_actor.net.v1." + architecture_digest,
+               err) &&
+           assign_or_confirm_policy_training_source_identity(
+               &contract->critic_architecture_digest,
+               "critic_architecture_digest",
+               "graph_node_allocation_critic.net.v1." + architecture_digest,
+               err);
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string("E_RUNTIME_POLICY_TRAINING_POLICY_SOURCE_IDENTITY_"
+                         "DECODE_FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_replay_artifact_identity(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_REPLAY_ARTIFACT_IDENTITY_MISMATCH: "
+             "contract " +
+             std::string(field_name) + "=" + current +
+             " but replay_job_dir artifacts derive " + expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] std::string
+join_replay_artifact_values_for_error(const std::vector<std::string> &values) {
+  std::ostringstream out;
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << values[i];
+  }
+  return out.str();
+}
+
+void add_unique_replay_artifact_value(
+    const std::unordered_map<std::string, std::string> &fields,
+    std::string_view key, std::vector<std::string> *values) {
+  if (values == nullptr) {
+    return;
+  }
+  std::string value;
+  if (!kv_get_trimmed(fields, key, &value) || value.empty()) {
+    return;
+  }
+  if (std::find(values->begin(), values->end(), value) == values->end()) {
+    values->push_back(std::move(value));
+  }
+}
+
+struct policy_training_parent_replay_report_binding_t {
+  fs::path report_path{};
+  std::string declared_report_digest{};
+  std::string rejected_report_path{};
+  std::string rejected_allowed_roots{};
+};
+
+void add_policy_training_replay_report_root(const fs::path &root,
+                                            std::vector<fs::path> *roots) {
+  if (roots == nullptr || root.empty()) {
+    return;
+  }
+  const fs::path normalized = normalize_path(root);
+  if (std::find(roots->begin(), roots->end(), normalized) == roots->end()) {
+    roots->push_back(normalized);
+  }
+}
+
+[[nodiscard]] std::vector<fs::path>
+policy_training_replay_report_roots(const fs::path &replay_job_dir,
+                                    std::string_view config_path_text) {
+  std::vector<fs::path> roots;
+  add_policy_training_replay_report_root(replay_job_dir, &roots);
+
+  const std::string config_path_string = trim_ascii(config_path_text);
+  if (config_path_string.empty()) {
+    return roots;
+  }
+
+  const fs::path config_path = normalize_path(fs::path(config_path_string));
+  const fs::path runtime_policy_path =
+      resolve_runtime_hero_dsl_path(config_path);
+  runtime_policy_t policy{};
+  std::string policy_error;
+  if (!load_runtime_policy(runtime_policy_path, config_path, &policy,
+                           &policy_error)) {
+    return roots;
+  }
+
+  const auto add_policy_root = [&](std::string_view raw_root) {
+    const std::string root = trim_ascii(raw_root);
+    if (!root.empty()) {
+      add_policy_training_replay_report_root(
+          resolve_against(policy.policy_path, root), &roots);
+    }
+  };
+  if (const auto found = policy.values.find("runtime_root");
+      found != policy.values.end()) {
+    add_policy_root(found->second);
+  }
+  if (const auto found = policy.values.find("allowed_job_roots");
+      found != policy.values.end()) {
+    for (const std::string &root : split_csv(found->second)) {
+      add_policy_root(root);
+    }
+  }
+  return roots;
+}
+
+[[nodiscard]] bool path_within_any_root(const std::vector<fs::path> &roots,
+                                        const fs::path &path) {
+  return std::any_of(roots.begin(), roots.end(), [&](const fs::path &root) {
+    return path_within(root, path);
+  });
+}
+
+[[nodiscard]] std::string
+join_paths_for_error(const std::vector<fs::path> &paths) {
+  std::ostringstream out;
+  for (std::size_t i = 0; i < paths.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << paths[i].string();
+  }
+  return out.str();
+}
+
+[[nodiscard]] bool policy_training_replay_report_path_contains_parent_reference(
+    const fs::path &path) {
+  for (const auto &part : path) {
+    if (part == "..") {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] policy_training_parent_replay_report_binding_t
+policy_training_parent_replay_report_binding(const fs::path &replay_job_dir,
+                                             std::string_view config_path) {
+  policy_training_parent_replay_report_binding_t binding{};
+  const fs::path replay_artifact_dir =
+      replay_job_dir / "artifacts" / "kikijyeba.environment.replay.v1";
+  const fs::path index_path =
+      replay_artifact_dir / "runtime_replay_experiments.index";
+  const auto index = parse_kv_file(index_path);
+  int entry_count = 0;
+  if (parse_int(index.count("entry_count") == 0 ? std::string{}
+                                                : index.at("entry_count"),
+                &entry_count) &&
+      entry_count > 0) {
+    const fs::path normalized_job_dir = normalize_path(replay_job_dir);
+    const std::vector<fs::path> allowed_roots =
+        policy_training_replay_report_roots(replay_job_dir, config_path);
+    for (int entry = 0; entry < entry_count; ++entry) {
+      const auto prefix = std::string("entry_") + std::to_string(entry) + "_";
+      std::string report_path_text;
+      if (!kv_get_trimmed(index, prefix + "report_path", &report_path_text) ||
+          report_path_text.empty()) {
+        continue;
+      }
+      const fs::path raw_report_path(report_path_text);
+      if (policy_training_replay_report_path_contains_parent_reference(
+              raw_report_path)) {
+        continue;
+      }
+      const fs::path report_path =
+          raw_report_path.is_absolute()
+              ? normalize_path(raw_report_path)
+              : normalize_path(index_path.parent_path() / raw_report_path);
+      std::string declared_report_digest;
+      (void)kv_get_trimmed(index, prefix + "report_digest",
+                           &declared_report_digest);
+      const bool within_replay_job =
+          path_within(normalized_job_dir, report_path);
+      if (!fs::is_regular_file(report_path)) {
+        continue;
+      }
+      if (!path_within_any_root(allowed_roots, report_path)) {
+        binding.rejected_report_path = report_path.string();
+        binding.rejected_allowed_roots = join_paths_for_error(allowed_roots);
+        return binding;
+      }
+      if (!within_replay_job && declared_report_digest.empty()) {
+        continue;
+      }
+      binding.report_path = report_path;
+      binding.declared_report_digest = std::move(declared_report_digest);
+      return binding;
+    }
+  }
+
+  const fs::path default_report =
+      replay_artifact_dir / "runtime_replay_experiment.report";
+  if (fs::is_regular_file(default_report)) {
+    binding.report_path = normalize_path(default_report);
+  }
+  return binding;
+}
+
+[[nodiscard]] bool
+single_replay_artifact_value(const std::vector<std::string> &values,
+                             std::string_view field_name, std::string *out,
+                             std::string *err) {
+  if (out != nullptr) {
+    out->clear();
+  }
+  if (values.empty()) {
+    return true;
+  }
+  if (values.size() > 1) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_REPLAY_ARTIFACT_IDENTITY_CONFLICT: "
+             "replay_job_dir artifacts publish multiple " +
+             std::string(field_name) +
+             " values: " + join_replay_artifact_values_for_error(values);
+    }
+    return false;
+  }
+  if (out != nullptr) {
+    *out = values.front();
+  }
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_replay_artifact_identity(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string replay_job_dir_text = trim_ascii(contract->replay_job_dir);
+  if (replay_job_dir_text.empty()) {
+    return true;
+  }
+
+  const fs::path replay_job_dir(replay_job_dir_text);
+  const auto manifest = parse_kv_file(replay_job_dir / "job.manifest");
+  const auto state = parse_kv_file(replay_job_dir / "job.state");
+  const auto exposure_fact =
+      parse_kv_file(replay_job_dir / "lattice.exposure.fact");
+  const auto forecast_fact =
+      parse_kv_file(replay_job_dir / "lattice.forecast_eval.fact");
+  const auto observer_fact =
+      parse_kv_file(replay_job_dir / "lattice.observer_belief.fact");
+  const auto allocation_fact =
+      parse_kv_file(replay_job_dir / "lattice.allocation_engine.fact");
+  const auto replay_environment_fact =
+      parse_kv_file(replay_job_dir / "lattice.replay_environment.fact");
+
+  std::vector<std::string> source_cursor_values;
+  add_unique_replay_artifact_value(manifest, "source_cursor_token",
+                                   &source_cursor_values);
+  add_unique_replay_artifact_value(state, "source_cursor_token",
+                                   &source_cursor_values);
+  add_unique_replay_artifact_value(exposure_fact, "source_cursor_token",
+                                   &source_cursor_values);
+  add_unique_replay_artifact_value(forecast_fact, "source_cursor_token",
+                                   &source_cursor_values);
+  add_unique_replay_artifact_value(observer_fact, "source_cursor_token",
+                                   &source_cursor_values);
+  add_unique_replay_artifact_value(allocation_fact, "source_cursor_token",
+                                   &source_cursor_values);
+  std::string source_cursor_token;
+  if (!single_replay_artifact_value(source_cursor_values, "source_cursor_token",
+                                    &source_cursor_token, err) ||
+      !assign_or_confirm_policy_training_replay_artifact_identity(
+          &contract->source_cursor_token, "source_cursor_token",
+          source_cursor_token, err)) {
+    return false;
+  }
+
+  const auto replay_report = policy_training_parent_replay_report_binding(
+      replay_job_dir, contract->config_path);
+  if (!replay_report.rejected_report_path.empty()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_REPLAY_REPORT_PATH_DENIED: "
+             "runtime_replay_experiments.index report_path " +
+             replay_report.rejected_report_path +
+             " is outside replay_job_dir and configured Runtime roots: " +
+             replay_report.rejected_allowed_roots;
+    }
+    return false;
+  }
+  if (!replay_report.report_path.empty()) {
+    std::string computed_report_digest;
+    if (!replay_report.declared_report_digest.empty()) {
+      computed_report_digest =
+          replay_report_digest_for_path_or_empty(replay_report.report_path);
+      if (computed_report_digest.empty() ||
+          computed_report_digest != replay_report.declared_report_digest) {
+        if (err != nullptr) {
+          *err = "E_RUNTIME_POLICY_TRAINING_REPLAY_REPORT_DIGEST_MISMATCH: "
+                 "runtime_replay_experiments.index declares " +
+                 replay_report.declared_report_digest + " but " +
+                 replay_report.report_path.string() + " hashes to " +
+                 computed_report_digest;
+        }
+        return false;
+      }
+    } else {
+      computed_report_digest =
+          replay_report_digest_for_path_or_empty(replay_report.report_path);
+    }
+    if (!computed_report_digest.empty() &&
+        !assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract->parent_replay_environment_report_digest,
+            "parent_replay_environment_report_digest", computed_report_digest,
+            err)) {
+      return false;
+    }
+    const auto report_fields = parse_kv_file(replay_report.report_path);
+    std::string execution_profile_digest;
+    if (kv_get_trimmed(report_fields, "execution_profile_digest",
+                       &execution_profile_digest) &&
+        !execution_profile_digest.empty() &&
+        !assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract->execution_profile_digest, "execution_profile_digest",
+            execution_profile_digest, err)) {
+      return false;
+    }
+    std::string policy_set_digest;
+    if (kv_get_trimmed(report_fields, "policy_set_digest",
+                       &policy_set_digest) &&
+        !policy_set_digest.empty() &&
+        !assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract->policy_set_digest, "policy_set_digest",
+            policy_set_digest, err)) {
+      return false;
+    }
+  }
+
+  std::string forecast_digest;
+  if (kv_get_trimmed(forecast_fact, "fact_digest", &forecast_digest) &&
+      !forecast_digest.empty()) {
+    if (!assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract->parent_forecast_eval_fact_digest,
+            "parent_forecast_eval_fact_digest", forecast_digest, err) ||
+        !assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract->policy_execution_input_parent_forecast_eval_fact_digest,
+            "policy_execution_input_parent_forecast_eval_fact_digest",
+            forecast_digest, err)) {
+      return false;
+    }
+  }
+
+  std::string forecast_artifact_digest;
+  if (kv_get_trimmed(forecast_fact, "forecast_artifact_digest",
+                     &forecast_artifact_digest) &&
+      !forecast_artifact_digest.empty() &&
+      !assign_or_confirm_policy_training_replay_artifact_identity(
+          &contract->policy_execution_input_parent_forecast_artifact_digest,
+          "policy_execution_input_parent_forecast_artifact_digest",
+          forecast_artifact_digest, err)) {
+    return false;
+  }
+
+  std::string evaluated_representation_checkpoint_digest;
+  if (kv_get_trimmed(forecast_fact,
+                     "evaluated_representation_checkpoint_digest",
+                     &evaluated_representation_checkpoint_digest) &&
+      !evaluated_representation_checkpoint_digest.empty() &&
+      !assign_or_confirm_policy_training_replay_artifact_identity(
+          &contract->bundle_representation_checkpoint_digest,
+          "bundle_representation_checkpoint_digest",
+          evaluated_representation_checkpoint_digest, err)) {
+    return false;
+  }
+
+  std::string evaluated_mdn_checkpoint_digest;
+  if (kv_get_trimmed(forecast_fact, "evaluated_mdn_checkpoint_digest",
+                     &evaluated_mdn_checkpoint_digest) &&
+      !evaluated_mdn_checkpoint_digest.empty() &&
+      !assign_or_confirm_policy_training_replay_artifact_identity(
+          &contract->bundle_mdn_checkpoint_digest,
+          "bundle_mdn_checkpoint_digest", evaluated_mdn_checkpoint_digest,
+          err)) {
+    return false;
+  }
+
+  std::string forecast_parent_generation_vector_csv;
+  (void)kv_get_trimmed(forecast_fact,
+                       "influence_parent_generation_vector_digests",
+                       &forecast_parent_generation_vector_csv);
+  const std::vector<std::string> forecast_parent_generation_vectors =
+      split_csv(forecast_parent_generation_vector_csv);
+  if (forecast_parent_generation_vectors.size() == 2U) {
+    if (!assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract->bundle_representation_generation_vector_digest,
+            "bundle_representation_generation_vector_digest",
+            forecast_parent_generation_vectors[0], err) ||
+        !assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract->bundle_mdn_generation_vector_digest,
+            "bundle_mdn_generation_vector_digest",
+            forecast_parent_generation_vectors[1], err)) {
+      return false;
+    }
+  }
+
+  std::string observer_digest;
+  if (kv_get_trimmed(observer_fact, "fact_digest", &observer_digest) &&
+      !observer_digest.empty() &&
+      !assign_or_confirm_policy_training_replay_artifact_identity(
+          &contract->parent_observer_belief_fact_digest,
+          "parent_observer_belief_fact_digest", observer_digest, err)) {
+    return false;
+  }
+
+  std::string allocation_digest;
+  if (kv_get_trimmed(allocation_fact, "fact_digest", &allocation_digest) &&
+      !allocation_digest.empty() &&
+      !assign_or_confirm_policy_training_replay_artifact_identity(
+          &contract->parent_allocation_engine_fact_digest,
+          "parent_allocation_engine_fact_digest", allocation_digest, err)) {
+    return false;
+  }
+
+  std::string replay_environment_digest;
+  if (kv_get_trimmed(replay_environment_fact, "fact_digest",
+                     &replay_environment_digest) &&
+      !replay_environment_digest.empty()) {
+    if (!assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract->parent_replay_environment_fact_digest,
+            "parent_replay_environment_fact_digest", replay_environment_digest,
+            err) ||
+        !assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract
+                 ->policy_execution_input_parent_replay_environment_fact_digest,
+            "policy_execution_input_parent_replay_environment_fact_digest",
+            replay_environment_digest, err)) {
+      return false;
+    }
+  }
+
+  std::string replay_environment_report_digest;
+  if (kv_get_trimmed(replay_environment_fact, "experiment_report_digest",
+                     &replay_environment_report_digest) &&
+      !replay_environment_report_digest.empty() &&
+      !assign_or_confirm_policy_training_replay_artifact_identity(
+          &contract
+               ->policy_execution_input_parent_replay_environment_report_digest,
+          "policy_execution_input_parent_replay_environment_report_digest",
+          replay_environment_report_digest, err)) {
+    return false;
+  }
+
+  const fs::path replay_batch_index_path = replay_job_dir / "artifacts" /
+                                           "kikijyeba.environment.replay.v1" /
+                                           "runtime_replay_batches.index";
+  if (fs::is_regular_file(replay_batch_index_path)) {
+    const std::string replay_job_dir_digest = file_digest_or_empty(
+        replay_batch_index_path, "policy_execution_replay_job_dir_anchor.v1");
+    if (!assign_or_confirm_policy_training_replay_artifact_identity(
+            &contract->policy_execution_replay_job_dir_digest,
+            "policy_execution_replay_job_dir_digest", replay_job_dir_digest,
+            err)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_range_mirror(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_RANGE_MIRROR_MISMATCH: contract " +
+             std::string(field_name) + "=" + current +
+             " but training_range_digest derives " + expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_range_mirrors(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string training_range =
+      trim_ascii(contract->training_range_digest);
+  if (training_range.empty()) {
+    return true;
+  }
+  return assign_or_confirm_policy_training_range_mirror(
+             &contract->normalization_fit_range_digest,
+             "normalization_fit_range_digest", training_range, err) &&
+         assign_or_confirm_policy_training_range_mirror(
+             &contract->replay_buffer_source_range_digest,
+             "replay_buffer_source_range_digest", training_range, err);
+}
+
+[[nodiscard]] bool parse_policy_training_anchor_range_digest(
+    const std::string &digest, std::string_view split_role, std::int64_t *begin,
+    std::int64_t *end) {
+  const std::string trimmed = trim_ascii(digest);
+  const std::string prefix =
+      "policy_training_range_" + std::string(split_role) + "_anchor_";
+  constexpr std::string_view suffix = "_v1";
+  if (trimmed.rfind(prefix, 0) != 0 || trimmed.size() <= prefix.size() ||
+      trimmed.compare(trimmed.size() - suffix.size(), suffix.size(), suffix) !=
+          0) {
+    return false;
+  }
+  const std::string body = trimmed.substr(
+      prefix.size(), trimmed.size() - prefix.size() - suffix.size());
+  const std::size_t separator = body.find('_');
+  if (separator == std::string::npos ||
+      body.find('_', separator + 1) != std::string::npos) {
+    return false;
+  }
+  std::int64_t parsed_begin = 0;
+  std::int64_t parsed_end = 0;
+  if (!parse_int64(body.substr(0, separator), &parsed_begin) ||
+      !parse_int64(body.substr(separator + 1), &parsed_end) ||
+      parsed_begin < 0 || parsed_end <= parsed_begin) {
+    return false;
+  }
+  if (begin != nullptr) {
+    *begin = parsed_begin;
+  }
+  if (end != nullptr) {
+    *end = parsed_end;
+  }
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_anchor_mirror(
+    std::int64_t *field, bool *field_bound, std::string_view field_name,
+    std::int64_t expected, std::string_view owner, std::string *err) {
+  if (field == nullptr || field_bound == nullptr) {
+    return true;
+  }
+  if (!*field_bound) {
+    *field = expected;
+    *field_bound = true;
+    return true;
+  }
+  if (*field != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_TARGET_RANGE_MISMATCH: contract " +
+             std::string(field_name) + "=" + std::to_string(*field) + " but " +
+             std::string(owner) + " derives " + std::to_string(expected);
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_target_range_from_validation(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  std::int64_t begin = 0;
+  std::int64_t end = 0;
+  if (!parse_policy_training_anchor_range_digest(
+          contract->validation_range_digest, "validation", &begin, &end)) {
+    return true;
+  }
+  return assign_or_confirm_policy_training_anchor_mirror(
+             &contract->policy_execution_target_anchor_begin,
+             &contract->policy_execution_target_anchor_begin_bound,
+             "policy_execution_target_anchor_begin", begin,
+             "validation_range_digest", err) &&
+         assign_or_confirm_policy_training_anchor_mirror(
+             &contract->policy_execution_target_anchor_end_exclusive,
+             &contract->policy_execution_target_anchor_end_exclusive_bound,
+             "policy_execution_target_anchor_end_exclusive", end,
+             "validation_range_digest", err);
+}
+
+[[nodiscard]] bool
+canonicalize_policy_training_embargo_window_from_target_range(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  if (!contract->policy_execution_target_anchor_begin_bound ||
+      !contract->policy_execution_target_anchor_end_exclusive_bound) {
+    return true;
+  }
+  if (contract->embargo_purged_window_anchor_range_bound) {
+    return true;
+  }
+  const std::int64_t begin = contract->policy_execution_target_anchor_begin;
+  const std::int64_t end =
+      contract->policy_execution_target_anchor_end_exclusive;
+  contract->embargo_purged_window_anchor_begin = begin;
+  contract->embargo_purged_window_anchor_end_exclusive = end;
+  contract->embargo_purged_window_anchor_range_bound = true;
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_runtime_default(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_RUNTIME_DEFAULT_MISMATCH: contract " +
+             std::string(field_name) + "=" + current + " but Runtime derives " +
+             expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_causal_embargo_defaults(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  if (!assign_or_confirm_policy_training_runtime_default(
+          &contract->causal_purged_embargo_policy_fingerprint,
+          "causal_purged_embargo_policy_fingerprint",
+          cuwacunu::hero::runtime::k_policy_training_purged_embargo_policy_v1,
+          err)) {
+    return false;
+  }
+  return assign_or_confirm_policy_training_runtime_default(
+      &contract->embargo_policy_fingerprint, "embargo_policy_fingerprint",
+      contract->causal_purged_embargo_policy_fingerprint, err);
+}
+
+[[nodiscard]] std::string fresh_spawn_parent_checkpoint_digest(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract) {
+  std::ostringstream seed;
+  seed << trim_ascii(contract.policy_id) << "|"
+       << trim_ascii(contract.policy_kind) << "|"
+       << trim_ascii(contract.policy_family_id) << "|"
+       << trim_ascii(contract.policy_checkpoint_schema_id);
+  return cuwacunu::hero::marshal::marshal_digest_for_text(
+      "policy_training.fresh_spawn.parent_checkpoint.v1", seed.str());
+}
+
+[[nodiscard]] std::string fresh_spawn_parent_policy_provenance_digest(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract) {
+  std::ostringstream seed;
+  seed << trim_ascii(contract.policy_id) << "|"
+       << trim_ascii(contract.graph_order_fingerprint) << "|"
+       << trim_ascii(contract.source_cursor_token) << "|"
+       << trim_ascii(contract.split_policy_fingerprint) << "|"
+       << trim_ascii(contract.policy_execution_no_lookahead_contract_digest);
+  return cuwacunu::hero::marshal::marshal_digest_for_text(
+      "policy_training.fresh_spawn.parent_policy_provenance.v1", seed.str());
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_runtime_int_bound_default(
+    std::int64_t *field, bool *field_bound, std::string_view field_name,
+    std::int64_t expected, std::string *err) {
+  if (field == nullptr || field_bound == nullptr) {
+    return true;
+  }
+  if (!*field_bound) {
+    *field = expected;
+    *field_bound = true;
+    return true;
+  }
+  if (*field != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_RUNTIME_DEFAULT_MISMATCH: contract " +
+             std::string(field_name) + "=" + std::to_string(*field) +
+             " but Runtime derives " + std::to_string(expected);
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_fresh_spawn_parent_defaults(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  if (!cuwacunu::hero::runtime::policy_training_requires_ppo_artifact_contract(
+          *contract) ||
+      trim_ascii(contract->resume_mode) != "fresh_spawn") {
+    return true;
+  }
+
+  const std::string parent_checkpoint =
+      fresh_spawn_parent_checkpoint_digest(*contract);
+  const std::string parent_provenance =
+      fresh_spawn_parent_policy_provenance_digest(*contract);
+  if (!assign_or_confirm_policy_training_runtime_default(
+          &contract->parent_checkpoint_digest, "parent_checkpoint_digest",
+          parent_checkpoint, err) ||
+      !assign_or_confirm_policy_training_runtime_default(
+          &contract->parent_policy_generation_id, "parent_policy_generation_id",
+          "policy_generation_seed_v1", err) ||
+      !assign_or_confirm_policy_training_runtime_default(
+          &contract->parent_policy_generation_vector_digest,
+          "parent_policy_generation_vector_digest",
+          "generation_vector_seed_policy_v1", err) ||
+      !assign_or_confirm_policy_training_runtime_default(
+          &contract->parent_policy_provenance_closure_digest,
+          "parent_policy_provenance_closure_digest", parent_provenance, err)) {
+    return false;
+  }
+
+  contract->parent_policy_influence_complete = true;
+  return assign_or_confirm_policy_training_runtime_int_bound_default(
+             &contract->parent_policy_influence_anchor_begin_min,
+             &contract->parent_policy_influence_anchor_begin_min_bound,
+             "parent_policy_influence_anchor_begin_min", 0, err) &&
+         assign_or_confirm_policy_training_runtime_int_bound_default(
+             &contract->parent_policy_influence_anchor_end_exclusive_max,
+             &contract->parent_policy_influence_anchor_end_exclusive_max_bound,
+             "parent_policy_influence_anchor_end_exclusive_max", 0, err) &&
+         assign_or_confirm_policy_training_runtime_int_bound_default(
+             &contract
+                  ->parent_policy_label_or_reward_availability_end_exclusive_max,
+             &contract
+                  ->parent_policy_label_or_reward_availability_end_exclusive_max_bound,
+             "parent_policy_label_or_reward_availability_end_exclusive_max", 0,
+             err) &&
+         assign_or_confirm_policy_training_runtime_int_bound_default(
+             &contract->parent_policy_valid_from_anchor,
+             &contract->parent_policy_valid_from_anchor_bound,
+             "parent_policy_valid_from_anchor", 0, err);
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_parent_input_mirror(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_PARENT_INPUT_MIRROR_MISMATCH: contract " +
+          std::string(field_name) + "=" + current +
+          " but parent replay environment identity derives " + expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_parent_input_mirrors(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  return assign_or_confirm_policy_training_parent_input_mirror(
+             &contract
+                  ->policy_execution_input_parent_replay_environment_fact_digest,
+             "policy_execution_input_parent_replay_environment_fact_digest",
+             trim_ascii(contract->parent_replay_environment_fact_digest),
+             err) &&
+         assign_or_confirm_policy_training_parent_input_mirror(
+             &contract
+                  ->policy_execution_input_parent_replay_environment_report_digest,
+             "policy_execution_input_parent_replay_environment_report_digest",
+             trim_ascii(contract->parent_replay_environment_report_digest),
+             err);
+}
+
+void append_unique_policy_execution_consumed_artifact(
+    std::vector<std::string> *values, const std::string &value) {
+  if (values == nullptr) {
+    return;
+  }
+  const std::string trimmed = trim_ascii(value);
+  if (trimmed.empty()) {
+    return;
+  }
+  if (std::find(values->begin(), values->end(), trimmed) == values->end()) {
+    values->push_back(trimmed);
+  }
+}
+
+[[nodiscard]] bool canonicalize_policy_execution_consumed_artifacts(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  if (trim_ascii(contract->policy_execution_no_lookahead_certificate_digest)
+          .empty() &&
+      trim_ascii(contract->policy_execution_provenance_closure_digest)
+          .empty()) {
+    return true;
+  }
+
+  std::vector<std::string> expected;
+  append_unique_policy_execution_consumed_artifact(
+      &expected,
+      contract->policy_execution_input_parent_forecast_eval_fact_digest);
+  append_unique_policy_execution_consumed_artifact(
+      &expected,
+      contract->policy_execution_input_parent_forecast_artifact_digest);
+  append_unique_policy_execution_consumed_artifact(
+      &expected, contract->parent_observer_belief_fact_digest);
+  if (!cuwacunu::hero::runtime::policy_kind_is_ppo_adapter(
+          contract->policy_kind, contract->ppo_policy_artifact_contract_id)) {
+    append_unique_policy_execution_consumed_artifact(
+        &expected, contract->parent_allocation_engine_fact_digest);
+  }
+  append_unique_policy_execution_consumed_artifact(
+      &expected,
+      contract->policy_execution_input_parent_replay_environment_fact_digest);
+  append_unique_policy_execution_consumed_artifact(
+      &expected,
+      contract->policy_execution_input_parent_replay_environment_report_digest);
+  append_unique_policy_execution_consumed_artifact(
+      &expected, contract->policy_execution_replay_job_dir_digest);
+  append_unique_policy_execution_consumed_artifact(
+      &expected, contract->certified_replay_bank_manifest_digest);
+  append_unique_policy_execution_consumed_artifact(
+      &expected, contract->policy_experience_set_digest);
+  if (expected.empty()) {
+    return true;
+  }
+
+  std::vector<std::string> current =
+      split_csv(contract->policy_execution_consumed_artifact_digests);
+  if (current.empty()) {
+    contract->policy_execution_consumed_artifact_digests =
+        csv_from_strings(expected);
+    return true;
+  }
+  for (const std::string &artifact : expected) {
+    if (std::find(current.begin(), current.end(), artifact) == current.end()) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_EXECUTION_CONSUMED_ARTIFACTS_MISMATCH: "
+               "contract policy_execution_consumed_artifact_digests is missing "
+               "derived artifact " +
+               artifact;
+      }
+      return false;
+    }
+  }
+  contract->policy_execution_consumed_artifact_digests =
+      csv_from_strings(current);
+  return true;
+}
+
+void append_unique_policy_execution_consumed_checkpoint(
+    std::vector<std::string> *values, const std::string &value) {
+  if (values == nullptr) {
+    return;
+  }
+  const std::string trimmed = trim_ascii(value);
+  if (trimmed.empty()) {
+    return;
+  }
+  if (std::find(values->begin(), values->end(), trimmed) == values->end()) {
+    values->push_back(trimmed);
+  }
+}
+
+[[nodiscard]] bool canonicalize_policy_execution_consumed_checkpoints(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  if (trim_ascii(contract->policy_execution_no_lookahead_certificate_digest)
+          .empty() &&
+      trim_ascii(contract->policy_execution_provenance_closure_digest)
+          .empty()) {
+    return true;
+  }
+
+  std::vector<std::string> expected;
+  append_unique_policy_execution_consumed_checkpoint(
+      &expected, contract->bundle_representation_checkpoint_digest);
+  append_unique_policy_execution_consumed_checkpoint(
+      &expected, contract->bundle_mdn_checkpoint_digest);
+  if (expected.empty()) {
+    return true;
+  }
+
+  std::vector<std::string> current =
+      split_csv(contract->policy_execution_consumed_checkpoint_digests);
+  if (current.empty()) {
+    contract->policy_execution_consumed_checkpoint_digests =
+        csv_from_strings(expected);
+    return true;
+  }
+  for (const std::string &checkpoint : expected) {
+    if (std::find(current.begin(), current.end(), checkpoint) ==
+        current.end()) {
+      if (err != nullptr) {
+        *err =
+            "E_RUNTIME_POLICY_EXECUTION_CONSUMED_CHECKPOINTS_MISMATCH: "
+            "contract policy_execution_consumed_checkpoint_digests is missing "
+            "derived checkpoint " +
+            checkpoint;
+      }
+      return false;
+    }
+  }
+  contract->policy_execution_consumed_checkpoint_digests =
+      csv_from_strings(current);
+  return true;
+}
+
+void append_unique_policy_execution_consumed_generation_vector(
+    std::vector<std::string> *values, const std::string &value) {
+  if (values == nullptr) {
+    return;
+  }
+  const std::string trimmed = trim_ascii(value);
+  if (trimmed.empty()) {
+    return;
+  }
+  if (std::find(values->begin(), values->end(), trimmed) == values->end()) {
+    values->push_back(trimmed);
+  }
+}
+
+void append_unique_policy_execution_consumed_generation_vectors(
+    std::vector<std::string> *values, const std::string &csv) {
+  for (const std::string &value : split_csv(csv)) {
+    append_unique_policy_execution_consumed_generation_vector(values, value);
+  }
+}
+
+[[nodiscard]] bool canonicalize_policy_execution_consumed_generation_vectors(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  if (trim_ascii(contract->policy_execution_no_lookahead_certificate_digest)
+          .empty() &&
+      trim_ascii(contract->policy_execution_provenance_closure_digest)
+          .empty()) {
+    return true;
+  }
+
+  std::vector<std::string> expected;
+  append_unique_policy_execution_consumed_generation_vector(
+      &expected, contract->bundle_representation_generation_vector_digest);
+  append_unique_policy_execution_consumed_generation_vector(
+      &expected, contract->bundle_mdn_generation_vector_digest);
+
+  const std::string replay_job_dir_text = trim_ascii(contract->replay_job_dir);
+  if (!replay_job_dir_text.empty()) {
+    const auto forecast_fact = parse_kv_file(fs::path(replay_job_dir_text) /
+                                             "lattice.forecast_eval.fact");
+    std::string forecast_parent_generation_vectors;
+    if (kv_get_trimmed(forecast_fact,
+                       "influence_parent_generation_vector_digests",
+                       &forecast_parent_generation_vectors)) {
+      append_unique_policy_execution_consumed_generation_vectors(
+          &expected, forecast_parent_generation_vectors);
+    }
+    std::string forecast_producer_generation_vector;
+    if (kv_get_trimmed(forecast_fact,
+                       "influence_producer_generation_vector_digest",
+                       &forecast_producer_generation_vector)) {
+      append_unique_policy_execution_consumed_generation_vector(
+          &expected, forecast_producer_generation_vector);
+    }
+  }
+
+  if (expected.empty()) {
+    return true;
+  }
+
+  std::vector<std::string> current =
+      split_csv(contract->policy_execution_consumed_generation_vector_digests);
+  if (current.empty()) {
+    contract->policy_execution_consumed_generation_vector_digests =
+        csv_from_strings(expected);
+    return true;
+  }
+  for (const std::string &generation_vector : expected) {
+    if (std::find(current.begin(), current.end(), generation_vector) ==
+        current.end()) {
+      if (err != nullptr) {
+        *err =
+            "E_RUNTIME_POLICY_EXECUTION_CONSUMED_GENERATION_VECTORS_MISMATCH: "
+            "contract policy_execution_consumed_generation_vector_digests is "
+            "missing derived generation vector " +
+            generation_vector;
+      }
+      return false;
+    }
+  }
+  contract->policy_execution_consumed_generation_vector_digests =
+      csv_from_strings(current);
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_bundle_mirror(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_BUNDLE_GENERATION_MIRROR_MISMATCH: "
+             "contract " +
+             std::string(field_name) + "=" + current +
+             " but bundle inputs derive " + expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_bundle_generation_mirrors(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  return assign_or_confirm_policy_training_bundle_mirror(
+             &contract->mdn_trained_against_representation_generation_id,
+             "mdn_trained_against_representation_generation_id",
+             trim_ascii(contract->bundle_representation_generation_id), err) &&
+         assign_or_confirm_policy_training_bundle_mirror(
+             &contract->mdn_trained_against_representation_checkpoint_digest,
+             "mdn_trained_against_representation_checkpoint_digest",
+             trim_ascii(contract->bundle_representation_checkpoint_digest),
+             err) &&
+         assign_or_confirm_policy_training_bundle_mirror(
+             &contract
+                  ->mdn_trained_against_representation_generation_vector_digest,
+             "mdn_trained_against_representation_generation_vector_digest",
+             trim_ascii(
+                 contract->bundle_representation_generation_vector_digest),
+             err) &&
+         assign_or_confirm_policy_training_bundle_mirror(
+             &contract
+                  ->policy_trained_against_representation_generation_vector_digest,
+             "policy_trained_against_representation_generation_vector_digest",
+             trim_ascii(
+                 contract->bundle_representation_generation_vector_digest),
+             err) &&
+         assign_or_confirm_policy_training_bundle_mirror(
+             &contract->policy_trained_against_mdn_generation_vector_digest,
+             "policy_trained_against_mdn_generation_vector_digest",
+             trim_ascii(contract->bundle_mdn_generation_vector_digest), err);
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_output_anchor_mirror(
+    std::int64_t *field, bool *field_bound, std::string_view field_name,
+    std::int64_t expected, bool expected_bound, std::string *err) {
+  if (field == nullptr || field_bound == nullptr || !expected_bound) {
+    return true;
+  }
+  if (!*field_bound) {
+    *field = expected;
+    *field_bound = true;
+    return true;
+  }
+  if (*field != expected) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_OUTPUT_ANCHOR_MIRROR_MISMATCH: contract " +
+          std::string(field_name) + "=" + std::to_string(*field) +
+          " but policy execution target range derives " +
+          std::to_string(expected);
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_output_anchor_mirrors(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  return assign_or_confirm_policy_training_output_anchor_mirror(
+             &contract->policy_output_fit_anchor_begin,
+             &contract->policy_output_fit_anchor_begin_bound,
+             "policy_output_fit_anchor_begin",
+             contract->policy_execution_target_anchor_begin,
+             contract->policy_execution_target_anchor_begin_bound, err) &&
+         assign_or_confirm_policy_training_output_anchor_mirror(
+             &contract->policy_output_fit_anchor_end_exclusive,
+             &contract->policy_output_fit_anchor_end_exclusive_bound,
+             "policy_output_fit_anchor_end_exclusive",
+             contract->policy_execution_target_anchor_end_exclusive,
+             contract->policy_execution_target_anchor_end_exclusive_bound,
+             err) &&
+         assign_or_confirm_policy_training_output_anchor_mirror(
+             &contract->policy_output_valid_from_anchor,
+             &contract->policy_output_valid_from_anchor_bound,
+             "policy_output_valid_from_anchor",
+             contract->policy_execution_target_anchor_end_exclusive,
+             contract->policy_execution_target_anchor_end_exclusive_bound, err);
+}
+
+[[nodiscard]] bool canonicalize_policy_training_execution_target_id(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  constexpr std::string_view expected = "policy_training_artifact_ready";
+  const std::string current = trim_ascii(contract->policy_execution_target_id);
+  if (current.empty()) {
+    contract->policy_execution_target_id = std::string(expected);
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_EXECUTION_TARGET_ID_MISMATCH: "
+             "contract policy_execution_target_id=" +
+             current + " but policy-training artifact readiness derives " +
+             std::string(expected);
+    }
+    return false;
+  }
+  contract->policy_execution_target_id = std::string(expected);
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_protocol_default(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PROTOCOL_DEFAULT_MISMATCH: contract " +
+             std::string(field_name) + "=" + current +
+             " but active protocol derives " + expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_no_lookahead_from_protocol(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path = trim_ascii(contract->config_path);
+  if (config_path.empty()) {
+    return true;
+  }
+
+  const auto protocol_path_raw = read_ini_value(
+      fs::path(config_path), "KIKIJYEBA", "kikijyeba_protocol_dsl_path");
+  if (!protocol_path_raw.has_value() ||
+      trim_ascii(*protocol_path_raw).empty()) {
+    return true;
+  }
+  const fs::path protocol_path =
+      resolve_against(fs::path(config_path), *protocol_path_raw);
+  std::string protocol_text;
+  std::string read_error;
+  if (!read_text_file(protocol_path, &protocol_text, &read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PROTOCOL_READ_FAILED: " + read_error;
+    }
+    return false;
+  }
+
+  try {
+    namespace protocol = cuwacunu::kikijyeba::protocol;
+    const auto variant =
+        protocol::decode_protocol_variant_from_dsl(protocol_text);
+    const std::string contract_protocol_id = trim_ascii(contract->protocol_id);
+    if (contract_protocol_id.empty()) {
+      contract->protocol_id = variant.protocol_id;
+    } else if (contract_protocol_id != variant.protocol_id) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_PROTOCOL_ID_MISMATCH: contract "
+               "protocol_id=" +
+               contract_protocol_id + " but active protocol is " +
+               variant.protocol_id;
+      }
+      return false;
+    }
+    if (policy_training_requires_ppo_artifact_contract(*contract)) {
+      if (!assign_or_confirm_policy_training_protocol_default(
+              &contract->bundle_representation_component_id,
+              "bundle_representation_component_id",
+              protocol::protocol_representation_family_name(
+                  variant.representation_family),
+              err) ||
+          !assign_or_confirm_policy_training_protocol_default(
+              &contract->bundle_mdn_component_id, "bundle_mdn_component_id",
+              variant.inference_family, err)) {
+        return false;
+      }
+    }
+    if (!protocol::protocol_no_lookahead_contract_declared(
+            variant.no_lookahead_contract)) {
+      return true;
+    }
+    const auto &no_lookahead = variant.no_lookahead_contract;
+    return assign_or_confirm_policy_training_protocol_default(
+               &contract->policy_execution_no_lookahead_certificate_schema,
+               "policy_execution_no_lookahead_certificate_schema",
+               no_lookahead.certificate_schema, err) &&
+           assign_or_confirm_policy_training_protocol_default(
+               &contract->policy_execution_no_lookahead_contract_digest,
+               "policy_execution_no_lookahead_contract_digest",
+               no_lookahead.contract_digest, err) &&
+           assign_or_confirm_policy_training_protocol_default(
+               &contract->parent_policy_no_lookahead_contract_digest,
+               "parent_policy_no_lookahead_contract_digest",
+               no_lookahead.contract_digest, err) &&
+           assign_or_confirm_policy_training_protocol_default(
+               &contract->parent_policy_influence_schema,
+               "parent_policy_influence_schema", no_lookahead.influence_schema,
+               err) &&
+           assign_or_confirm_policy_training_protocol_default(
+               &contract->policy_jkimyei_no_lookahead_contract_id,
+               "policy_jkimyei_no_lookahead_contract_id",
+               no_lookahead.contract_id, err) &&
+           assign_or_confirm_policy_training_protocol_default(
+               &contract->policy_jkimyei_no_lookahead_contract_digest,
+               "policy_jkimyei_no_lookahead_contract_digest",
+               no_lookahead.contract_digest, err) &&
+           assign_or_confirm_policy_training_protocol_default(
+               &contract->policy_jkimyei_component_order_contract_id,
+               "policy_jkimyei_component_order_contract_id",
+               no_lookahead.contract_id, err) &&
+           assign_or_confirm_policy_training_protocol_default(
+               &contract->policy_jkimyei_component_order_contract_digest,
+               "policy_jkimyei_component_order_contract_digest",
+               no_lookahead.contract_digest, err);
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string("E_RUNTIME_POLICY_TRAINING_PROTOCOL_DECODE_FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] bool canonicalize_policy_training_protocol_graph_identity(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path = trim_ascii(contract->config_path);
+  if (config_path.empty()) {
+    return true;
+  }
+
+  const bool needs_derivation =
+      trim_ascii(contract->protocol_contract_fingerprint).empty() ||
+      trim_ascii(contract->graph_order_fingerprint).empty();
+  try {
+    namespace protocol = cuwacunu::kikijyeba::protocol;
+    const auto bundle =
+        protocol::load_channel_graph_first_protocol_contract_from_config(
+            config_path);
+    const std::string protocol_contract_fingerprint =
+        protocol::channel_graph_first_protocol_contract_fingerprint(bundle);
+    const std::string graph_order_fingerprint =
+        bundle.source_plan.market_graph.computed_graph_order_fingerprint();
+    return assign_or_confirm_policy_training_protocol_default(
+               &contract->protocol_contract_fingerprint,
+               "protocol_contract_fingerprint", protocol_contract_fingerprint,
+               err) &&
+           assign_or_confirm_policy_training_protocol_default(
+               &contract->graph_order_fingerprint, "graph_order_fingerprint",
+               graph_order_fingerprint, err);
+  } catch (const std::exception &ex) {
+    if (needs_derivation) {
+      if (err != nullptr) {
+        *err = std::string("E_RUNTIME_POLICY_TRAINING_PROTOCOL_GRAPH_"
+                           "IDENTITY_DERIVE_FAILED: ") +
+               ex.what();
+      }
+      return false;
+    }
+    return true;
+  }
+}
+
+[[nodiscard]] std::string
+block_value_or_empty(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
+                     std::string_view key) {
+  const auto it = block.values.find(std::string(key));
+  return it == block.values.end() ? std::string{} : trim_ascii(it->second);
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_wave_default(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_MISMATCH: contract " +
+             std::string(field_name) + "=" + current +
+             " but active Runtime wave derives " + expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_wave_bool_default(
+    bool *field, std::string_view field_name, bool expected, std::string *err) {
+  if (field == nullptr) {
+    return true;
+  }
+  if (*field != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_MISMATCH: contract " +
+             std::string(field_name) + "=" + (*field ? "true" : "false") +
+             " but active Runtime wave derives " +
+             (expected ? "true" : "false");
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool parse_wave_bool_default(std::string value, bool *out,
+                                           std::string *err,
+                                           std::string_view field_name) {
+  value = lowercase_ascii(trim_ascii(value));
+  if (value == "true") {
+    *out = true;
+    return true;
+  }
+  if (value == "false") {
+    *out = false;
+    return true;
+  }
+  if (err != nullptr) {
+    *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_INVALID: active Runtime "
+           "wave " +
+           std::string(field_name) + " must be true or false";
+  }
+  return false;
+}
+
+[[nodiscard]] bool wave_settings_block_requests_policy_training(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
+  const std::string policy_id = block_value_or_empty(block, "POLICY_ID");
+  const std::string policy_kind = block_value_or_empty(block, "POLICY_KIND");
+  const std::string training_schedule_mode =
+      block_value_or_empty(block, "TRAINING_SCHEDULE_MODE");
+  const std::string causal_schedule_digest =
+      block_value_or_empty(block, "CAUSAL_SCHEDULE_DIGEST");
+  const std::string snapshot_family_digest =
+      block_value_or_empty(block, "SNAPSHOT_FAMILY_DIGEST");
+  const std::string early_stopping_policy_digest =
+      block_value_or_empty(block, "EARLY_STOPPING_POLICY_DIGEST");
+  const std::string hyperparameter_selection_policy_digest =
+      block_value_or_empty(block, "HYPERPARAMETER_SELECTION_POLICY_DIGEST");
+  const std::string selector_policy_digest =
+      block_value_or_empty(block, "SELECTOR_POLICY_DIGEST");
+  const std::string job_kind =
+      lowercase_ascii(block_value_or_empty(block, "JOB_KIND"));
+  return job_kind == "policy_training" || !policy_id.empty() ||
+         !policy_kind.empty() || !training_schedule_mode.empty() ||
+         !causal_schedule_digest.empty() || !snapshot_family_digest.empty() ||
+         !early_stopping_policy_digest.empty() ||
+         !hyperparameter_selection_policy_digest.empty() ||
+         !selector_policy_digest.empty();
+}
+
+[[nodiscard]] bool select_unique_policy_training_wave_settings_block_from_dsl(
+    const std::string &dsl_text,
+    cuwacunu::piaabo::parse::simple_kv::block_t *out, std::string *err) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto blocks = kv::parse_blocks(dsl_text);
+  kv::block_t selected{};
+  std::size_t match_count = 0;
+  std::vector<std::string> match_ids{};
+  for (const auto &block : blocks) {
+    if (block.name != "WAVE_SETTINGS" ||
+        !wave_settings_block_requests_policy_training(block)) {
+      continue;
+    }
+    selected = block;
+    ++match_count;
+    match_ids.push_back(block_value_or_empty(block, "WAVE_ID"));
+  }
+  if (match_count == 0) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_MISSING: Runtime wave "
+             "catalog has no policy-training WAVE_SETTINGS block";
+    }
+    return false;
+  }
+  if (match_count > 1) {
+    if (err != nullptr) {
+      std::ostringstream ids;
+      for (std::size_t i = 0; i < match_ids.size(); ++i) {
+        if (i > 0) {
+          ids << ",";
+        }
+        ids << match_ids[i];
+      }
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_AMBIGUOUS: Runtime wave "
+             "catalog has multiple policy-training WAVE_SETTINGS blocks: " +
+             ids.str();
+    }
+    return false;
+  }
+  if (out != nullptr) {
+    *out = std::move(selected);
+  }
+  return true;
+}
+
+[[nodiscard]] bool load_policy_training_wave_settings_block_from_config(
+    const fs::path &config_path,
+    cuwacunu::piaabo::parse::simple_kv::block_t *out, bool *found,
+    std::string *err) {
+  if (found != nullptr) {
+    *found = false;
+  }
+  const auto wave_path_raw =
+      read_ini_value(config_path, "HERO", "runtime_wave_dsl_path");
+  if (!wave_path_raw.has_value() || trim_ascii(*wave_path_raw).empty()) {
+    return true;
+  }
+  const fs::path wave_path = resolve_against(config_path, *wave_path_raw);
+  std::string wave_text;
+  std::string read_error;
+  if (!read_text_file(wave_path, &wave_text, &read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_READ_FAILED: " + read_error;
+    }
+    return false;
+  }
+
+  const auto wave_id_raw =
+      read_ini_value(config_path, "HERO", "runtime_wave_id");
+  const std::string wave_id =
+      wave_id_raw.has_value() ? trim_ascii(*wave_id_raw) : std::string{};
+  try {
+    auto block = cuwacunu::hero::runtime::settings::
+        selected_wave_settings_block_from_dsl(wave_text, wave_id);
+    if (!wave_settings_block_requests_policy_training(block) &&
+        !select_unique_policy_training_wave_settings_block_from_dsl(
+            wave_text, &block, err)) {
+      return false;
+    }
+    if (out != nullptr) {
+      *out = std::move(block);
+    }
+    if (found != nullptr) {
+      *found = true;
+    }
+    return true;
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string("E_RUNTIME_POLICY_TRAINING_WAVE_DECODE_FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] std::string policy_training_range_digest_from_split(
+    const lattice_split::lattice_split_t &split) {
+  return "policy_training_range_" +
+         std::string(exposure::exposure_split_role_name(split.role)) +
+         "_anchor_" + std::to_string(split.anchor_range.begin) + "_" +
+         std::to_string(split.anchor_range.end) + "_v1";
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_split_default(
+    std::string *field, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  if (field == nullptr || expected.empty()) {
+    return true;
+  }
+  const std::string current = trim_ascii(*field);
+  if (current.empty()) {
+    *field = expected;
+    return true;
+  }
+  if (current != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_SPLIT_DEFAULT_MISMATCH: contract " +
+             std::string(field_name) + "=" + current +
+             " but Runtime wave/Lattice split catalog derives " + expected;
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool load_lattice_split_policy_from_config(
+    const fs::path &config_path, lattice_split::lattice_split_policy_t *out,
+    std::string *err) {
+  const auto splits_path_raw =
+      read_ini_value(config_path, "HERO", "lattice_splits_dsl_path");
+  if (!splits_path_raw.has_value() || trim_ascii(*splits_path_raw).empty()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_SPLIT_CONFIG_MISSING: missing "
+             "[HERO].lattice_splits_dsl_path in " +
+             config_path.string();
+    }
+    return false;
+  }
+  const fs::path splits_path = resolve_against(config_path, *splits_path_raw);
+  try {
+    auto policy =
+        lattice_split::load_lattice_split_policy_from_file(splits_path);
+    if (out != nullptr) {
+      *out = std::move(policy);
+    }
+    return true;
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string("E_RUNTIME_POLICY_TRAINING_SPLIT_DECODE_FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_split_range(
+    const lattice_split::lattice_split_policy_t &policy,
+    const std::string &split_id, exposure::exposure_split_role_t expected_role,
+    std::string *field, std::string_view field_name, std::string *err) {
+  const auto *split = policy.find_split(split_id);
+  if (split == nullptr) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_SPLIT_MISSING: Runtime wave " +
+             std::string(field_name) + " references unknown split " + split_id;
+    }
+    return false;
+  }
+  if (split->role != expected_role) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_SPLIT_ROLE_MISMATCH: Runtime wave " +
+             std::string(field_name) + " references split " + split_id +
+             " with role " + exposure::exposure_split_role_name(split->role) +
+             " but expected " +
+             exposure::exposure_split_role_name(expected_role);
+    }
+    return false;
+  }
+  return assign_or_confirm_policy_training_split_default(
+      field, field_name, policy_training_range_digest_from_split(*split), err);
+}
+
+[[nodiscard]] bool canonicalize_policy_training_split_defaults_from_config(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path_text = trim_ascii(contract->config_path);
+  if (config_path_text.empty()) {
+    return true;
+  }
+  const fs::path config_path(config_path_text);
+  cuwacunu::piaabo::parse::simple_kv::block_t block{};
+  bool found = false;
+  if (!load_policy_training_wave_settings_block_from_config(config_path, &block,
+                                                            &found, err)) {
+    return false;
+  }
+  if (!found || !wave_settings_block_requests_policy_training(block)) {
+    return true;
+  }
+
+  const std::string train_split = block_value_or_empty(block, "TRAIN_SPLIT");
+  const std::string validation_split =
+      block_value_or_empty(block, "VALIDATION_SPLIT");
+  const std::string test_split = block_value_or_empty(block, "TEST_SPLIT");
+  if (train_split.empty() && validation_split.empty() && test_split.empty()) {
+    return true;
+  }
+  if (train_split.empty() || validation_split.empty() || test_split.empty()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_SPLIT_BINDING_INCOMPLETE: policy-"
+             "training Runtime wave must bind TRAIN_SPLIT, VALIDATION_SPLIT, "
+             "and TEST_SPLIT together";
+    }
+    return false;
+  }
+
+  lattice_split::lattice_split_policy_t policy{};
+  if (!load_lattice_split_policy_from_config(config_path, &policy, err)) {
+    return false;
+  }
+  if (!assign_or_confirm_policy_training_split_default(
+          &contract->split_policy_fingerprint, "split_policy_fingerprint",
+          lattice_split::lattice_split_policy_fingerprint(policy), err)) {
+    return false;
+  }
+  return assign_or_confirm_policy_training_split_range(
+             policy, train_split, exposure::exposure_split_role_t::train,
+             &contract->training_range_digest, "training_range_digest", err) &&
+         assign_or_confirm_policy_training_split_range(
+             policy, validation_split,
+             exposure::exposure_split_role_t::validation,
+             &contract->validation_range_digest, "validation_range_digest",
+             err) &&
+         assign_or_confirm_policy_training_split_range(
+             policy, test_split, exposure::exposure_split_role_t::test,
+             &contract->test_range_digest, "test_range_digest", err);
+}
+
+[[nodiscard]] bool canonicalize_policy_training_wave_defaults_from_config(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path = trim_ascii(contract->config_path);
+  if (config_path.empty()) {
+    return true;
+  }
+
+  cuwacunu::piaabo::parse::simple_kv::block_t block{};
+  bool found = false;
+  if (!load_policy_training_wave_settings_block_from_config(
+          fs::path(config_path), &block, &found, err)) {
+    return false;
+  }
+  if (!found) {
+    return true;
+  }
+  try {
+    const std::string policy_id = block_value_or_empty(block, "POLICY_ID");
+    const std::string policy_kind = block_value_or_empty(block, "POLICY_KIND");
+    const std::string training_schedule_mode =
+        block_value_or_empty(block, "TRAINING_SCHEDULE_MODE");
+    if (!wave_settings_block_requests_policy_training(block)) {
+      return true;
+    }
+
+    if (!assign_or_confirm_policy_training_wave_default(
+            &contract->policy_id, "policy_id", policy_id, err) ||
+        !assign_or_confirm_policy_training_wave_default(
+            &contract->policy_kind, "policy_kind", policy_kind, err) ||
+        !assign_or_confirm_policy_training_wave_default(
+            &contract->training_schedule_mode, "training_schedule_mode",
+            training_schedule_mode, err)) {
+      return false;
+    }
+    if (!assign_or_confirm_policy_training_wave_default(
+            &contract->causal_schedule_digest, "causal_schedule_digest",
+            block_value_or_empty(block, "CAUSAL_SCHEDULE_DIGEST"), err) ||
+        !assign_or_confirm_policy_training_wave_default(
+            &contract->snapshot_family_digest, "snapshot_family_digest",
+            block_value_or_empty(block, "SNAPSHOT_FAMILY_DIGEST"), err) ||
+        !assign_or_confirm_policy_training_wave_default(
+            &contract->early_stopping_policy_digest,
+            "early_stopping_policy_digest",
+            block_value_or_empty(block, "EARLY_STOPPING_POLICY_DIGEST"), err) ||
+        !assign_or_confirm_policy_training_wave_default(
+            &contract->hyperparameter_selection_policy_digest,
+            "hyperparameter_selection_policy_digest",
+            block_value_or_empty(block,
+                                 "HYPERPARAMETER_SELECTION_POLICY_DIGEST"),
+            err) ||
+        !assign_or_confirm_policy_training_wave_default(
+            &contract->selector_policy_digest, "selector_policy_digest",
+            block_value_or_empty(block, "SELECTOR_POLICY_DIGEST"), err)) {
+      return false;
+    }
+
+    const std::string live_execution_allowed =
+        block_value_or_empty(block, "LIVE_EXECUTION_ALLOWED");
+    if (!live_execution_allowed.empty()) {
+      bool expected_live_execution_allowed = false;
+      if (!parse_wave_bool_default(live_execution_allowed,
+                                   &expected_live_execution_allowed, err,
+                                   "LIVE_EXECUTION_ALLOWED")) {
+        return false;
+      }
+      if (!assign_or_confirm_policy_training_wave_bool_default(
+              &contract->live_execution_allowed, "live_execution_allowed",
+              expected_live_execution_allowed, err)) {
+        return false;
+      }
+    }
+    return true;
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string("E_RUNTIME_POLICY_TRAINING_WAVE_DECODE_FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] std::string policy_training_double_for_error(double value) {
+  std::ostringstream out;
+  out << std::setprecision(17) << value;
+  return out.str();
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_environment_double_default(
+    double *field, bool *field_bound, std::string_view field_name,
+    double expected, std::string *err) {
+  if (field == nullptr || field_bound == nullptr || !std::isfinite(expected) ||
+      expected < 0.0) {
+    return true;
+  }
+  if (!*field_bound) {
+    *field = expected;
+    *field_bound = true;
+    return true;
+  }
+  if (std::abs(*field - expected) > 1.0e-12) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_MISMATCH: contract " +
+          std::string(field_name) + "=" +
+          policy_training_double_for_error(*field) +
+          " but configured Environment rollout profile derives " +
+          policy_training_double_for_error(expected);
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool
+assign_or_confirm_policy_training_environment_replay_double_default(
+    double *field, bool *field_bound, std::string_view field_name,
+    double expected, std::string *err) {
+  if (field == nullptr || field_bound == nullptr || !std::isfinite(expected) ||
+      expected < 0.0) {
+    return true;
+  }
+  if (!*field_bound) {
+    *field = expected;
+    *field_bound = true;
+    return true;
+  }
+  if (std::abs(*field - expected) > 1.0e-12) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_MISMATCH: contract " +
+          std::string(field_name) + "=" +
+          policy_training_double_for_error(*field) +
+          " but configured Environment replay contract derives " +
+          policy_training_double_for_error(expected);
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_environment_int_default(
+    std::int64_t *field, bool *field_bound, std::string_view field_name,
+    std::int64_t expected, std::string *err) {
+  if (field == nullptr || field_bound == nullptr || expected <= 0) {
+    return true;
+  }
+  if (!*field_bound) {
+    *field = expected;
+    *field_bound = true;
+    return true;
+  }
+  if (*field != expected) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_MISMATCH: contract " +
+          std::string(field_name) + "=" + std::to_string(*field) +
+          " but configured Environment rollout profile derives " +
+          std::to_string(expected);
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_environment_execution_defaults(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path_text = trim_ascii(contract->config_path);
+  if (config_path_text.empty()) {
+    return true;
+  }
+  policy_training_environment_rollout_defaults_t defaults;
+  if (!configured_environment_rollout_defaults(fs::path(config_path_text),
+                                               &defaults, err)) {
+    return false;
+  }
+  if (!configured_replay_environment_contract_defaults(
+          fs::path(config_path_text), &defaults, err)) {
+    return false;
+  }
+  if (defaults.linear_transaction_cost_rate.has_value() &&
+      !assign_or_confirm_policy_training_environment_double_default(
+          &contract->linear_transaction_cost_rate,
+          &contract->linear_transaction_cost_rate_bound,
+          "linear_transaction_cost_rate",
+          *defaults.linear_transaction_cost_rate, err)) {
+    return false;
+  }
+  if (defaults.initial_equity_numeraire.has_value() &&
+      !assign_or_confirm_policy_training_environment_replay_double_default(
+          &contract->initial_equity_numeraire,
+          &contract->initial_equity_numeraire_bound, "initial_equity_numeraire",
+          *defaults.initial_equity_numeraire, err)) {
+    return false;
+  }
+  if (defaults.max_node_weight.has_value() &&
+      !assign_or_confirm_policy_training_environment_replay_double_default(
+          &contract->max_node_weight, &contract->max_node_weight_bound,
+          "max_node_weight", *defaults.max_node_weight, err)) {
+    return false;
+  }
+  if (defaults.max_turnover_l1.has_value() &&
+      !assign_or_confirm_policy_training_environment_replay_double_default(
+          &contract->max_turnover_l1, &contract->max_turnover_l1_bound,
+          "max_turnover_l1", *defaults.max_turnover_l1, err)) {
+    return false;
+  }
+  if (defaults.max_parallel_jobs.has_value() &&
+      !assign_or_confirm_policy_training_environment_int_default(
+          &contract->max_parallel_jobs, &contract->max_parallel_jobs_bound,
+          "max_parallel_jobs", *defaults.max_parallel_jobs, err)) {
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_jkimyei_int_default(
+    std::int64_t *field, bool *field_bound, std::string_view field_name,
+    std::int64_t expected, std::string *err) {
+  if (field == nullptr || field_bound == nullptr || expected <= 0) {
+    return true;
+  }
+  if (!*field_bound) {
+    *field = expected;
+    *field_bound = true;
+    return true;
+  }
+  if (*field != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_MISMATCH: contract " +
+             std::string(field_name) + "=" + std::to_string(*field) +
+             " but configured graph-node allocation jkimyei derives " +
+             std::to_string(expected);
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_jkimyei_required_int(
+    std::int64_t *field, std::string_view field_name, std::int64_t expected,
+    std::string *err) {
+  if (field == nullptr || expected <= 0) {
+    return true;
+  }
+  if (*field <= 0) {
+    *field = expected;
+    return true;
+  }
+  if (*field != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_MISMATCH: contract " +
+             std::string(field_name) + "=" + std::to_string(*field) +
+             " but configured graph-node allocation jkimyei derives " +
+             std::to_string(expected);
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_jkimyei_double_default(
+    double *field, bool *field_bound, std::string_view field_name,
+    double expected, std::string *err) {
+  if (field == nullptr || field_bound == nullptr || expected < 0.0) {
+    return true;
+  }
+  if (!*field_bound) {
+    *field = expected;
+    *field_bound = true;
+    return true;
+  }
+  if (std::abs(*field - expected) > 1.0e-12) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_MISMATCH: contract " +
+             std::string(field_name) + "=" +
+             policy_training_double_for_error(*field) +
+             " but configured graph-node allocation jkimyei derives " +
+             policy_training_double_for_error(expected);
+    }
+    return false;
+  }
+  *field = expected;
+  return true;
+}
+
+[[nodiscard]] bool canonicalize_policy_training_jkimyei_ppo_defaults(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  const std::string config_path_text = trim_ascii(contract->config_path);
+  if (config_path_text.empty()) {
+    return true;
+  }
+  const fs::path config_path(config_path_text);
+  const auto policy_jkimyei_path =
+      configured_graph_node_allocation_jkimyei_path(config_path);
+  if (!policy_jkimyei_path.has_value()) {
+    return true;
+  }
+  try {
+    namespace training = cuwacunu::jkimyei::training;
+    namespace protocol = cuwacunu::kikijyeba::protocol;
+    namespace graph_policy =
+        cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
+
+    auto defaults = training::canonical_training_contract_defaults();
+    const auto policy_dsl_path =
+        configured_graph_node_allocation_dsl_path(config_path);
+    if (policy_dsl_path.has_value()) {
+      std::string policy_dsl_text;
+      std::string read_error;
+      if (!read_text_file(*policy_dsl_path, &policy_dsl_text, &read_error)) {
+        if (err != nullptr) {
+          *err = "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_READ_FAILED: " +
+                 read_error;
+        }
+        return false;
+      }
+      const auto policy_spec =
+          graph_policy::decode_graph_node_allocation_spec_from_dsl(
+              policy_dsl_text);
+      defaults.component_assembly_id = policy_spec.component_assembly_id;
+    }
+
+    const auto protocol_dsl_path = configured_policy_source_path(
+        config_path, "KIKIJYEBA", "kikijyeba_protocol_dsl_path");
+    if (protocol_dsl_path.has_value()) {
+      std::string protocol_dsl_text;
+      std::string read_error;
+      if (!read_text_file(*protocol_dsl_path, &protocol_dsl_text,
+                          &read_error)) {
+        if (err != nullptr) {
+          *err = "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_READ_FAILED: " +
+                 read_error;
+        }
+        return false;
+      }
+      const auto variant =
+          protocol::decode_protocol_variant_from_dsl(protocol_dsl_text);
+      if (protocol::protocol_no_lookahead_contract_declared(
+              variant.no_lookahead_contract)) {
+        defaults.no_lookahead_contract_id =
+            variant.no_lookahead_contract.contract_id;
+        defaults.no_lookahead_contract_digest =
+            variant.no_lookahead_contract.contract_digest;
+        defaults.component_order_contract_id =
+            variant.no_lookahead_contract.contract_id;
+        defaults.component_order_contract_digest =
+            variant.no_lookahead_contract.contract_digest;
+      }
+    }
+
+    std::string policy_jkimyei_text;
+    std::string read_error;
+    if (!read_text_file(*policy_jkimyei_path, &policy_jkimyei_text,
+                        &read_error)) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_READ_FAILED: " +
+               read_error;
+      }
+      return false;
+    }
+    const auto spec = training::decode_training_run_spec_from_dsl(
+        policy_jkimyei_text, defaults);
+    if (spec.task !=
+        training::training_task_t::policy_graph_node_allocation_ppo_v0) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_DECODE_FAILED: "
+               "configured graph-node allocation jkimyei is not PPO V0";
+      }
+      return false;
+    }
+    return assign_or_confirm_policy_training_jkimyei_double_default(
+               &contract->ppo_gamma, &contract->ppo_gamma_bound, "ppo_gamma",
+               spec.ppo_gamma, err) &&
+           assign_or_confirm_policy_training_jkimyei_double_default(
+               &contract->ppo_gae_lambda, &contract->ppo_gae_lambda_bound,
+               "ppo_gae_lambda", spec.ppo_gae_lambda, err) &&
+           assign_or_confirm_policy_training_jkimyei_double_default(
+               &contract->ppo_clip_epsilon, &contract->ppo_clip_epsilon_bound,
+               "ppo_clip_epsilon", spec.ppo_clip_epsilon, err) &&
+           assign_or_confirm_policy_training_jkimyei_double_default(
+               &contract->ppo_target_kl, &contract->ppo_target_kl_bound,
+               "ppo_target_kl", spec.ppo_target_kl, err) &&
+           assign_or_confirm_policy_training_jkimyei_double_default(
+               &contract->ppo_learning_rate, &contract->ppo_learning_rate_bound,
+               "ppo_learning_rate", spec.learning_rate, err) &&
+           assign_or_confirm_policy_training_jkimyei_double_default(
+               &contract->ppo_entropy_coeff, &contract->ppo_entropy_coeff_bound,
+               "ppo_entropy_coeff", spec.ppo_entropy_coeff, err) &&
+           assign_or_confirm_policy_training_jkimyei_double_default(
+               &contract->ppo_value_loss_coeff,
+               &contract->ppo_value_loss_coeff_bound, "ppo_value_loss_coeff",
+               spec.ppo_value_loss_coeff, err) &&
+           assign_or_confirm_policy_training_jkimyei_int_default(
+               &contract->ppo_minibatch_size,
+               &contract->ppo_minibatch_size_bound, "ppo_minibatch_size",
+               spec.batch_size, err) &&
+           assign_or_confirm_policy_training_jkimyei_double_default(
+               &contract->ppo_max_grad_norm, &contract->ppo_max_grad_norm_bound,
+               "ppo_max_grad_norm", spec.grad_clip_norm, err) &&
+           assign_or_confirm_policy_training_jkimyei_int_default(
+               &contract->ppo_epochs_per_rollout,
+               &contract->ppo_epochs_per_rollout_bound,
+               "ppo_epochs_per_rollout", spec.ppo_epochs_per_rollout, err) &&
+           assign_or_confirm_policy_training_jkimyei_int_default(
+               &contract->random_seed, &contract->random_seed_bound,
+               "random_seed", spec.seed, err) &&
+           assign_or_confirm_policy_training_jkimyei_required_int(
+               &contract->max_steps, "max_steps", spec.max_steps, err);
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string(
+                 "E_RUNTIME_POLICY_TRAINING_JKIMYEI_DEFAULT_DECODE_FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] bool ppo_config_digest_inputs_bound(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract) {
+  return contract.ppo_gamma_bound && contract.ppo_gae_lambda_bound &&
+         contract.ppo_clip_epsilon_bound && contract.ppo_target_kl_bound &&
+         contract.ppo_learning_rate_bound &&
+         contract.ppo_minibatch_size_bound &&
+         contract.ppo_epochs_per_rollout_bound;
+}
+
+[[nodiscard]] bool ppo_config_digest_inputs_valid(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract) {
+  return std::isfinite(contract.ppo_gamma) && contract.ppo_gamma > 0.0 &&
+         contract.ppo_gamma <= 1.0 && std::isfinite(contract.ppo_gae_lambda) &&
+         contract.ppo_gae_lambda >= 0.0 && contract.ppo_gae_lambda <= 1.0 &&
+         std::isfinite(contract.ppo_clip_epsilon) &&
+         contract.ppo_clip_epsilon > 0.0 &&
+         std::isfinite(contract.ppo_target_kl) &&
+         contract.ppo_target_kl > 0.0 &&
+         std::isfinite(contract.ppo_learning_rate) &&
+         contract.ppo_learning_rate > 0.0 && contract.ppo_minibatch_size > 0 &&
+         contract.ppo_epochs_per_rollout > 0;
+}
+
+[[nodiscard]] std::string ppo_config_digest_decimal_token(double value,
+                                                          int precision) {
+  std::ostringstream out;
+  out << std::fixed << std::setprecision(precision) << value;
+  std::string token = out.str();
+  std::replace(token.begin(), token.end(), '.', '_');
+  return token;
+}
+
+[[nodiscard]] std::string ppo_config_digest_from_bound_inputs(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract) {
+  std::ostringstream out;
+  out << "ppo_clip_gae.v1.gamma_"
+      << ppo_config_digest_decimal_token(contract.ppo_gamma, 2) << ".lambda_"
+      << ppo_config_digest_decimal_token(contract.ppo_gae_lambda, 2) << ".clip_"
+      << ppo_config_digest_decimal_token(contract.ppo_clip_epsilon, 2)
+      << ".target_kl_"
+      << ppo_config_digest_decimal_token(contract.ppo_target_kl, 2) << ".lr_"
+      << ppo_config_digest_decimal_token(contract.ppo_learning_rate, 5)
+      << ".minibatch_" << contract.ppo_minibatch_size << ".epochs_"
+      << contract.ppo_epochs_per_rollout;
+  return out.str();
+}
+
+[[nodiscard]] bool assign_or_confirm_policy_training_ppo_config_digest(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  if (!ppo_config_digest_inputs_bound(*contract) ||
+      !ppo_config_digest_inputs_valid(*contract)) {
+    return true;
+  }
+
+  const std::string expected = ppo_config_digest_from_bound_inputs(*contract);
+  const std::string supplied = trim_ascii(contract->ppo_config_digest);
+  if (supplied.empty()) {
+    contract->ppo_config_digest = expected;
+    return true;
+  }
+  if (supplied != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_CONFIG_DIGEST_NOT_CANONICAL: "
+             "contract ppo_config_digest=" +
+             supplied + " but bound PPO hyperparameters derive " + expected;
+    }
+    return false;
+  }
+  contract->ppo_config_digest = expected;
+  return true;
+}
+
+void apply_policy_training_request_fixed_contract_values(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract);
+
 [[nodiscard]] bool policy_training_contract_from_kv(
     const std::unordered_map<std::string, std::string> &map,
     cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
-    std::string *err) {
+    std::string *err, const fs::path &contract_path = {}) {
   if (contract == nullptr) {
     if (err) {
       *err = "policy training contract output pointer is null";
@@ -1607,6 +4635,15 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
   kv_set_string(map, "job_dir", &parsed.job_dir);
   kv_set_string(map, "report_path", &parsed.report_path);
   kv_set_string(map, "replay_job_dir", &parsed.replay_job_dir);
+  kv_set_string(map, "certified_replay_bank_schema",
+                &parsed.certified_replay_bank_schema);
+  kv_set_string(map, "certified_replay_bank_manifest_path",
+                &parsed.certified_replay_bank_manifest_path);
+  kv_set_string(map, "certified_replay_bank_manifest_digest",
+                &parsed.certified_replay_bank_manifest_digest);
+  kv_set_string(map, "policy_experience_set_digest",
+                &parsed.policy_experience_set_digest);
+  kv_set_string(map, "policy_experience_mode", &parsed.policy_experience_mode);
   kv_set_string(map, "config_path", &parsed.config_path);
   kv_set_string(map, "accounting_numeraire_node_id",
                 &parsed.accounting_numeraire_node_id);
@@ -1654,11 +4691,107 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
   kv_set_string(map, "policy_input_feature_manifest_digest",
                 &parsed.policy_input_feature_manifest_digest);
   kv_set_string(map, "policy_jkimyei_digest", &parsed.policy_jkimyei_digest);
+  kv_set_string(map, "policy_jkimyei_no_lookahead_contract_id",
+                &parsed.policy_jkimyei_no_lookahead_contract_id);
+  kv_set_string(map, "policy_jkimyei_no_lookahead_contract_digest",
+                &parsed.policy_jkimyei_no_lookahead_contract_digest);
+  kv_set_string(map, "policy_jkimyei_component_order_contract_id",
+                &parsed.policy_jkimyei_component_order_contract_id);
+  kv_set_string(map, "policy_jkimyei_component_order_contract_digest",
+                &parsed.policy_jkimyei_component_order_contract_digest);
+  kv_set_string(map, "policy_jkimyei_component_role",
+                &parsed.policy_jkimyei_component_role);
   kv_set_string(map, "target_node_universe_digest",
                 &parsed.target_node_universe_digest);
   kv_set_string(map, "action_distribution_config_digest",
                 &parsed.action_distribution_config_digest);
   kv_set_string(map, "snapshot_family_digest", &parsed.snapshot_family_digest);
+  kv_set_string(map, "snapshot_bundle_schema", &parsed.snapshot_bundle_schema);
+  kv_set_string(map, "snapshot_bundle_id", &parsed.snapshot_bundle_id);
+  kv_set_string(map, "snapshot_bundle_kind", &parsed.snapshot_bundle_kind);
+  kv_set_string(map, "snapshot_bundle_selection_basis",
+                &parsed.snapshot_bundle_selection_basis);
+  kv_set_string(map, "snapshot_bundle_no_lookahead_contract_id",
+                &parsed.snapshot_bundle_no_lookahead_contract_id);
+  kv_set_string(map, "snapshot_bundle_no_lookahead_contract_digest",
+                &parsed.snapshot_bundle_no_lookahead_contract_digest);
+  kv_set_string(map, "snapshot_bundle_component_order_contract_id",
+                &parsed.snapshot_bundle_component_order_contract_id);
+  kv_set_string(map, "snapshot_bundle_component_order_contract_digest",
+                &parsed.snapshot_bundle_component_order_contract_digest);
+  kv_set_string(map, "snapshot_bundle_protocol_contract_fingerprint",
+                &parsed.snapshot_bundle_protocol_contract_fingerprint);
+  kv_set_string(map, "snapshot_bundle_generation_vector_digest",
+                &parsed.snapshot_bundle_generation_vector_digest);
+  kv_set_string(map, "snapshot_bundle_compatibility_closure_digest",
+                &parsed.snapshot_bundle_compatibility_closure_digest);
+  kv_set_string(map, "snapshot_bundle_no_lookahead_certificate_digests",
+                &parsed.snapshot_bundle_no_lookahead_certificate_digests);
+  kv_set_string(map, "snapshot_bundle_policy_execution_certificate_digest",
+                &parsed.snapshot_bundle_policy_execution_certificate_digest);
+  kv_set_string(map, "snapshot_bundle_created_by_lattice_target",
+                &parsed.snapshot_bundle_created_by_lattice_target);
+  kv_set_string(map, "bundle_representation_component_id",
+                &parsed.bundle_representation_component_id);
+  kv_set_string(map, "bundle_representation_jkimyei_digest",
+                &parsed.bundle_representation_jkimyei_digest);
+  kv_set_string(map, "bundle_representation_checkpoint_digest",
+                &parsed.bundle_representation_checkpoint_digest);
+  kv_set_string(map, "bundle_representation_generation_id",
+                &parsed.bundle_representation_generation_id);
+  kv_set_string(map, "bundle_representation_generation_vector_digest",
+                &parsed.bundle_representation_generation_vector_digest);
+  kv_set_string(map, "bundle_representation_generation_manifest_digest",
+                &parsed.bundle_representation_generation_manifest_digest);
+  kv_set_string(map, "bundle_mdn_component_id",
+                &parsed.bundle_mdn_component_id);
+  kv_set_string(map, "bundle_mdn_jkimyei_digest",
+                &parsed.bundle_mdn_jkimyei_digest);
+  kv_set_string(map, "bundle_mdn_checkpoint_digest",
+                &parsed.bundle_mdn_checkpoint_digest);
+  kv_set_string(map, "bundle_mdn_generation_id",
+                &parsed.bundle_mdn_generation_id);
+  kv_set_string(map, "bundle_mdn_generation_vector_digest",
+                &parsed.bundle_mdn_generation_vector_digest);
+  kv_set_string(map, "bundle_mdn_generation_manifest_digest",
+                &parsed.bundle_mdn_generation_manifest_digest);
+  kv_set_string(map, "bundle_policy_component_id",
+                &parsed.bundle_policy_component_id);
+  kv_set_string(map, "bundle_policy_jkimyei_digest",
+                &parsed.bundle_policy_jkimyei_digest);
+  kv_set_string(map, "bundle_policy_checkpoint_digest",
+                &parsed.bundle_policy_checkpoint_digest);
+  kv_set_string(map, "bundle_policy_generation_id",
+                &parsed.bundle_policy_generation_id);
+  kv_set_string(map, "bundle_policy_generation_vector_digest",
+                &parsed.bundle_policy_generation_vector_digest);
+  kv_set_string(map, "bundle_policy_generation_manifest_digest",
+                &parsed.bundle_policy_generation_manifest_digest);
+  kv_set_string(map, "mdn_trained_against_representation_generation_id",
+                &parsed.mdn_trained_against_representation_generation_id);
+  kv_set_string(map, "mdn_trained_against_representation_checkpoint_digest",
+                &parsed.mdn_trained_against_representation_checkpoint_digest);
+  kv_set_string(
+      map, "mdn_trained_against_representation_generation_vector_digest",
+      &parsed.mdn_trained_against_representation_generation_vector_digest);
+  kv_set_string(map, "mdn_representation_feature_schema_digest",
+                &parsed.mdn_representation_feature_schema_digest);
+  kv_set_string(map, "policy_trained_against_forecast_eval_fact_digest",
+                &parsed.policy_trained_against_forecast_eval_fact_digest);
+  kv_set_string(map, "policy_trained_against_replay_environment_fact_digest",
+                &parsed.policy_trained_against_replay_environment_fact_digest);
+  kv_set_string(
+      map, "policy_trained_against_representation_generation_vector_digest",
+      &parsed.policy_trained_against_representation_generation_vector_digest);
+  kv_set_string(map, "policy_trained_against_mdn_generation_vector_digest",
+                &parsed.policy_trained_against_mdn_generation_vector_digest);
+  kv_set_string(
+      map, "policy_trained_against_policy_parent_generation_vector_digest",
+      &parsed.policy_trained_against_policy_parent_generation_vector_digest);
+  kv_set_string(map, "policy_execution_input_lock_digest",
+                &parsed.policy_execution_input_lock_digest);
+  kv_set_string(map, "policy_trained_against_no_lookahead_certificate_digest",
+                &parsed.policy_trained_against_no_lookahead_certificate_digest);
   kv_set_string(map, "actor_architecture_digest",
                 &parsed.actor_architecture_digest);
   kv_set_string(map, "critic_architecture_digest",
@@ -1704,6 +4837,25 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
                 &parsed.causal_schedule_cursor_key_kind);
   kv_set_string(map, "causal_schedule_no_future_snapshot_use_source",
                 &parsed.causal_schedule_no_future_snapshot_use_source);
+  kv_set_string(map, "causal_provenance_schema",
+                &parsed.causal_provenance_schema);
+  kv_set_string(map, "causal_atom_schema", &parsed.causal_atom_schema);
+  kv_set_string(map, "causal_interval_set_schema",
+                &parsed.causal_interval_set_schema);
+  kv_set_string(map, "causal_label_reward_horizon_policy_fingerprint",
+                &parsed.causal_label_reward_horizon_policy_fingerprint);
+  kv_set_string(map, "causal_fold_policy_fingerprint",
+                &parsed.causal_fold_policy_fingerprint);
+  kv_set_string(map, "causal_purged_embargo_policy_fingerprint",
+                &parsed.causal_purged_embargo_policy_fingerprint);
+  kv_set_string(map, "causal_artifact_production_schema",
+                &parsed.causal_artifact_production_schema);
+  kv_set_string(map, "causal_artifact_production_closure_digest",
+                &parsed.causal_artifact_production_closure_digest);
+  kv_set_string(map, "causal_interface_stability_contract_digest",
+                &parsed.causal_interface_stability_contract_digest);
+  kv_set_string(map, "causal_provenance_closure_digest",
+                &parsed.causal_provenance_closure_digest);
   kv_set_string(map, "normalization_fit_range_digest",
                 &parsed.normalization_fit_range_digest);
   kv_set_string(map, "replay_buffer_source_range_digest",
@@ -1728,6 +4880,55 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
                 &parsed.parent_replay_environment_report_digest);
   kv_set_string(map, "final_refit_parent_selected_checkpoint_digest",
                 &parsed.final_refit_parent_selected_checkpoint_digest);
+  kv_set_string(map, "policy_execution_no_lookahead_certificate_schema",
+                &parsed.policy_execution_no_lookahead_certificate_schema);
+  kv_set_string(map, "policy_execution_no_lookahead_certificate_digest",
+                &parsed.policy_execution_no_lookahead_certificate_digest);
+  kv_set_string(map, "policy_execution_evidence_snapshot_digest",
+                &parsed.policy_execution_evidence_snapshot_digest);
+  kv_set_string(map, "policy_execution_provenance_closure_digest",
+                &parsed.policy_execution_provenance_closure_digest);
+  kv_set_string(map, "policy_execution_target_id",
+                &parsed.policy_execution_target_id);
+  kv_set_string(map, "policy_execution_no_lookahead_contract_digest",
+                &parsed.policy_execution_no_lookahead_contract_digest);
+  kv_set_string(map, "embargo_policy_fingerprint",
+                &parsed.embargo_policy_fingerprint);
+  kv_set_string(
+      map, "policy_execution_input_parent_forecast_eval_fact_digest",
+      &parsed.policy_execution_input_parent_forecast_eval_fact_digest);
+  kv_set_string(map, "policy_execution_input_parent_forecast_artifact_digest",
+                &parsed.policy_execution_input_parent_forecast_artifact_digest);
+  kv_set_string(
+      map, "policy_execution_input_parent_replay_environment_fact_digest",
+      &parsed.policy_execution_input_parent_replay_environment_fact_digest);
+  kv_set_string(
+      map, "policy_execution_input_parent_replay_environment_report_digest",
+      &parsed.policy_execution_input_parent_replay_environment_report_digest);
+  kv_set_string(map, "policy_execution_replay_job_dir_digest",
+                &parsed.policy_execution_replay_job_dir_digest);
+  kv_set_string(map, "policy_execution_consumed_artifact_digests",
+                &parsed.policy_execution_consumed_artifact_digests);
+  kv_set_string(map, "policy_execution_consumed_checkpoint_digests",
+                &parsed.policy_execution_consumed_checkpoint_digests);
+  kv_set_string(map, "policy_execution_consumed_generation_vector_digests",
+                &parsed.policy_execution_consumed_generation_vector_digests);
+  kv_set_string(map, "parent_policy_generation_id",
+                &parsed.parent_policy_generation_id);
+  kv_set_string(map, "parent_policy_generation_vector_digest",
+                &parsed.parent_policy_generation_vector_digest);
+  kv_set_string(map, "parent_policy_influence_schema",
+                &parsed.parent_policy_influence_schema);
+  kv_set_string(map, "parent_policy_provenance_closure_digest",
+                &parsed.parent_policy_provenance_closure_digest);
+  kv_set_string(map, "parent_policy_no_lookahead_contract_digest",
+                &parsed.parent_policy_no_lookahead_contract_digest);
+  kv_set_string(map, "policy_output_generation_id",
+                &parsed.policy_output_generation_id);
+  kv_set_string(map, "policy_output_generation_vector_digest",
+                &parsed.policy_output_generation_vector_digest);
+  kv_set_string(map, "policy_output_provenance_closure_digest",
+                &parsed.policy_output_provenance_closure_digest);
   if (!kv_set_double(map, "ppo_gamma", &parsed.ppo_gamma, err) ||
       !kv_set_bool(map, "ppo_gamma_bound", &parsed.ppo_gamma_bound, err) ||
       !kv_set_double(map, "ppo_gae_lambda", &parsed.ppo_gae_lambda, err) ||
@@ -1739,6 +4940,10 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
       !kv_set_double(map, "ppo_target_kl", &parsed.ppo_target_kl, err) ||
       !kv_set_bool(map, "ppo_target_kl_bound", &parsed.ppo_target_kl_bound,
                    err) ||
+      !kv_set_double(map, "ppo_learning_rate", &parsed.ppo_learning_rate,
+                     err) ||
+      !kv_set_bool(map, "ppo_learning_rate_bound",
+                   &parsed.ppo_learning_rate_bound, err) ||
       !kv_set_double(map, "ppo_entropy_coeff", &parsed.ppo_entropy_coeff,
                      err) ||
       !kv_set_bool(map, "ppo_entropy_coeff_bound",
@@ -1765,6 +4970,25 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
       !kv_set_double(map, "max_turnover_l1", &parsed.max_turnover_l1, err) ||
       !kv_set_bool(map, "max_turnover_l1_bound", &parsed.max_turnover_l1_bound,
                    err) ||
+      !kv_set_int64(map, "policy_jkimyei_serving_order_index",
+                    &parsed.policy_jkimyei_serving_order_index, err) ||
+      !kv_set_bool(map, "policy_jkimyei_serving_order_index_bound",
+                   &parsed.policy_jkimyei_serving_order_index_bound, err) ||
+      !kv_set_int64(map, "certified_replay_chunk_count",
+                    &parsed.certified_replay_chunk_count, err) ||
+      !kv_set_bool(map, "certified_replay_chunk_count_bound",
+                   &parsed.certified_replay_chunk_count_bound, err) ||
+      !kv_set_int64(map, "certified_replay_sample_count",
+                    &parsed.certified_replay_sample_count, err) ||
+      !kv_set_bool(map, "certified_replay_sample_count_bound",
+                   &parsed.certified_replay_sample_count_bound, err) ||
+      !kv_set_int64(map, "certified_replay_coverage_anchor_begin",
+                    &parsed.certified_replay_coverage_anchor_begin, err) ||
+      !kv_set_int64(map, "certified_replay_coverage_anchor_end_exclusive",
+                    &parsed.certified_replay_coverage_anchor_end_exclusive,
+                    err) ||
+      !kv_set_bool(map, "certified_replay_coverage_anchor_range_bound",
+                   &parsed.certified_replay_coverage_anchor_range_bound, err) ||
       !kv_set_int64(map, "ppo_minibatch_size", &parsed.ppo_minibatch_size,
                     err) ||
       !kv_set_bool(map, "ppo_minibatch_size_bound",
@@ -1781,6 +5005,8 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
       !kv_set_int64(map, "max_episodes", &parsed.max_episodes, err) ||
       !kv_set_int64(map, "max_steps", &parsed.max_steps, err) ||
       !kv_set_int64(map, "max_parallel_jobs", &parsed.max_parallel_jobs, err) ||
+      !kv_set_bool(map, "max_parallel_jobs_bound",
+                   &parsed.max_parallel_jobs_bound, err) ||
       !kv_set_int64(map, "max_wall_clock_seconds",
                     &parsed.max_wall_clock_seconds, err) ||
       !kv_set_bool(map, "causal_schedule_readiness_eligible",
@@ -1797,6 +5023,305 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
                    err) ||
       !kv_set_bool(map, "live_execution_allowed",
                    &parsed.live_execution_allowed, err)) {
+    return false;
+  }
+  if (!kv_set_int64(map, "policy_execution_target_anchor_begin",
+                    &parsed.policy_execution_target_anchor_begin, err) ||
+      !kv_set_int64(map, "snapshot_bundle_valid_from_anchor",
+                    &parsed.snapshot_bundle_valid_from_anchor, err) ||
+      !kv_set_bool(map, "snapshot_bundle_valid_from_anchor_bound",
+                   &parsed.snapshot_bundle_valid_from_anchor_bound, err) ||
+      !kv_set_int64(map, "snapshot_bundle_valid_until_anchor",
+                    &parsed.snapshot_bundle_valid_until_anchor, err) ||
+      !kv_set_bool(map, "snapshot_bundle_valid_until_anchor_bound",
+                   &parsed.snapshot_bundle_valid_until_anchor_bound, err) ||
+      !kv_set_int64(map, "snapshot_bundle_influence_anchor_end_exclusive_max",
+                    &parsed.snapshot_bundle_influence_anchor_end_exclusive_max,
+                    err) ||
+      !kv_set_bool(
+          map, "snapshot_bundle_influence_anchor_end_exclusive_max_bound",
+          &parsed.snapshot_bundle_influence_anchor_end_exclusive_max_bound,
+          err) ||
+      !kv_set_bool(map, "policy_execution_target_anchor_begin_bound",
+                   &parsed.policy_execution_target_anchor_begin_bound, err) ||
+      !kv_set_int64(map, "policy_execution_target_anchor_end_exclusive",
+                    &parsed.policy_execution_target_anchor_end_exclusive,
+                    err) ||
+      !kv_set_bool(map, "policy_execution_target_anchor_end_exclusive_bound",
+                   &parsed.policy_execution_target_anchor_end_exclusive_bound,
+                   err) ||
+      !kv_set_int64(map, "embargo_purged_window_anchor_begin",
+                    &parsed.embargo_purged_window_anchor_begin, err) ||
+      !kv_set_int64(map, "embargo_purged_window_anchor_end_exclusive",
+                    &parsed.embargo_purged_window_anchor_end_exclusive, err) ||
+      !kv_set_bool(map, "embargo_purged_window_anchor_range_bound",
+                   &parsed.embargo_purged_window_anchor_range_bound, err) ||
+      !kv_set_bool(map, "parent_policy_influence_complete",
+                   &parsed.parent_policy_influence_complete, err) ||
+      !kv_set_int64(map, "parent_policy_influence_anchor_begin_min",
+                    &parsed.parent_policy_influence_anchor_begin_min, err) ||
+      !kv_set_bool(map, "parent_policy_influence_anchor_begin_min_bound",
+                   &parsed.parent_policy_influence_anchor_begin_min_bound,
+                   err) ||
+      !kv_set_int64(map, "parent_policy_influence_anchor_end_exclusive_max",
+                    &parsed.parent_policy_influence_anchor_end_exclusive_max,
+                    err) ||
+      !kv_set_bool(
+          map, "parent_policy_influence_anchor_end_exclusive_max_bound",
+          &parsed.parent_policy_influence_anchor_end_exclusive_max_bound,
+          err) ||
+      !kv_set_int64(
+          map, "parent_policy_label_or_reward_availability_end_exclusive_max",
+          &parsed.parent_policy_label_or_reward_availability_end_exclusive_max,
+          err) ||
+      !kv_set_bool(
+          map,
+          "parent_policy_label_or_reward_availability_end_exclusive_max_bound",
+          &parsed
+               .parent_policy_label_or_reward_availability_end_exclusive_max_bound,
+          err) ||
+      !kv_set_int64(map, "parent_policy_valid_from_anchor",
+                    &parsed.parent_policy_valid_from_anchor, err) ||
+      !kv_set_bool(map, "parent_policy_valid_from_anchor_bound",
+                   &parsed.parent_policy_valid_from_anchor_bound, err) ||
+      !kv_set_int64(map, "policy_output_fit_anchor_begin",
+                    &parsed.policy_output_fit_anchor_begin, err) ||
+      !kv_set_bool(map, "policy_output_fit_anchor_begin_bound",
+                   &parsed.policy_output_fit_anchor_begin_bound, err) ||
+      !kv_set_int64(map, "policy_output_fit_anchor_end_exclusive",
+                    &parsed.policy_output_fit_anchor_end_exclusive, err) ||
+      !kv_set_bool(map, "policy_output_fit_anchor_end_exclusive_bound",
+                   &parsed.policy_output_fit_anchor_end_exclusive_bound, err) ||
+      !kv_set_int64(map, "policy_output_valid_from_anchor",
+                    &parsed.policy_output_valid_from_anchor, err) ||
+      !kv_set_bool(map, "policy_output_valid_from_anchor_bound",
+                   &parsed.policy_output_valid_from_anchor_bound, err)) {
+    return false;
+  }
+  const auto has_kv = [&map](std::string_view key) {
+    return map.find(std::string(key)) != map.end();
+  };
+  const auto infer_bound_from_value =
+      [&](std::string_view value_key, std::string_view bound_key, bool *bound) {
+        if (bound != nullptr && has_kv(value_key) && !has_kv(bound_key)) {
+          *bound = true;
+        }
+      };
+  infer_bound_from_value("policy_jkimyei_serving_order_index",
+                         "policy_jkimyei_serving_order_index_bound",
+                         &parsed.policy_jkimyei_serving_order_index_bound);
+  infer_bound_from_value("random_seed", "random_seed_bound",
+                         &parsed.random_seed_bound);
+  infer_bound_from_value("ppo_gamma", "ppo_gamma_bound",
+                         &parsed.ppo_gamma_bound);
+  infer_bound_from_value("ppo_gae_lambda", "ppo_gae_lambda_bound",
+                         &parsed.ppo_gae_lambda_bound);
+  infer_bound_from_value("ppo_clip_epsilon", "ppo_clip_epsilon_bound",
+                         &parsed.ppo_clip_epsilon_bound);
+  infer_bound_from_value("ppo_target_kl", "ppo_target_kl_bound",
+                         &parsed.ppo_target_kl_bound);
+  infer_bound_from_value("ppo_learning_rate", "ppo_learning_rate_bound",
+                         &parsed.ppo_learning_rate_bound);
+  infer_bound_from_value("ppo_entropy_coeff", "ppo_entropy_coeff_bound",
+                         &parsed.ppo_entropy_coeff_bound);
+  infer_bound_from_value("ppo_value_loss_coeff", "ppo_value_loss_coeff_bound",
+                         &parsed.ppo_value_loss_coeff_bound);
+  infer_bound_from_value("ppo_max_grad_norm", "ppo_max_grad_norm_bound",
+                         &parsed.ppo_max_grad_norm_bound);
+  infer_bound_from_value("linear_transaction_cost_rate",
+                         "linear_transaction_cost_rate_bound",
+                         &parsed.linear_transaction_cost_rate_bound);
+  infer_bound_from_value("initial_equity_numeraire",
+                         "initial_equity_numeraire_bound",
+                         &parsed.initial_equity_numeraire_bound);
+  infer_bound_from_value("max_node_weight", "max_node_weight_bound",
+                         &parsed.max_node_weight_bound);
+  infer_bound_from_value("max_turnover_l1", "max_turnover_l1_bound",
+                         &parsed.max_turnover_l1_bound);
+  infer_bound_from_value("ppo_minibatch_size", "ppo_minibatch_size_bound",
+                         &parsed.ppo_minibatch_size_bound);
+  infer_bound_from_value("ppo_epochs_per_rollout",
+                         "ppo_epochs_per_rollout_bound",
+                         &parsed.ppo_epochs_per_rollout_bound);
+  infer_bound_from_value("cuda_device_index", "cuda_device_index_bound",
+                         &parsed.cuda_device_index_bound);
+  infer_bound_from_value("certified_replay_chunk_count",
+                         "certified_replay_chunk_count_bound",
+                         &parsed.certified_replay_chunk_count_bound);
+  infer_bound_from_value("certified_replay_sample_count",
+                         "certified_replay_sample_count_bound",
+                         &parsed.certified_replay_sample_count_bound);
+  infer_bound_from_value("max_parallel_jobs", "max_parallel_jobs_bound",
+                         &parsed.max_parallel_jobs_bound);
+  if (has_kv("certified_replay_coverage_anchor_begin") &&
+      has_kv("certified_replay_coverage_anchor_end_exclusive") &&
+      !has_kv("certified_replay_coverage_anchor_range_bound")) {
+    parsed.certified_replay_coverage_anchor_range_bound = true;
+  }
+  if (has_kv("parent_policy_influence_label_or_reward_availability_end_"
+             "exclusive_max") &&
+      !has_kv("parent_policy_label_or_reward_availability_end_exclusive_max")) {
+    if (!kv_set_int64(
+            map,
+            "parent_policy_influence_label_or_reward_availability_end_"
+            "exclusive_max",
+            &parsed
+                 .parent_policy_label_or_reward_availability_end_exclusive_max,
+            err)) {
+      return false;
+    }
+  }
+  if (has_kv("parent_policy_influence_label_or_reward_availability_end_"
+             "exclusive_max_bound") &&
+      !has_kv("parent_policy_label_or_reward_availability_end_exclusive_max_"
+              "bound")) {
+    if (!kv_set_bool(
+            map,
+            "parent_policy_influence_label_or_reward_availability_end_"
+            "exclusive_max_bound",
+            &parsed
+                 .parent_policy_label_or_reward_availability_end_exclusive_max_bound,
+            err)) {
+      return false;
+    }
+  }
+  infer_bound_from_value("snapshot_bundle_valid_from_anchor",
+                         "snapshot_bundle_valid_from_anchor_bound",
+                         &parsed.snapshot_bundle_valid_from_anchor_bound);
+  infer_bound_from_value("snapshot_bundle_valid_until_anchor",
+                         "snapshot_bundle_valid_until_anchor_bound",
+                         &parsed.snapshot_bundle_valid_until_anchor_bound);
+  infer_bound_from_value(
+      "snapshot_bundle_influence_anchor_end_exclusive_max",
+      "snapshot_bundle_influence_anchor_end_exclusive_max_bound",
+      &parsed.snapshot_bundle_influence_anchor_end_exclusive_max_bound);
+  infer_bound_from_value("policy_execution_target_anchor_begin",
+                         "policy_execution_target_anchor_begin_bound",
+                         &parsed.policy_execution_target_anchor_begin_bound);
+  infer_bound_from_value(
+      "policy_execution_target_anchor_end_exclusive",
+      "policy_execution_target_anchor_end_exclusive_bound",
+      &parsed.policy_execution_target_anchor_end_exclusive_bound);
+  if (has_kv("embargo_purged_window_anchor_begin") &&
+      has_kv("embargo_purged_window_anchor_end_exclusive") &&
+      !has_kv("embargo_purged_window_anchor_range_bound")) {
+    parsed.embargo_purged_window_anchor_range_bound = true;
+  }
+  infer_bound_from_value(
+      "parent_policy_influence_anchor_begin_min",
+      "parent_policy_influence_anchor_begin_min_bound",
+      &parsed.parent_policy_influence_anchor_begin_min_bound);
+  infer_bound_from_value(
+      "parent_policy_influence_anchor_end_exclusive_max",
+      "parent_policy_influence_anchor_end_exclusive_max_bound",
+      &parsed.parent_policy_influence_anchor_end_exclusive_max_bound);
+  infer_bound_from_value(
+      "parent_policy_label_or_reward_availability_end_exclusive_max",
+      "parent_policy_label_or_reward_availability_end_exclusive_max_bound",
+      &parsed
+           .parent_policy_label_or_reward_availability_end_exclusive_max_bound);
+  infer_bound_from_value(
+      "parent_policy_influence_label_or_reward_availability_end_exclusive_max",
+      "parent_policy_influence_label_or_reward_availability_end_exclusive_max_"
+      "bound",
+      &parsed
+           .parent_policy_label_or_reward_availability_end_exclusive_max_bound);
+  infer_bound_from_value("parent_policy_valid_from_anchor",
+                         "parent_policy_valid_from_anchor_bound",
+                         &parsed.parent_policy_valid_from_anchor_bound);
+  infer_bound_from_value("policy_output_fit_anchor_begin",
+                         "policy_output_fit_anchor_begin_bound",
+                         &parsed.policy_output_fit_anchor_begin_bound);
+  infer_bound_from_value("policy_output_fit_anchor_end_exclusive",
+                         "policy_output_fit_anchor_end_exclusive_bound",
+                         &parsed.policy_output_fit_anchor_end_exclusive_bound);
+  infer_bound_from_value("policy_output_valid_from_anchor",
+                         "policy_output_valid_from_anchor_bound",
+                         &parsed.policy_output_valid_from_anchor_bound);
+  if (!contract_path.empty()) {
+    auto resolve_contract_path_field = [&](std::string *field) {
+      const std::string value = trim_ascii(*field);
+      if (!value.empty()) {
+        *field = resolve_against(contract_path, value).string();
+      }
+    };
+    resolve_contract_path_field(&parsed.job_dir);
+    resolve_contract_path_field(&parsed.report_path);
+    resolve_contract_path_field(&parsed.replay_job_dir);
+    resolve_contract_path_field(&parsed.certified_replay_bank_manifest_path);
+    resolve_contract_path_field(&parsed.config_path);
+    resolve_contract_path_field(&parsed.resume_actor_checkpoint_path);
+    resolve_contract_path_field(&parsed.resume_optimizer_state_path);
+  }
+  apply_policy_training_request_fixed_contract_values(&parsed);
+  if (!canonicalize_policy_training_causal_embargo_defaults(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_replay_artifact_identity(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_split_defaults_from_config(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_range_mirrors(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_target_range_from_validation(&parsed,
+                                                                 err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_parent_input_mirrors(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_execution_consumed_artifacts(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_execution_consumed_checkpoints(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_execution_consumed_generation_vectors(&parsed,
+                                                                 err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_execution_target_id(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_bundle_generation_mirrors(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_output_anchor_mirrors(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_accounting_numeraire_from_config(&parsed,
+                                                                     err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_environment_execution_defaults(&parsed,
+                                                                   err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_policy_surface_from_config(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_policy_source_identity(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_wave_defaults_from_config(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_no_lookahead_from_protocol(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_protocol_graph_identity(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_target_node_ids_from_graph(&parsed, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_jkimyei_ppo_defaults(&parsed, err)) {
+    return false;
+  }
+  if (!assign_or_confirm_policy_training_ppo_config_digest(&parsed, err)) {
     return false;
   }
   *contract = std::move(parsed);
@@ -2306,7 +5831,13 @@ inline void apply_wave_overlay_to_info(wave_info_t *info,
   }
   return !wave_value_or_empty(info, "POLICY_KIND").empty() ||
          !wave_value_or_empty(info, "POLICY_ID").empty() ||
-         !wave_value_or_empty(info, "TRAINING_SCHEDULE_MODE").empty();
+         !wave_value_or_empty(info, "TRAINING_SCHEDULE_MODE").empty() ||
+         !wave_value_or_empty(info, "CAUSAL_SCHEDULE_DIGEST").empty() ||
+         !wave_value_or_empty(info, "SNAPSHOT_FAMILY_DIGEST").empty() ||
+         !wave_value_or_empty(info, "EARLY_STOPPING_POLICY_DIGEST").empty() ||
+         !wave_value_or_empty(info, "HYPERPARAMETER_SELECTION_POLICY_DIGEST")
+              .empty() ||
+         !wave_value_or_empty(info, "SELECTOR_POLICY_DIGEST").empty();
 }
 
 [[nodiscard]] std::unordered_map<std::string, std::string>
@@ -2528,6 +6059,20 @@ execution_chain(std::string_view target, std::string_view action,
   const std::string policy_kind = wave_value_or_empty(info, "POLICY_KIND");
   const std::string training_schedule_mode =
       wave_value_or_empty(info, "TRAINING_SCHEDULE_MODE");
+  const std::string causal_schedule_digest =
+      wave_value_or_empty(info, "CAUSAL_SCHEDULE_DIGEST");
+  const std::string snapshot_family_digest =
+      wave_value_or_empty(info, "SNAPSHOT_FAMILY_DIGEST");
+  const std::string early_stopping_policy_digest =
+      wave_value_or_empty(info, "EARLY_STOPPING_POLICY_DIGEST");
+  const std::string hyperparameter_selection_policy_digest =
+      wave_value_or_empty(info, "HYPERPARAMETER_SELECTION_POLICY_DIGEST");
+  const std::string selector_policy_digest =
+      wave_value_or_empty(info, "SELECTOR_POLICY_DIGEST");
+  const std::string train_split_id = wave_value_or_empty(info, "TRAIN_SPLIT");
+  const std::string validation_split_id =
+      wave_value_or_empty(info, "VALIDATION_SPLIT");
+  const std::string test_split_id = wave_value_or_empty(info, "TEST_SPLIT");
   const std::string live_execution_allowed =
       wave_value_or_empty(info, "LIVE_EXECUTION_ALLOWED");
   std::ostringstream out;
@@ -2634,6 +6179,54 @@ execution_chain(std::string_view target, std::string_view action,
     out << "null";
   } else {
     out << json_quote(training_schedule_mode);
+  }
+  out << ",\"causal_schedule_digest\":";
+  if (causal_schedule_digest.empty()) {
+    out << "null";
+  } else {
+    out << json_quote(causal_schedule_digest);
+  }
+  out << ",\"snapshot_family_digest\":";
+  if (snapshot_family_digest.empty()) {
+    out << "null";
+  } else {
+    out << json_quote(snapshot_family_digest);
+  }
+  out << ",\"early_stopping_policy_digest\":";
+  if (early_stopping_policy_digest.empty()) {
+    out << "null";
+  } else {
+    out << json_quote(early_stopping_policy_digest);
+  }
+  out << ",\"hyperparameter_selection_policy_digest\":";
+  if (hyperparameter_selection_policy_digest.empty()) {
+    out << "null";
+  } else {
+    out << json_quote(hyperparameter_selection_policy_digest);
+  }
+  out << ",\"selector_policy_digest\":";
+  if (selector_policy_digest.empty()) {
+    out << "null";
+  } else {
+    out << json_quote(selector_policy_digest);
+  }
+  out << ",\"train_split_id\":";
+  if (train_split_id.empty()) {
+    out << "null";
+  } else {
+    out << json_quote(train_split_id);
+  }
+  out << ",\"validation_split_id\":";
+  if (validation_split_id.empty()) {
+    out << "null";
+  } else {
+    out << json_quote(validation_split_id);
+  }
+  out << ",\"test_split_id\":";
+  if (test_split_id.empty()) {
+    out << "null";
+  } else {
+    out << json_quote(test_split_id);
   }
   out << ",\"live_execution_allowed\":";
   if (live_execution_allowed.empty()) {
@@ -3814,6 +7407,30 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << ",\"job_dir\":" << json_quote(contract.job_dir)
       << ",\"report_path\":" << json_quote(contract.report_path)
       << ",\"replay_job_dir\":" << json_quote(contract.replay_job_dir)
+      << ",\"certified_replay_bank_schema\":"
+      << json_quote(contract.certified_replay_bank_schema)
+      << ",\"certified_replay_bank_manifest_path\":"
+      << json_quote(contract.certified_replay_bank_manifest_path)
+      << ",\"certified_replay_bank_manifest_digest\":"
+      << json_quote(contract.certified_replay_bank_manifest_digest)
+      << ",\"policy_experience_set_digest\":"
+      << json_quote(contract.policy_experience_set_digest)
+      << ",\"policy_experience_mode\":"
+      << json_quote(contract.policy_experience_mode)
+      << ",\"certified_replay_chunk_count\":"
+      << contract.certified_replay_chunk_count
+      << ",\"certified_replay_chunk_count_bound\":"
+      << bool_json(contract.certified_replay_chunk_count_bound)
+      << ",\"certified_replay_sample_count\":"
+      << contract.certified_replay_sample_count
+      << ",\"certified_replay_sample_count_bound\":"
+      << bool_json(contract.certified_replay_sample_count_bound)
+      << ",\"certified_replay_coverage_anchor_begin\":"
+      << contract.certified_replay_coverage_anchor_begin
+      << ",\"certified_replay_coverage_anchor_end_exclusive\":"
+      << contract.certified_replay_coverage_anchor_end_exclusive
+      << ",\"certified_replay_coverage_anchor_range_bound\":"
+      << bool_json(contract.certified_replay_coverage_anchor_range_bound)
       << ",\"config_path\":" << json_quote(contract.config_path)
       << ",\"accounting_numeraire_node_id\":"
       << json_quote(contract.accounting_numeraire_node_id)
@@ -3868,6 +7485,20 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << json_quote(contract.policy_input_feature_manifest_digest)
       << ",\"policy_jkimyei_digest\":"
       << json_quote(contract.policy_jkimyei_digest)
+      << ",\"policy_jkimyei_no_lookahead_contract_id\":"
+      << json_quote(contract.policy_jkimyei_no_lookahead_contract_id)
+      << ",\"policy_jkimyei_no_lookahead_contract_digest\":"
+      << json_quote(contract.policy_jkimyei_no_lookahead_contract_digest)
+      << ",\"policy_jkimyei_component_order_contract_id\":"
+      << json_quote(contract.policy_jkimyei_component_order_contract_id)
+      << ",\"policy_jkimyei_component_order_contract_digest\":"
+      << json_quote(contract.policy_jkimyei_component_order_contract_digest)
+      << ",\"policy_jkimyei_component_role\":"
+      << json_quote(contract.policy_jkimyei_component_role)
+      << ",\"policy_jkimyei_serving_order_index\":"
+      << contract.policy_jkimyei_serving_order_index
+      << ",\"policy_jkimyei_serving_order_index_bound\":"
+      << bool_json(contract.policy_jkimyei_serving_order_index_bound)
       << ",\"target_node_universe_digest\":"
       << json_quote(contract.target_node_universe_digest)
       << ",\"action_distribution_config_digest\":"
@@ -3926,6 +7557,9 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << bool_json(contract.ppo_clip_epsilon_bound)
       << ",\"ppo_target_kl\":" << contract.ppo_target_kl
       << ",\"ppo_target_kl_bound\":" << bool_json(contract.ppo_target_kl_bound)
+      << ",\"ppo_learning_rate\":" << contract.ppo_learning_rate
+      << ",\"ppo_learning_rate_bound\":"
+      << bool_json(contract.ppo_learning_rate_bound)
       << ",\"ppo_entropy_coeff\":" << contract.ppo_entropy_coeff
       << ",\"ppo_entropy_coeff_bound\":"
       << bool_json(contract.ppo_entropy_coeff_bound)
@@ -3964,6 +7598,27 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << json_quote(contract.causal_schedule_cursor_key_kind)
       << ",\"causal_schedule_no_future_snapshot_use_source\":"
       << json_quote(contract.causal_schedule_no_future_snapshot_use_source)
+      << ",\"causal_provenance_schema\":"
+      << json_quote(contract.causal_provenance_schema)
+      << ",\"causal_atom_schema\":" << json_quote(contract.causal_atom_schema)
+      << ",\"causal_interval_set_schema\":"
+      << json_quote(contract.causal_interval_set_schema)
+      << ",\"causal_label_reward_horizon_policy_fingerprint\":"
+      << json_quote(contract.causal_label_reward_horizon_policy_fingerprint)
+      << ",\"causal_fold_policy_fingerprint\":"
+      << json_quote(contract.causal_fold_policy_fingerprint)
+      << ",\"causal_purged_embargo_policy_fingerprint\":"
+      << json_quote(contract.causal_purged_embargo_policy_fingerprint)
+      << ",\"embargo_policy_fingerprint\":"
+      << json_quote(contract.embargo_policy_fingerprint)
+      << ",\"causal_artifact_production_schema\":"
+      << json_quote(contract.causal_artifact_production_schema)
+      << ",\"causal_artifact_production_closure_digest\":"
+      << json_quote(contract.causal_artifact_production_closure_digest)
+      << ",\"causal_interface_stability_contract_digest\":"
+      << json_quote(contract.causal_interface_stability_contract_digest)
+      << ",\"causal_provenance_closure_digest\":"
+      << json_quote(contract.causal_provenance_closure_digest)
       << ",\"normalization_fit_range_digest\":"
       << json_quote(contract.normalization_fit_range_digest)
       << ",\"replay_buffer_source_range_digest\":"
@@ -4014,8 +7669,7 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
 [[nodiscard]] bool policy_training_execute_kind_supported(
     const cuwacunu::hero::runtime::policy_training_job_contract_t &contract) {
   const auto kind = lowercase_ascii(contract.policy_kind);
-  return contract.policy_kind == "noop_policy_training.v1" ||
-         kind == "ppo_policy_adapter.v1" || kind == "ppo" || kind == "ppo_v0";
+  return kind == "ppo_policy_adapter.v1" || kind == "ppo" || kind == "ppo_v0";
 }
 
 [[nodiscard]] bool policy_training_execute_kind_is_ppo_v0(
@@ -4032,70 +7686,7 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   }
   return "E_RUNTIME_POLICY_TRAINING_POLICY_KIND_UNSUPPORTED: "
          "mode=execute currently supports "
-         "policy_kind=noop_policy_training.v1 or ppo_policy_adapter.v1";
-}
-
-[[nodiscard]] std::string policy_training_checkpoint_text(
-    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
-    std::string_view contract_digest) {
-  std::ostringstream out;
-  out << "schema=kikijyeba.runtime.policy_training.noop_checkpoint.v1\n";
-  out << "policy_id=" << contract.policy_id << "\n";
-  out << "policy_kind=" << contract.policy_kind << "\n";
-  out << "contract_digest=" << contract_digest << "\n";
-  out << "causal_schedule_digest=" << contract.causal_schedule_digest << "\n";
-  out << "execution_profile_digest=" << contract.execution_profile_digest
-      << "\n";
-  out << "ppo_implemented=false\n";
-  out << "optimizer_steps=0\n";
-  out << "trainer_kind=noop_policy_training.v1\n";
-  out << "readiness_scope=pre_ppo_runtime_plumbing\n";
-  return out.str();
-}
-
-[[nodiscard]] std::string policy_training_report_text(
-    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
-    std::string_view contract_digest, const fs::path &checkpoint_path,
-    std::string_view checkpoint_digest) {
-  std::error_code ec;
-  const auto checkpoint_bytes = fs::exists(checkpoint_path, ec)
-                                    ? fs::file_size(checkpoint_path, ec)
-                                    : std::uintmax_t{0};
-  std::ostringstream out;
-  out << "report_schema_id=kikijyeba.runtime.policy_training.noop_report.v1\n";
-  out << "report_schema_version=1\n";
-  out << "report_writer_id=hero.runtime.policy_training.noop_pre_ppo.v1\n";
-  out << "report_writer_version=1\n";
-  out << "run_data_kind=policy_training_noop_smoke\n";
-  out << "readiness_scope=pre_ppo_runtime_plumbing\n";
-  out << "policy_id=" << contract.policy_id << "\n";
-  out << "policy_kind=" << contract.policy_kind << "\n";
-  out << "policy_architecture_digest=" << contract.policy_architecture_digest
-      << "\n";
-  out << "training_config_digest=" << contract.training_config_digest << "\n";
-  out << "contract_digest=" << contract_digest << "\n";
-  out << "training_schedule_mode=" << contract.training_schedule_mode << "\n";
-  out << "causal_schedule_digest=" << contract.causal_schedule_digest << "\n";
-  out << "causal_schedule_no_future_snapshot_use="
-      << (contract.causal_schedule_no_future_snapshot_use ? "true" : "false")
-      << "\n";
-  out << "checkpoint_path=" << checkpoint_path.string() << "\n";
-  out << "checkpoint_path_reported=" << checkpoint_path.string() << "\n";
-  out << "checkpoint_digest_reported=" << checkpoint_digest << "\n";
-  out << "checkpoint_digest_verified=true\n";
-  out << "checkpoint_file_exists=true\n";
-  out << "checkpoint_bytes=" << checkpoint_bytes << "\n";
-  out << "checkpoint_artifact_status=written\n";
-  out << "checkpoint_written=true\n";
-  out << "optimizer_steps=0\n";
-  out << "steps_attempted=0\n";
-  out << "steps_completed=0\n";
-  out << "finite_parameter_check=true\n";
-  out << "nonfinite_output_count=0\n";
-  out << "ppo_implemented=false\n";
-  out << "live_execution_allowed=false\n";
-  out << "market_readiness_claimed=false\n";
-  return out.str();
+         "policy_kind=ppo_policy_adapter.v1";
 }
 
 [[nodiscard]] std::string policy_training_manifest_text(
@@ -4103,11 +7694,11 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
     std::string_view contract_digest, std::string_view job_id,
     std::string_view job_stable_id, std::string_view attempt_leaf,
     const fs::path &global_config_path,
-    std::string_view protocol_status = "pre_ppo_noop_execution",
-    std::string_view wave_id = "policy_training_pre_ppo",
+    std::string_view protocol_status = "policy_training_ppo_v0_execution",
+    std::string_view wave_id = "policy_training_ppo_v0",
     std::string_view execution_chain =
         "runtime.policy_training_contract:validate -> "
-        "runtime.policy_training.noop:write_checkpoint") {
+        "runtime.policy_training.ppo_v0:write_artifacts") {
   const auto operator_surface_digest =
       cuwacunu::hero::runtime::policy_operator_surface_digest(contract);
   std::ostringstream out;
@@ -4166,6 +7757,21 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   out << "policy_input_feature_manifest_digest="
       << contract.policy_input_feature_manifest_digest << "\n";
   out << "policy_jkimyei_digest=" << contract.policy_jkimyei_digest << "\n";
+  out << "policy_jkimyei_no_lookahead_contract_id="
+      << contract.policy_jkimyei_no_lookahead_contract_id << "\n";
+  out << "policy_jkimyei_no_lookahead_contract_digest="
+      << contract.policy_jkimyei_no_lookahead_contract_digest << "\n";
+  out << "policy_jkimyei_component_order_contract_id="
+      << contract.policy_jkimyei_component_order_contract_id << "\n";
+  out << "policy_jkimyei_component_order_contract_digest="
+      << contract.policy_jkimyei_component_order_contract_digest << "\n";
+  out << "policy_jkimyei_component_role="
+      << contract.policy_jkimyei_component_role << "\n";
+  out << "policy_jkimyei_serving_order_index="
+      << contract.policy_jkimyei_serving_order_index << "\n";
+  out << "policy_jkimyei_serving_order_index_bound="
+      << (contract.policy_jkimyei_serving_order_index_bound ? "true" : "false")
+      << "\n";
   out << "target_node_universe_digest=" << contract.target_node_universe_digest
       << "\n";
   out << "action_distribution_id=" << contract.action_distribution_id << "\n";
@@ -4186,96 +7792,6 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   out << "policy_training_contract_digest=" << contract_digest << "\n";
   out << "policy_training_artifact_schema=" << contract.artifact_schema_id
       << "\n";
-  return out.str();
-}
-
-[[nodiscard]] std::string policy_training_state_text(
-    std::string_view job_id, std::string_view job_stable_id,
-    std::string_view attempt_leaf, const fs::path &checkpoint_path,
-    const fs::path &report_path) {
-  std::ostringstream out;
-  out << "state_format=kikijyeba.runtime.job_state.v1\n";
-  out << "job_id=" << job_id << "\n";
-  out << "job_stable_id=" << job_stable_id << "\n";
-  out << "job_attempt_id=" << attempt_leaf << "\n";
-  out << "job_attempt_index=0\n";
-  out << "job_attempt_policy=immutable_no_overwrite\n";
-  out << "job_kind=policy_training\n";
-  out << "status=completed\n";
-  out << "error_message=\n";
-  out << "wave_id=policy_training_pre_ppo\n";
-  out << "target_component_family_id=wikimyei.policy.portfolio.graph_node_"
-         "allocation\n";
-  out << "wave_action=train\n";
-  out << "steps_attempted=0\n";
-  out << "steps_completed=0\n";
-  out << "skipped_batches=0\n";
-  out << "optimizer_steps=0\n";
-  out << "checkpoint_written=true\n";
-  out << "checkpoint_write_count=1\n";
-  out << "checkpoint_path=" << checkpoint_path.string() << "\n";
-  out << "report_written=true\n";
-  out << "report_write_count=1\n";
-  out << "report_path=" << report_path.string() << "\n";
-  out << "runtime_result_fact_written=true\n";
-  out << "runtime_result_fact_path=runtime.result.fact\n";
-  out << "runtime_checkpoint_io_fact_written=true\n";
-  out << "runtime_checkpoint_io_fact_path=runtime.checkpoint_io.fact\n";
-  out << "runtime_health_measurement_fact_written=true\n";
-  out << "runtime_health_measurement_fact_path=runtime.health_measurement."
-         "fact\n";
-  out << "lattice_exposure_fact_written=true\n";
-  out << "lattice_exposure_fact_path=runtime.policy_training.fact\n";
-  return out.str();
-}
-
-[[nodiscard]] std::string
-policy_training_runtime_result_fact_text(std::string_view job_id,
-                                         const fs::path &checkpoint_path) {
-  std::ostringstream out;
-  out << "fact_type=runtime.result.fact\n";
-  out << "schema_version=1\n";
-  out << "producer=runtime\n";
-  out << "job_id=" << job_id << "\n";
-  out << "job_kind=policy_training\n";
-  out << "status=completed\n";
-  out << "error_message=\n";
-  out << "optimizer_steps=0\n";
-  out << "checkpoint_written=true\n";
-  out << "checkpoint_path=" << checkpoint_path.string() << "\n";
-  out << "model_state_mutated=true\n";
-  out << "finite_parameter_check=true\n";
-  out << "nonfinite_output_count=0\n";
-  out << "final_loss=0\n";
-  out << "mean_loss=0\n";
-  return out.str();
-}
-
-[[nodiscard]] std::string
-policy_training_checkpoint_io_fact_text(std::string_view job_id,
-                                        const fs::path &checkpoint_path,
-                                        std::string_view checkpoint_digest) {
-  std::error_code ec;
-  const auto checkpoint_bytes = fs::exists(checkpoint_path, ec)
-                                    ? fs::file_size(checkpoint_path, ec)
-                                    : std::uintmax_t{0};
-  std::ostringstream out;
-  out << "fact_type=runtime.checkpoint_io.fact\n";
-  out << "schema_version=1\n";
-  out << "producer=runtime\n";
-  out << "job_id=" << job_id << "\n";
-  out << "job_kind=policy_training\n";
-  out << "checkpoint_written=true\n";
-  out << "checkpoint_path=" << checkpoint_path.string() << "\n";
-  out << "checkpoint_write_count=1\n";
-  out << "checkpoint_artifact_digest=" << checkpoint_digest << "\n";
-  out << "checkpoint_path_reported=" << checkpoint_path.string() << "\n";
-  out << "checkpoint_digest_reported=" << checkpoint_digest << "\n";
-  out << "checkpoint_digest_verified=true\n";
-  out << "checkpoint_file_exists=true\n";
-  out << "checkpoint_bytes=" << checkpoint_bytes << "\n";
-  out << "checkpoint_artifact_status=written\n";
-  out << "model_state_mutated=true\n";
   return out.str();
 }
 
@@ -4740,8 +8256,24 @@ struct ppo_v0_policy_summary_t {
   std::uint64_t partial_order_count{0};
 };
 
+struct certified_replay_chunk_v1_t {
+  std::string chunk_id{};
+  std::int64_t coverage_anchor_begin{0};
+  std::int64_t coverage_anchor_end_exclusive{0};
+  std::int64_t anchor_count{0};
+  std::string batch_cursor_token{};
+  fs::path artifact_path_index_path{};
+  std::string artifact_path_index_digest{};
+  fs::path source_replay_job_dir{};
+  std::string source_replay_job_dir_digest{};
+  std::string no_lookahead_certificate_digest{};
+  std::string provenance_closure_digest{};
+  std::string consumed_generation_vector_digests{};
+};
+
 struct ppo_v0_rollout_collection_t {
   std::vector<ppo_v0_rollout_sample_t> samples{};
+  std::vector<certified_replay_chunk_v1_t> certified_replay_chunks{};
   std::vector<ppo_v0_policy_summary_t> policy_summaries{};
   std::string rollout_collection_id{"ppo_v0_runtime_smoke_rollout"};
   std::string collection_mode{"runtime_ppo_v0_smoke_fixture"};
@@ -4750,6 +8282,14 @@ struct ppo_v0_rollout_collection_t {
   std::string input_replay_report_digest{};
   fs::path input_policy_checkpoint_path{};
   std::string input_policy_checkpoint_digest{};
+  std::string certified_replay_bank_id{};
+  fs::path certified_replay_bank_manifest_path{};
+  std::string certified_replay_bank_manifest_digest{};
+  std::string policy_experience_set_digest{};
+  std::string policy_experience_mode{"on_policy_current_rollout"};
+  std::int64_t certified_replay_coverage_anchor_begin{0};
+  std::int64_t certified_replay_coverage_anchor_end_exclusive{0};
+  bool certified_replay_coverage_anchor_range_bound{false};
   bool kikijyeba_cajtucu_replay_integration{false};
   bool policy_distribution_evidence_bound{true};
   bool on_policy_runtime_collection_complete{false};
@@ -5070,6 +8610,216 @@ kv_bool_or(const std::unordered_map<std::string, std::string> &kv,
     }
   }
   return max_index + 1;
+}
+
+[[nodiscard]] bool build_certified_replay_chunks_from_source_job(
+    const fs::path &source_replay_job_dir,
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    std::string_view source_replay_job_dir_digest,
+    std::vector<certified_replay_chunk_v1_t> *out, std::string *err) {
+  if (out == nullptr) {
+    return true;
+  }
+  out->clear();
+  const fs::path batch_index_path =
+      runtime_replay_batch_index_path(source_replay_job_dir);
+  const auto batch_index = parse_kv_file(batch_index_path);
+  std::int64_t entry_count = 0;
+  if (!kv_i64(batch_index, "entry_count", &entry_count) || entry_count <= 0) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_CERTIFIED_REPLAY_BANK_EMPTY: " +
+             batch_index_path.string();
+    }
+    return false;
+  }
+
+  out->reserve(static_cast<std::size_t>(entry_count));
+  for (std::int64_t i = 0; i < entry_count; ++i) {
+    const std::string prefix = "entry_" + std::to_string(i) + "_";
+    certified_replay_chunk_v1_t chunk{};
+    chunk.chunk_id = "certified_replay_chunk_" + std::to_string(i);
+    chunk.coverage_anchor_begin =
+        kv_i64_or(batch_index, prefix + "begin_anchor_index", 0);
+    chunk.coverage_anchor_end_exclusive =
+        kv_i64_or(batch_index, prefix + "end_anchor_index", 0);
+    chunk.anchor_count = kv_i64_or(batch_index, prefix + "anchor_count", 0);
+    chunk.batch_cursor_token =
+        kv_string_or(batch_index, prefix + "batch_cursor_token", "");
+    const std::string artifact_path_index =
+        kv_string_or(batch_index, prefix + "artifact_path_index_path", "");
+    if (!trim_ascii(artifact_path_index).empty()) {
+      chunk.artifact_path_index_path = resolve_runtime_replay_artifact_path(
+          fs::path(trim_ascii(artifact_path_index)),
+          batch_index_path.parent_path());
+      chunk.artifact_path_index_digest =
+          file_digest_or_empty(chunk.artifact_path_index_path,
+                               "certified_replay_chunk_artifact_index.v1");
+    }
+    chunk.source_replay_job_dir = source_replay_job_dir;
+    chunk.source_replay_job_dir_digest =
+        std::string(source_replay_job_dir_digest);
+    chunk.no_lookahead_certificate_digest =
+        contract.policy_execution_no_lookahead_certificate_digest;
+    chunk.provenance_closure_digest =
+        contract.policy_execution_provenance_closure_digest;
+    chunk.consumed_generation_vector_digests =
+        contract.policy_execution_consumed_generation_vector_digests;
+    if (chunk.coverage_anchor_end_exclusive <= chunk.coverage_anchor_begin ||
+        chunk.anchor_count <= 0 || chunk.artifact_path_index_digest.empty()) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_CERTIFIED_REPLAY_CHUNK_INVALID: " +
+               chunk.chunk_id;
+      }
+      return false;
+    }
+    out->push_back(std::move(chunk));
+  }
+  return true;
+}
+
+[[nodiscard]] std::string
+certified_replay_chunk_digest(const certified_replay_chunk_v1_t &chunk) {
+  std::ostringstream text;
+  text << "certified_replay_chunk.v1\n";
+  text << "chunk_id=" << chunk.chunk_id << "\n";
+  text << "coverage_anchor_begin=" << chunk.coverage_anchor_begin << "\n";
+  text << "coverage_anchor_end_exclusive="
+       << chunk.coverage_anchor_end_exclusive << "\n";
+  text << "anchor_count=" << chunk.anchor_count << "\n";
+  text << "artifact_path_index_digest=" << chunk.artifact_path_index_digest
+       << "\n";
+  text << "source_replay_job_dir_digest=" << chunk.source_replay_job_dir_digest
+       << "\n";
+  text << "no_lookahead_certificate_digest="
+       << chunk.no_lookahead_certificate_digest << "\n";
+  text << "provenance_closure_digest=" << chunk.provenance_closure_digest
+       << "\n";
+  return cuwacunu::hero::marshal::marshal_digest_for_text(
+      "certified_replay_chunk.v1", text.str());
+}
+
+[[nodiscard]] std::string join_certified_replay_chunk_digests(
+    const std::vector<certified_replay_chunk_v1_t> &chunks) {
+  std::ostringstream out;
+  for (std::size_t i = 0; i < chunks.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << certified_replay_chunk_digest(chunks[i]);
+  }
+  return out.str();
+}
+
+inline void
+bind_certified_replay_bank_summary(ppo_v0_rollout_collection_t *collection) {
+  if (collection == nullptr || collection->certified_replay_chunks.empty()) {
+    return;
+  }
+  const auto &chunks = collection->certified_replay_chunks;
+  collection->certified_replay_coverage_anchor_begin =
+      chunks.front().coverage_anchor_begin;
+  collection->certified_replay_coverage_anchor_end_exclusive =
+      chunks.front().coverage_anchor_end_exclusive;
+  std::int64_t sample_count = 0;
+  for (const auto &chunk : chunks) {
+    collection->certified_replay_coverage_anchor_begin =
+        std::min(collection->certified_replay_coverage_anchor_begin,
+                 chunk.coverage_anchor_begin);
+    collection->certified_replay_coverage_anchor_end_exclusive =
+        std::max(collection->certified_replay_coverage_anchor_end_exclusive,
+                 chunk.coverage_anchor_end_exclusive);
+    sample_count += chunk.anchor_count;
+  }
+  collection->certified_replay_coverage_anchor_range_bound =
+      collection->certified_replay_coverage_anchor_end_exclusive >
+      collection->certified_replay_coverage_anchor_begin;
+  if (collection->certified_replay_bank_id.empty()) {
+    collection->certified_replay_bank_id =
+        "certified_replay_bank_" +
+        cuwacunu::hero::marshal::marshal_digest_for_text(
+            "certified_replay_bank_id.v1",
+            join_certified_replay_chunk_digests(chunks))
+            .substr(0, 16);
+  }
+  if (collection->policy_experience_set_digest.empty()) {
+    collection->policy_experience_set_digest =
+        cuwacunu::hero::marshal::marshal_digest_for_text(
+            "policy_experience_set.v1",
+            collection->certified_replay_bank_id + "|" +
+                join_certified_replay_chunk_digests(chunks) + "|" +
+                std::to_string(sample_count));
+  }
+}
+
+[[nodiscard]] std::string certified_replay_bank_manifest_text(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    std::string_view contract_digest,
+    const ppo_v0_rollout_collection_t &collection) {
+  std::int64_t sample_count = 0;
+  for (const auto &chunk : collection.certified_replay_chunks) {
+    sample_count += chunk.anchor_count;
+  }
+  std::ostringstream out;
+  out << "schema=certified_replay_bank_manifest.v1\n";
+  out << "bank_id=" << collection.certified_replay_bank_id << "\n";
+  out << "contract_digest=" << contract_digest << "\n";
+  out << "policy_id=" << contract.policy_id << "\n";
+  out << "policy_experience_mode=" << collection.policy_experience_mode << "\n";
+  out << "policy_experience_set_digest="
+      << collection.policy_experience_set_digest << "\n";
+  out << "no_lookahead_contract_digest="
+      << contract.policy_execution_no_lookahead_contract_digest << "\n";
+  out << "target_anchor_begin=" << contract.policy_execution_target_anchor_begin
+      << "\n";
+  out << "target_anchor_end_exclusive="
+      << contract.policy_execution_target_anchor_end_exclusive << "\n";
+  out << "target_anchor_range_bound="
+      << bool_json(contract.policy_execution_target_anchor_begin_bound &&
+                   contract.policy_execution_target_anchor_end_exclusive_bound)
+      << "\n";
+  out << "chunk_count=" << collection.certified_replay_chunks.size() << "\n";
+  out << "sample_count=" << sample_count << "\n";
+  out << "coverage_anchor_begin="
+      << collection.certified_replay_coverage_anchor_begin << "\n";
+  out << "coverage_anchor_end_exclusive="
+      << collection.certified_replay_coverage_anchor_end_exclusive << "\n";
+  out << "coverage_anchor_range_bound="
+      << bool_json(collection.certified_replay_coverage_anchor_range_bound)
+      << "\n";
+  out << "certified_replay_chunk_digests="
+      << join_certified_replay_chunk_digests(collection.certified_replay_chunks)
+      << "\n";
+  for (std::size_t i = 0; i < collection.certified_replay_chunks.size(); ++i) {
+    const auto &chunk = collection.certified_replay_chunks[i];
+    const std::string prefix = "chunk_" + std::to_string(i) + "_";
+    out << prefix << "id=" << chunk.chunk_id << "\n";
+    out << prefix << "digest=" << certified_replay_chunk_digest(chunk) << "\n";
+    out << prefix << "coverage_anchor_begin=" << chunk.coverage_anchor_begin
+        << "\n";
+    out << prefix << "coverage_anchor_end_exclusive="
+        << chunk.coverage_anchor_end_exclusive << "\n";
+    out << prefix << "anchor_count=" << chunk.anchor_count << "\n";
+    out << prefix << "batch_cursor_token=" << chunk.batch_cursor_token << "\n";
+    out << prefix << "artifact_path_index_path="
+        << chunk.artifact_path_index_path.string() << "\n";
+    out << prefix
+        << "artifact_path_index_digest=" << chunk.artifact_path_index_digest
+        << "\n";
+    out << prefix
+        << "source_replay_job_dir=" << chunk.source_replay_job_dir.string()
+        << "\n";
+    out << prefix
+        << "source_replay_job_dir_digest=" << chunk.source_replay_job_dir_digest
+        << "\n";
+    out << prefix << "no_lookahead_certificate_digest="
+        << chunk.no_lookahead_certificate_digest << "\n";
+    out << prefix
+        << "provenance_closure_digest=" << chunk.provenance_closure_digest
+        << "\n";
+    out << prefix << "consumed_generation_vector_digests="
+        << chunk.consumed_generation_vector_digests << "\n";
+  }
+  return out.str();
 }
 
 [[nodiscard]] bool load_ppo_v0_replay_rollout_collection(
@@ -5786,7 +9536,9 @@ struct ppo_v0_dirichlet_eval_t {
   }
 
   out.actor_learning_rate =
-      clamp_double(contract.ppo_clip_epsilon * 0.005, 1.0e-5, 1.0e-3);
+      contract.ppo_learning_rate_bound
+          ? contract.ppo_learning_rate
+          : clamp_double(contract.ppo_clip_epsilon * 0.005, 1.0e-5, 1.0e-3);
   out.critic_learning_rate = out.actor_learning_rate;
   torch::optim::Adam optimizer(
       module->parameters(), torch::optim::AdamOptions(out.actor_learning_rate));
@@ -6091,6 +9843,21 @@ struct ppo_v0_dirichlet_eval_t {
   out << "policy_input_feature_manifest_digest="
       << contract.policy_input_feature_manifest_digest << "\n";
   out << "policy_jkimyei_digest=" << contract.policy_jkimyei_digest << "\n";
+  out << "policy_jkimyei_no_lookahead_contract_id="
+      << contract.policy_jkimyei_no_lookahead_contract_id << "\n";
+  out << "policy_jkimyei_no_lookahead_contract_digest="
+      << contract.policy_jkimyei_no_lookahead_contract_digest << "\n";
+  out << "policy_jkimyei_component_order_contract_id="
+      << contract.policy_jkimyei_component_order_contract_id << "\n";
+  out << "policy_jkimyei_component_order_contract_digest="
+      << contract.policy_jkimyei_component_order_contract_digest << "\n";
+  out << "policy_jkimyei_component_role="
+      << contract.policy_jkimyei_component_role << "\n";
+  out << "policy_jkimyei_serving_order_index="
+      << contract.policy_jkimyei_serving_order_index << "\n";
+  out << "policy_jkimyei_serving_order_index_bound="
+      << (contract.policy_jkimyei_serving_order_index_bound ? "true" : "false")
+      << "\n";
   out << "target_node_universe_digest=" << contract.target_node_universe_digest
       << "\n";
   out << "action_schema_id=" << contract.action_schema_digest << "\n";
@@ -6369,6 +10136,35 @@ struct ppo_v0_dirichlet_eval_t {
       << collection.input_replay_report_path.string() << "\n";
   out << "input_replay_report_digest=" << collection.input_replay_report_digest
       << "\n";
+  out << "certified_replay_bank_schema=certified_replay_bank_manifest.v1\n";
+  out << "certified_replay_bank_id=" << collection.certified_replay_bank_id
+      << "\n";
+  out << "certified_replay_bank_manifest_path="
+      << collection.certified_replay_bank_manifest_path.string() << "\n";
+  out << "certified_replay_bank_manifest_digest="
+      << collection.certified_replay_bank_manifest_digest << "\n";
+  out << "policy_experience_set_digest="
+      << collection.policy_experience_set_digest << "\n";
+  out << "policy_experience_mode=" << collection.policy_experience_mode << "\n";
+  out << "certified_replay_chunk_count="
+      << collection.certified_replay_chunks.size() << "\n";
+  out << "certified_replay_chunk_count_bound="
+      << bool_json(!collection.certified_replay_chunks.empty()) << "\n";
+  std::int64_t certified_replay_sample_count = 0;
+  for (const auto &chunk : collection.certified_replay_chunks) {
+    certified_replay_sample_count += chunk.anchor_count;
+  }
+  out << "certified_replay_sample_count=" << certified_replay_sample_count
+      << "\n";
+  out << "certified_replay_sample_count_bound="
+      << bool_json(!collection.certified_replay_chunks.empty()) << "\n";
+  out << "certified_replay_coverage_anchor_begin="
+      << collection.certified_replay_coverage_anchor_begin << "\n";
+  out << "certified_replay_coverage_anchor_end_exclusive="
+      << collection.certified_replay_coverage_anchor_end_exclusive << "\n";
+  out << "certified_replay_coverage_anchor_range_bound="
+      << bool_json(collection.certified_replay_coverage_anchor_range_bound)
+      << "\n";
   out << "input_policy_checkpoint_path="
       << collection.input_policy_checkpoint_path.string() << "\n";
   out << "input_policy_checkpoint_digest="
@@ -6410,6 +10206,21 @@ struct ppo_v0_dirichlet_eval_t {
       << bool_json(collection.kikijyeba_cajtucu_replay_integration) << "\n";
   out << "on_policy_runtime_collection_complete="
       << bool_json(collection.on_policy_runtime_collection_complete) << "\n";
+  for (std::size_t i = 0; i < collection.certified_replay_chunks.size(); ++i) {
+    const auto &chunk = collection.certified_replay_chunks[i];
+    const std::string prefix =
+        "certified_replay_chunk_" + std::to_string(i) + "_";
+    out << prefix << "id=" << chunk.chunk_id << "\n";
+    out << prefix << "digest=" << certified_replay_chunk_digest(chunk) << "\n";
+    out << prefix << "coverage_anchor_begin=" << chunk.coverage_anchor_begin
+        << "\n";
+    out << prefix << "coverage_anchor_end_exclusive="
+        << chunk.coverage_anchor_end_exclusive << "\n";
+    out << prefix << "anchor_count=" << chunk.anchor_count << "\n";
+    out << prefix
+        << "artifact_path_index_digest=" << chunk.artifact_path_index_digest
+        << "\n";
+  }
   double total_transaction_cost = 0.0;
   double total_fee_cost = 0.0;
   double total_spread_cost = 0.0;
@@ -6611,6 +10422,7 @@ struct ppo_v0_dirichlet_eval_t {
   out << "gae_lambda=" << contract.ppo_gae_lambda << "\n";
   out << "clip_epsilon=" << contract.ppo_clip_epsilon << "\n";
   out << "target_kl=" << contract.ppo_target_kl << "\n";
+  out << "learning_rate=" << metrics.actor_learning_rate << "\n";
   out << "entropy_coeff=" << contract.ppo_entropy_coeff << "\n";
   out << "value_loss_coeff=" << contract.ppo_value_loss_coeff << "\n";
   out << "max_grad_norm=" << contract.ppo_max_grad_norm << "\n";
@@ -7205,6 +11017,342 @@ find_policy_summary_by_id(const std::vector<ppo_v0_policy_summary_t> &summaries,
   return out.str();
 }
 
+[[nodiscard]] std::string
+policy_training_anchor_v1_performance_profile_report_text(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    std::string_view contract_digest, const fs::path &actor_checkpoint_path,
+    std::string_view actor_checkpoint_digest,
+    const fs::path &rollout_collection_path,
+    std::string_view rollout_collection_digest,
+    const fs::path &ppo_update_report_path,
+    std::string_view ppo_update_report_digest,
+    const fs::path &validation_rollout_path,
+    std::string_view validation_rollout_digest, bool validation_rollout_ready,
+    const ppo_v0_rollout_collection_t &validation_collection,
+    const fs::path &policy_quality_report_path,
+    std::string_view policy_quality_report_digest,
+    bool policy_quality_report_ready,
+    const ppo_v0_rollout_collection_t &quality_collection,
+    const ppo_v0_update_metrics_t &metrics,
+    const ppo_v0_rollout_collection_t &training_collection) {
+  const auto validation_metrics =
+      compute_ppo_v0_evaluation_rollout_metrics(validation_collection);
+  const auto *ppo_quality_summary = find_policy_summary_by_id(
+      quality_collection.policy_summaries,
+      "wikimyei.policy.portfolio.graph_node_allocation.v1");
+  const auto *equal_weight_summary = find_policy_summary_by_id(
+      quality_collection.policy_summaries, "equal_weight.v1");
+  const auto *numeraire_summary = find_policy_summary_by_id(
+      quality_collection.policy_summaries, "numeraire_only.v1");
+  const bool replay_backing_complete =
+      training_collection.kikijyeba_cajtucu_replay_integration &&
+      metrics.sample_count > 0 &&
+      static_cast<std::int64_t>(training_collection.samples.size()) ==
+          metrics.sample_count;
+  constexpr std::int64_t k_certified_replay_sample_low_threshold = 1024;
+  std::int64_t certified_replay_profile_sample_count = 0;
+  for (const auto &chunk : training_collection.certified_replay_chunks) {
+    certified_replay_profile_sample_count += chunk.anchor_count;
+  }
+  const bool certified_replay_bank_bound =
+      !training_collection.certified_replay_bank_manifest_digest.empty() &&
+      !training_collection.policy_experience_set_digest.empty() &&
+      !training_collection.certified_replay_chunks.empty();
+  const bool certified_replay_sample_count_low =
+      certified_replay_bank_bound &&
+      certified_replay_profile_sample_count <
+          k_certified_replay_sample_low_threshold;
+  const bool policy_training_uses_all_certified_replay =
+      certified_replay_bank_bound &&
+      metrics.sample_count == certified_replay_profile_sample_count;
+  const bool ppo_rollout_sample_cap_limited =
+      certified_replay_bank_bound &&
+      metrics.sample_count < certified_replay_profile_sample_count;
+  const bool certified_replay_source_capacity_limited =
+      certified_replay_sample_count_low &&
+      policy_training_uses_all_certified_replay;
+  const std::int64_t certified_replay_sample_deficit =
+      certified_replay_bank_bound
+          ? std::max<std::int64_t>(0, k_certified_replay_sample_low_threshold -
+                                          certified_replay_profile_sample_count)
+          : k_certified_replay_sample_low_threshold;
+  const double certified_replay_sample_utilization_ratio =
+      certified_replay_bank_bound && certified_replay_profile_sample_count > 0
+          ? static_cast<double>(metrics.sample_count) /
+                static_cast<double>(certified_replay_profile_sample_count)
+          : 0.0;
+  const bool sample_count_low =
+      metrics.sample_count < k_certified_replay_sample_low_threshold;
+  const double kl_target_ratio =
+      contract.ppo_target_kl > 0.0 ? metrics.approx_kl / contract.ppo_target_kl
+                                   : 0.0;
+  const bool kl_target_ratio_bound = contract.ppo_target_kl > 0.0;
+  const bool clip_fraction_high = metrics.clip_fraction >= 0.5;
+  const bool quality_comparison_complete =
+      policy_quality_report_ready && ppo_quality_summary != nullptr &&
+      count_bound_baseline_summaries(quality_collection.policy_summaries) == 4;
+  const bool validation_trace_clean =
+      validation_rollout_ready &&
+      validation_metrics.invalid_action_count == 0 &&
+      validation_metrics.invalid_trace_count == 0;
+  const std::int64_t warning_count =
+      (sample_count_low ? 1 : 0) + (metrics.target_kl_exceeded ? 1 : 0) +
+      (clip_fraction_high ? 1 : 0) + (!replay_backing_complete ? 1 : 0) +
+      (!validation_rollout_ready ? 1 : 0) +
+      (!quality_comparison_complete ? 1 : 0);
+  const std::string scaling_bottleneck_kind =
+      !certified_replay_bank_bound
+          ? "certified_replay_bank_missing"
+          : (metrics.target_kl_exceeded
+                 ? "ppo_update_stability"
+                 : (ppo_rollout_sample_cap_limited
+                        ? "ppo_rollout_sample_cap"
+                        : (certified_replay_source_capacity_limited
+                               ? "certified_replay_source_capacity"
+                               : (sample_count_low
+                                      ? "policy_training_sample_count_low"
+                                      : "none"))));
+  const std::string certified_replay_scaling_recommendation =
+      scaling_bottleneck_kind == "certified_replay_source_capacity"
+          ? "generate_broader_certified_replay_source"
+          : (scaling_bottleneck_kind == "ppo_rollout_sample_cap"
+                 ? "increase_policy_rollout_sample_cap"
+                 : (scaling_bottleneck_kind == "certified_replay_bank_missing"
+                        ? "bind_certified_replay_bank_manifest"
+                        : (scaling_bottleneck_kind == "ppo_update_stability"
+                               ? "stabilize_ppo_update_before_scaling"
+                               : "compare_policy_quality")));
+
+  std::ostringstream out;
+  out << "schema=policy_training_anchor_v1_performance_profile.v1\n";
+  out << "report_writer_id=hero.runtime.policy_training.performance_profile."
+         "v1\n";
+  out << "contract_digest=" << contract_digest << "\n";
+  out << "policy_id=" << contract.policy_id << "\n";
+  out << "policy_kind=" << contract.policy_kind << "\n";
+  out << "policy_family_id=" << contract.policy_family_id << "\n";
+  out << "policy_checkpoint_path=" << actor_checkpoint_path.string() << "\n";
+  out << "policy_checkpoint_digest=" << actor_checkpoint_digest << "\n";
+  out << "rollout_collection_report_path=" << rollout_collection_path.string()
+      << "\n";
+  out << "rollout_collection_report_digest=" << rollout_collection_digest
+      << "\n";
+  out << "ppo_update_report_path=" << ppo_update_report_path.string() << "\n";
+  out << "ppo_update_report_digest=" << ppo_update_report_digest << "\n";
+  out << "validation_rollout_report_path=" << validation_rollout_path.string()
+      << "\n";
+  out << "validation_rollout_report_digest=" << validation_rollout_digest
+      << "\n";
+  out << "policy_quality_report_path=" << policy_quality_report_path.string()
+      << "\n";
+  out << "policy_quality_report_digest=" << policy_quality_report_digest
+      << "\n";
+  out << "device_policy=" << metrics.device_policy << "\n";
+  out << "runtime_device_kind=" << metrics.runtime_device_kind << "\n";
+  out << "cuda_verification_passed="
+      << bool_json(metrics.cuda_verification_passed) << "\n";
+  out << "sample_count=" << metrics.sample_count << "\n";
+  out << "sample_count_low_threshold="
+      << k_certified_replay_sample_low_threshold << "\n";
+  out << "sample_count_low=" << bool_json(sample_count_low) << "\n";
+  out << "optimizer_steps=" << metrics.optimizer_steps << "\n";
+  out << "parameter_update_applied="
+      << bool_json(metrics.parameter_update_applied) << "\n";
+  out << "actor_learning_rate=" << metrics.actor_learning_rate << "\n";
+  out << "critic_learning_rate=" << metrics.critic_learning_rate << "\n";
+  out << "ppo_target_kl=" << contract.ppo_target_kl << "\n";
+  out << "ppo_approx_kl=" << metrics.approx_kl << "\n";
+  out << "ppo_kl_target_ratio_bound=" << bool_json(kl_target_ratio_bound)
+      << "\n";
+  out << "ppo_kl_target_ratio=" << kl_target_ratio << "\n";
+  out << "ppo_kl_target_exceeded=" << bool_json(metrics.target_kl_exceeded)
+      << "\n";
+  out << "ppo_clip_fraction=" << metrics.clip_fraction << "\n";
+  out << "ppo_clip_fraction_high_threshold=0.5\n";
+  out << "ppo_clip_fraction_high=" << bool_json(clip_fraction_high) << "\n";
+  out << "policy_loss_final=" << metrics.policy_loss_final << "\n";
+  out << "value_loss=" << metrics.value_loss << "\n";
+  out << "entropy=" << metrics.entropy << "\n";
+  out << "gradient_norm=" << metrics.gradient_norm << "\n";
+  out << "actor_logit_gradient_norm=" << metrics.actor_logit_gradient_norm
+      << "\n";
+  out << "parameter_delta_l2=" << metrics.parameter_delta_l2 << "\n";
+  out << "training_collection_source=" << training_collection.collection_source
+      << "\n";
+  out << "training_collection_mode=" << training_collection.collection_mode
+      << "\n";
+  out << "certified_replay_bank_schema=certified_replay_bank_manifest.v1\n";
+  out << "certified_replay_bank_id="
+      << training_collection.certified_replay_bank_id << "\n";
+  out << "certified_replay_bank_manifest_path="
+      << training_collection.certified_replay_bank_manifest_path.string()
+      << "\n";
+  out << "certified_replay_bank_manifest_digest="
+      << training_collection.certified_replay_bank_manifest_digest << "\n";
+  out << "policy_experience_set_digest="
+      << training_collection.policy_experience_set_digest << "\n";
+  out << "policy_experience_mode=" << training_collection.policy_experience_mode
+      << "\n";
+  out << "certified_replay_chunk_count="
+      << training_collection.certified_replay_chunks.size() << "\n";
+  out << "certified_replay_chunk_count_bound="
+      << bool_json(!training_collection.certified_replay_chunks.empty())
+      << "\n";
+  out << "certified_replay_sample_count="
+      << certified_replay_profile_sample_count << "\n";
+  out << "certified_replay_sample_count_bound="
+      << bool_json(!training_collection.certified_replay_chunks.empty())
+      << "\n";
+  out << "certified_replay_sample_count_low_threshold="
+      << k_certified_replay_sample_low_threshold << "\n";
+  out << "certified_replay_sample_count_low="
+      << bool_json(certified_replay_sample_count_low) << "\n";
+  out << "certified_replay_sample_deficit_to_threshold="
+      << certified_replay_sample_deficit << "\n";
+  out << "policy_training_uses_all_certified_replay="
+      << bool_json(policy_training_uses_all_certified_replay) << "\n";
+  out << "certified_replay_sample_utilization_ratio="
+      << certified_replay_sample_utilization_ratio << "\n";
+  out << "ppo_rollout_sample_cap_limited="
+      << bool_json(ppo_rollout_sample_cap_limited) << "\n";
+  out << "certified_replay_source_capacity_limited="
+      << bool_json(certified_replay_source_capacity_limited) << "\n";
+  out << "certified_replay_coverage_anchor_begin="
+      << training_collection.certified_replay_coverage_anchor_begin << "\n";
+  out << "certified_replay_coverage_anchor_end_exclusive="
+      << training_collection.certified_replay_coverage_anchor_end_exclusive
+      << "\n";
+  out << "certified_replay_coverage_anchor_range_bound="
+      << bool_json(
+             training_collection.certified_replay_coverage_anchor_range_bound)
+      << "\n";
+  out << "certified_replay_bank_bound="
+      << bool_json(certified_replay_bank_bound) << "\n";
+  out << "certified_replay_scaling_bottleneck_kind=" << scaling_bottleneck_kind
+      << "\n";
+  out << "certified_replay_scaling_recommendation="
+      << certified_replay_scaling_recommendation << "\n";
+  out << "training_replay_backing_complete="
+      << bool_json(replay_backing_complete) << "\n";
+  out << "training_replay_backed_step_count="
+      << (training_collection.kikijyeba_cajtucu_replay_integration
+              ? metrics.sample_count
+              : 0)
+      << "\n";
+  out << "training_fixture_step_count="
+      << (training_collection.kikijyeba_cajtucu_replay_integration
+              ? 0
+              : metrics.sample_count)
+      << "\n";
+  out << "policy_input_tensor_payload_complete="
+      << bool_json(training_collection.on_policy_runtime_collection_complete &&
+                   metrics.policy_input_tensor_payload_bound)
+      << "\n";
+  out << "on_policy_runtime_collection_complete="
+      << bool_json(training_collection.on_policy_runtime_collection_complete)
+      << "\n";
+  out << "policy_distribution_evidence_bound="
+      << bool_json(training_collection.policy_distribution_evidence_bound)
+      << "\n";
+  out << "validation_rollout_ready=" << bool_json(validation_rollout_ready)
+      << "\n";
+  out << "validation_trace_clean=" << bool_json(validation_trace_clean) << "\n";
+  out << "validation_sample_count=" << validation_metrics.sample_count << "\n";
+  out << "validation_replay_backed_step_count="
+      << validation_metrics.replay_backed_step_count << "\n";
+  out << "validation_fixture_step_count="
+      << (validation_metrics.sample_count -
+          validation_metrics.replay_backed_step_count)
+      << "\n";
+  out << "validation_final_equity_numeraire="
+      << validation_metrics.final_equity_numeraire << "\n";
+  out << "validation_total_log_growth=" << validation_metrics.total_log_growth
+      << "\n";
+  out << "validation_max_drawdown=" << validation_metrics.max_drawdown << "\n";
+  out << "validation_turnover=" << validation_metrics.turnover << "\n";
+  out << "validation_transaction_cost_numeraire="
+      << validation_metrics.transaction_cost_numeraire << "\n";
+  out << "validation_invalid_action_count="
+      << validation_metrics.invalid_action_count << "\n";
+  out << "validation_invalid_trace_count="
+      << validation_metrics.invalid_trace_count << "\n";
+  out << "validation_reward_total=" << validation_metrics.reward_total << "\n";
+  out << "policy_quality_report_ready="
+      << bool_json(policy_quality_report_ready) << "\n";
+  out << "policy_quality_comparison_complete="
+      << bool_json(quality_comparison_complete) << "\n";
+  out << "policy_quality_baseline_required_count=4\n";
+  out << "policy_quality_baseline_bound_count="
+      << count_bound_baseline_summaries(quality_collection.policy_summaries)
+      << "\n";
+  out << "policy_quality_ppo_summary_bound="
+      << bool_json(ppo_quality_summary != nullptr) << "\n";
+  if (ppo_quality_summary != nullptr) {
+    out << "policy_quality_ppo_mean_total_log_growth="
+        << ppo_quality_summary->mean_total_log_growth << "\n";
+    out << "policy_quality_ppo_mean_final_equity_numeraire="
+        << ppo_quality_summary->mean_final_equity_numeraire << "\n";
+    out << "policy_quality_ppo_mean_max_drawdown="
+        << ppo_quality_summary->mean_max_drawdown << "\n";
+    out << "policy_quality_ppo_mean_total_turnover="
+        << ppo_quality_summary->mean_total_turnover << "\n";
+    out << "policy_quality_ppo_mean_total_transaction_cost_numeraire="
+        << ppo_quality_summary->mean_total_transaction_cost_numeraire << "\n";
+  }
+  if (ppo_quality_summary != nullptr && equal_weight_summary != nullptr) {
+    out << "policy_quality_ppo_minus_equal_weight_total_log_growth="
+        << (ppo_quality_summary->mean_total_log_growth -
+            equal_weight_summary->mean_total_log_growth)
+        << "\n";
+    out << "policy_quality_ppo_minus_equal_weight_final_equity_numeraire="
+        << (ppo_quality_summary->mean_final_equity_numeraire -
+            equal_weight_summary->mean_final_equity_numeraire)
+        << "\n";
+  }
+  if (ppo_quality_summary != nullptr && numeraire_summary != nullptr) {
+    out << "policy_quality_ppo_minus_numeraire_total_log_growth="
+        << (ppo_quality_summary->mean_total_log_growth -
+            numeraire_summary->mean_total_log_growth)
+        << "\n";
+    out << "policy_quality_ppo_minus_numeraire_final_equity_numeraire="
+        << (ppo_quality_summary->mean_final_equity_numeraire -
+            numeraire_summary->mean_final_equity_numeraire)
+        << "\n";
+  }
+  out << "profile_warning_count=" << warning_count << "\n";
+  out << "profile_warning_sample_count_low=" << bool_json(sample_count_low)
+      << "\n";
+  out << "profile_warning_ppo_kl_target_exceeded="
+      << bool_json(metrics.target_kl_exceeded) << "\n";
+  out << "profile_warning_ppo_clip_fraction_high="
+      << bool_json(clip_fraction_high) << "\n";
+  out << "profile_warning_training_replay_backing_incomplete="
+      << bool_json(!replay_backing_complete) << "\n";
+  out << "profile_warning_validation_missing="
+      << bool_json(!validation_rollout_ready) << "\n";
+  out << "profile_warning_quality_comparison_incomplete="
+      << bool_json(!quality_comparison_complete) << "\n";
+  out << "profile_interpretation="
+      << (warning_count == 0 ? "green_for_anchor_v1_profile"
+                             : "diagnostic_warnings_present")
+      << "\n";
+  out << "suggested_next_performance_tag="
+      << (metrics.target_kl_exceeded
+              ? "ppo_update_stability"
+              : (sample_count_low ? "increase_certified_replay_exposure"
+                                  : "policy_quality_comparison"))
+      << "\n";
+  out << "performance_profile_claimed=false\n";
+  out << "policy_selection_claimed=false\n";
+  out << "policy_selected=false\n";
+  out << "policy_quality_claimed=false\n";
+  out << "market_readiness_claimed=false\n";
+  out << "deployment_readiness_claimed=false\n";
+  out << "live_execution_allowed=false\n";
+  out << "report_integrity_only=true\n";
+  return out.str();
+}
+
 [[nodiscard]] std::string policy_training_ppo_report_text(
     const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
     std::string_view contract_digest, const fs::path &actor_checkpoint_path,
@@ -7221,6 +11369,8 @@ find_policy_summary_by_id(const std::vector<ppo_v0_policy_summary_t> &summaries,
     std::string_view validation_rollout_digest,
     const fs::path &policy_quality_report_path,
     std::string_view policy_quality_report_digest,
+    const fs::path &performance_profile_report_path,
+    std::string_view performance_profile_report_digest,
     const ppo_v0_update_metrics_t &metrics,
     const ppo_v0_rollout_collection_t &collection) {
   std::ostringstream out;
@@ -7238,6 +11388,31 @@ find_policy_summary_by_id(const std::vector<ppo_v0_policy_summary_t> &summaries,
   out << "input_replay_report_path="
       << collection.input_replay_report_path.string() << "\n";
   out << "input_replay_report_digest=" << collection.input_replay_report_digest
+      << "\n";
+  out << "certified_replay_bank_schema=certified_replay_bank_manifest.v1\n";
+  out << "certified_replay_bank_id=" << collection.certified_replay_bank_id
+      << "\n";
+  out << "certified_replay_bank_manifest_path="
+      << collection.certified_replay_bank_manifest_path.string() << "\n";
+  out << "certified_replay_bank_manifest_digest="
+      << collection.certified_replay_bank_manifest_digest << "\n";
+  out << "policy_experience_set_digest="
+      << collection.policy_experience_set_digest << "\n";
+  out << "policy_experience_mode=" << collection.policy_experience_mode << "\n";
+  out << "certified_replay_chunk_count="
+      << collection.certified_replay_chunks.size() << "\n";
+  out << "certified_replay_sample_count=";
+  std::int64_t certified_replay_report_sample_count = 0;
+  for (const auto &chunk : collection.certified_replay_chunks) {
+    certified_replay_report_sample_count += chunk.anchor_count;
+  }
+  out << certified_replay_report_sample_count << "\n";
+  out << "certified_replay_coverage_anchor_begin="
+      << collection.certified_replay_coverage_anchor_begin << "\n";
+  out << "certified_replay_coverage_anchor_end_exclusive="
+      << collection.certified_replay_coverage_anchor_end_exclusive << "\n";
+  out << "certified_replay_coverage_anchor_range_bound="
+      << bool_json(collection.certified_replay_coverage_anchor_range_bound)
       << "\n";
   out << "input_policy_checkpoint_path="
       << collection.input_policy_checkpoint_path.string() << "\n";
@@ -7283,6 +11458,12 @@ find_policy_summary_by_id(const std::vector<ppo_v0_policy_summary_t> &summaries,
       << "\n";
   out << "policy_quality_report_digest=" << policy_quality_report_digest
       << "\n";
+  out << "performance_profile_schema="
+      << "policy_training_anchor_v1_performance_profile.v1\n";
+  out << "performance_profile_report_path="
+      << performance_profile_report_path.string() << "\n";
+  out << "performance_profile_report_digest="
+      << performance_profile_report_digest << "\n";
   out << "optimizer_steps=" << metrics.optimizer_steps << "\n";
   out << "sample_count=" << metrics.sample_count << "\n";
   out << "policy_loss_final=" << metrics.policy_loss_final << "\n";
@@ -7465,24 +11646,32 @@ policy_training_lattice_identity_from_source_job(
     std::string_view policy_wave_id) {
   const auto forecast_fields =
       parse_kv_file(source_replay_job_dir / "lattice.forecast_eval.fact");
+  const bool forecast_is_legacy_splitless_alias =
+      !forecast_fields.empty() &&
+      !trim_ascii(parent_forecast_eval_fact_digest).empty() &&
+      trim_ascii(kv_get(forecast_fields, "split_policy_fingerprint")).empty();
   if (!forecast_fields.empty() &&
       (trim_ascii(parent_forecast_eval_fact_digest).empty() ||
        kv_get(forecast_fields, "fact_digest") ==
-           trim_ascii(parent_forecast_eval_fact_digest))) {
-    return policy_training_lattice_identity_from_parent_fields(forecast_fields,
-                                                               policy_job_id,
-                                                               policy_wave_id);
+           trim_ascii(parent_forecast_eval_fact_digest) ||
+       forecast_is_legacy_splitless_alias)) {
+    return policy_training_lattice_identity_from_parent_fields(
+        forecast_fields, policy_job_id, policy_wave_id);
   }
 
   const auto observer_fields =
       parse_kv_file(source_replay_job_dir / "lattice.observer_belief.fact");
+  const bool observer_is_legacy_splitless_alias =
+      !observer_fields.empty() &&
+      !trim_ascii(parent_observer_belief_fact_digest).empty() &&
+      trim_ascii(kv_get(observer_fields, "split_policy_fingerprint")).empty();
   if (!observer_fields.empty() &&
       (trim_ascii(parent_observer_belief_fact_digest).empty() ||
        kv_get(observer_fields, "fact_digest") ==
-           trim_ascii(parent_observer_belief_fact_digest))) {
-    return policy_training_lattice_identity_from_parent_fields(observer_fields,
-                                                               policy_job_id,
-                                                               policy_wave_id);
+           trim_ascii(parent_observer_belief_fact_digest) ||
+       observer_is_legacy_splitless_alias)) {
+    return policy_training_lattice_identity_from_parent_fields(
+        observer_fields, policy_job_id, policy_wave_id);
   }
 
   return {};
@@ -7496,6 +11685,203 @@ policy_training_lattice_identity_from_source_job(
     const policy_training_lattice_identity_t *identity = nullptr,
     const ppo_v0_update_metrics_t *ppo_metrics = nullptr) {
   std::ostringstream out;
+  std::int64_t identity_anchor_begin = 0;
+  std::int64_t identity_anchor_end = 0;
+  if (identity != nullptr) {
+    (void)parse_i64_text(identity->anchor_begin, &identity_anchor_begin);
+    (void)parse_i64_text(identity->anchor_end, &identity_anchor_end);
+  }
+  const std::int64_t execution_target_begin =
+      contract.policy_execution_target_anchor_begin_bound
+          ? contract.policy_execution_target_anchor_begin
+          : identity_anchor_begin;
+  const std::int64_t execution_target_end =
+      contract.policy_execution_target_anchor_end_exclusive_bound
+          ? contract.policy_execution_target_anchor_end_exclusive
+          : identity_anchor_end;
+  const bool ppo_output = cuwacunu::hero::runtime::policy_kind_is_ppo_adapter(
+      contract.policy_kind, contract.ppo_policy_artifact_contract_id);
+  const std::string output_generation_id =
+      !contract.policy_output_generation_id.empty()
+          ? contract.policy_output_generation_id
+          : (ppo_output && !checkpoint_digest.empty()
+                 ? "policy_generation_" +
+                       std::string(checkpoint_digest.substr(
+                           0,
+                           std::min<std::size_t>(16, checkpoint_digest.size())))
+                 : std::string{});
+  const std::string output_generation_vector_digest =
+      !contract.policy_output_generation_vector_digest.empty()
+          ? contract.policy_output_generation_vector_digest
+          : (ppo_output && !checkpoint_digest.empty()
+                 ? cuwacunu::hero::marshal::marshal_digest_for_text(
+                       "policy_runtime_execution_generation_vector.v1",
+                       std::string(checkpoint_digest))
+                 : std::string{});
+  const std::int64_t output_fit_begin =
+      contract.policy_output_fit_anchor_begin_bound
+          ? contract.policy_output_fit_anchor_begin
+          : execution_target_begin;
+  const std::int64_t output_fit_end =
+      contract.policy_output_fit_anchor_end_exclusive_bound
+          ? contract.policy_output_fit_anchor_end_exclusive
+          : execution_target_end;
+  const std::int64_t output_valid_from =
+      contract.policy_output_valid_from_anchor_bound
+          ? contract.policy_output_valid_from_anchor
+          : output_fit_end;
+  const std::string output_closure_seed =
+      std::string("policy_runtime_execution_provenance.v1|") +
+      std::string(checkpoint_digest) + "|" + output_generation_vector_digest +
+      "|" + contract.policy_execution_provenance_closure_digest + "|" +
+      std::to_string(output_fit_begin) + "|" + std::to_string(output_fit_end) +
+      "|" + std::to_string(output_valid_from);
+  const std::string output_provenance_closure_digest =
+      !contract.policy_output_provenance_closure_digest.empty()
+          ? contract.policy_output_provenance_closure_digest
+          : (ppo_output ? cuwacunu::hero::marshal::marshal_digest_for_text(
+                              "policy_runtime_execution_provenance.v1",
+                              output_closure_seed)
+                        : std::string{});
+  const auto first_non_empty = [](const std::string &preferred,
+                                  const std::string &fallback) {
+    return !preferred.empty() ? preferred : fallback;
+  };
+  const auto digest_vector_for_bundle =
+      [](const std::string &schema, const std::vector<std::string> &parts) {
+        std::ostringstream text;
+        text << schema;
+        for (const auto &part : parts) {
+          text << "|" << part;
+        }
+        return cuwacunu::hero::lattice::exposure::exposure_digest_for_text(
+            text.str());
+      };
+  const std::string snapshot_bundle_id =
+      first_non_empty(contract.snapshot_bundle_id,
+                      !output_generation_id.empty()
+                          ? "bundle_policy_training_anchor_v1_" +
+                                std::to_string(execution_target_begin) + "_" +
+                                std::to_string(execution_target_end) + "_" +
+                                output_generation_id
+                          : std::string{});
+  const std::string snapshot_bundle_selection_basis = first_non_empty(
+      contract.snapshot_bundle_selection_basis,
+      !snapshot_bundle_id.empty() ? "bundle_manifest" : std::string{});
+  const std::string snapshot_bundle_no_lookahead_contract_id =
+      first_non_empty(contract.snapshot_bundle_no_lookahead_contract_id,
+                      contract.policy_jkimyei_no_lookahead_contract_id);
+  const std::string snapshot_bundle_no_lookahead_contract_digest =
+      first_non_empty(contract.snapshot_bundle_no_lookahead_contract_digest,
+                      contract.policy_jkimyei_no_lookahead_contract_digest);
+  const std::string snapshot_bundle_component_order_contract_id =
+      first_non_empty(contract.snapshot_bundle_component_order_contract_id,
+                      contract.policy_jkimyei_component_order_contract_id);
+  const std::string snapshot_bundle_component_order_contract_digest =
+      first_non_empty(contract.snapshot_bundle_component_order_contract_digest,
+                      contract.policy_jkimyei_component_order_contract_digest);
+  const std::string snapshot_bundle_protocol_contract_fingerprint =
+      first_non_empty(contract.snapshot_bundle_protocol_contract_fingerprint,
+                      contract.protocol_contract_fingerprint);
+  const std::string bundle_policy_component_id =
+      first_non_empty(contract.bundle_policy_component_id,
+                      "wikimyei.policy.portfolio.graph_node_allocation");
+  const std::string bundle_policy_jkimyei_digest = first_non_empty(
+      contract.bundle_policy_jkimyei_digest, contract.policy_jkimyei_digest);
+  const std::string bundle_policy_checkpoint_digest = first_non_empty(
+      contract.bundle_policy_checkpoint_digest, std::string(checkpoint_digest));
+  const std::string bundle_policy_generation_id = first_non_empty(
+      contract.bundle_policy_generation_id, output_generation_id);
+  const std::string bundle_policy_generation_vector_digest =
+      first_non_empty(contract.bundle_policy_generation_vector_digest,
+                      output_generation_vector_digest);
+  const std::string policy_trained_against_forecast_eval_fact_digest =
+      first_non_empty(
+          contract.policy_trained_against_forecast_eval_fact_digest,
+          contract.policy_execution_input_parent_forecast_eval_fact_digest);
+  const std::string policy_trained_against_replay_environment_fact_digest =
+      first_non_empty(
+          contract.policy_trained_against_replay_environment_fact_digest,
+          contract
+              .policy_execution_input_parent_replay_environment_fact_digest);
+  const std::string
+      policy_trained_against_policy_parent_generation_vector_digest =
+          first_non_empty(
+              contract
+                  .policy_trained_against_policy_parent_generation_vector_digest,
+              contract.parent_policy_generation_vector_digest);
+  const std::string policy_trained_against_no_lookahead_certificate_digest =
+      first_non_empty(
+          contract.policy_trained_against_no_lookahead_certificate_digest,
+          contract.policy_execution_no_lookahead_certificate_digest);
+  const std::string snapshot_bundle_no_lookahead_certificate_digests =
+      first_non_empty(
+          contract.snapshot_bundle_no_lookahead_certificate_digests,
+          contract.policy_execution_no_lookahead_certificate_digest);
+  const std::string snapshot_bundle_policy_execution_certificate_digest =
+      first_non_empty(
+          contract.snapshot_bundle_policy_execution_certificate_digest,
+          contract.policy_execution_no_lookahead_certificate_digest);
+  const std::string snapshot_bundle_created_by_lattice_target =
+      first_non_empty(contract.snapshot_bundle_created_by_lattice_target,
+                      contract.policy_execution_target_id);
+  const bool bundle_generation_vector_inputs_complete =
+      !contract.bundle_representation_generation_vector_digest.empty() &&
+      !contract.bundle_mdn_generation_vector_digest.empty() &&
+      !bundle_policy_generation_vector_digest.empty();
+  const std::string snapshot_bundle_generation_vector_digest = first_non_empty(
+      contract.snapshot_bundle_generation_vector_digest,
+      bundle_generation_vector_inputs_complete
+          ? digest_vector_for_bundle(
+                "snapshot_bundle_generation_vector.v1",
+                {contract.bundle_representation_generation_vector_digest,
+                 contract.bundle_mdn_generation_vector_digest,
+                 bundle_policy_generation_vector_digest})
+          : std::string{});
+  const bool bundle_compatibility_inputs_complete =
+      !snapshot_bundle_id.empty() &&
+      !contract.bundle_representation_generation_vector_digest.empty() &&
+      !contract.bundle_mdn_generation_vector_digest.empty() &&
+      !bundle_policy_generation_vector_digest.empty() &&
+      !contract.mdn_trained_against_representation_generation_vector_digest
+           .empty() &&
+      !contract.policy_trained_against_representation_generation_vector_digest
+           .empty() &&
+      !contract.policy_trained_against_mdn_generation_vector_digest.empty() &&
+      !policy_trained_against_policy_parent_generation_vector_digest.empty() &&
+      !contract.policy_execution_no_lookahead_certificate_digest.empty() &&
+      !snapshot_bundle_no_lookahead_contract_digest.empty();
+  const std::string snapshot_bundle_compatibility_closure_digest = first_non_empty(
+      contract.snapshot_bundle_compatibility_closure_digest,
+      bundle_compatibility_inputs_complete
+          ? digest_vector_for_bundle(
+                "snapshot_bundle_compatibility_closure.v1",
+                {snapshot_bundle_id,
+                 contract.bundle_representation_generation_vector_digest,
+                 contract.bundle_mdn_generation_vector_digest,
+                 bundle_policy_generation_vector_digest,
+                 contract
+                     .mdn_trained_against_representation_generation_vector_digest,
+                 contract
+                     .policy_trained_against_representation_generation_vector_digest,
+                 contract.policy_trained_against_mdn_generation_vector_digest,
+                 policy_trained_against_policy_parent_generation_vector_digest,
+                 contract.policy_execution_no_lookahead_certificate_digest,
+                 snapshot_bundle_no_lookahead_contract_digest})
+          : std::string{});
+  const std::int64_t snapshot_bundle_valid_from_anchor =
+      contract.snapshot_bundle_valid_from_anchor_bound
+          ? contract.snapshot_bundle_valid_from_anchor
+          : output_valid_from;
+  const bool snapshot_bundle_valid_from_anchor_bound =
+      contract.snapshot_bundle_valid_from_anchor_bound || ppo_output;
+  const std::int64_t snapshot_bundle_influence_anchor_end_exclusive_max =
+      contract.snapshot_bundle_influence_anchor_end_exclusive_max_bound
+          ? contract.snapshot_bundle_influence_anchor_end_exclusive_max
+          : output_fit_end;
+  const bool snapshot_bundle_influence_anchor_end_exclusive_max_bound =
+      contract.snapshot_bundle_influence_anchor_end_exclusive_max_bound ||
+      ppo_output;
   append_assignment(out, "schema", contract.artifact_schema_id);
   append_assignment(out, "fact_type", "policy_training");
   if (identity != nullptr) {
@@ -7563,12 +11949,136 @@ policy_training_lattice_identity_from_source_job(
                     contract.policy_input_feature_manifest_digest);
   append_assignment(out, "policy_jkimyei_digest",
                     contract.policy_jkimyei_digest);
+  append_assignment(out, "policy_jkimyei_no_lookahead_contract_id",
+                    contract.policy_jkimyei_no_lookahead_contract_id);
+  append_assignment(out, "policy_jkimyei_no_lookahead_contract_digest",
+                    contract.policy_jkimyei_no_lookahead_contract_digest);
+  append_assignment(out, "policy_jkimyei_component_order_contract_id",
+                    contract.policy_jkimyei_component_order_contract_id);
+  append_assignment(out, "policy_jkimyei_component_order_contract_digest",
+                    contract.policy_jkimyei_component_order_contract_digest);
+  append_assignment(out, "policy_jkimyei_component_role",
+                    contract.policy_jkimyei_component_role);
+  append_assignment(
+      out, "policy_jkimyei_serving_order_index",
+      std::to_string(contract.policy_jkimyei_serving_order_index));
+  append_assignment(
+      out, "policy_jkimyei_serving_order_index_bound",
+      contract.policy_jkimyei_serving_order_index_bound ? "true" : "false");
   append_assignment(out, "target_node_universe_digest",
                     contract.target_node_universe_digest);
   append_assignment(out, "action_distribution_config_digest",
                     contract.action_distribution_config_digest);
   append_assignment(out, "snapshot_family_digest",
                     contract.snapshot_family_digest);
+  append_assignment(out, "snapshot_bundle_schema",
+                    contract.snapshot_bundle_schema);
+  append_assignment(out, "snapshot_bundle_id", snapshot_bundle_id);
+  append_assignment(out, "snapshot_bundle_kind", contract.snapshot_bundle_kind);
+  append_assignment(out, "snapshot_bundle_selection_basis",
+                    snapshot_bundle_selection_basis);
+  append_assignment(out, "snapshot_bundle_no_lookahead_contract_id",
+                    snapshot_bundle_no_lookahead_contract_id);
+  append_assignment(out, "snapshot_bundle_no_lookahead_contract_digest",
+                    snapshot_bundle_no_lookahead_contract_digest);
+  append_assignment(out, "snapshot_bundle_component_order_contract_id",
+                    snapshot_bundle_component_order_contract_id);
+  append_assignment(out, "snapshot_bundle_component_order_contract_digest",
+                    snapshot_bundle_component_order_contract_digest);
+  append_assignment(out, "snapshot_bundle_protocol_contract_fingerprint",
+                    snapshot_bundle_protocol_contract_fingerprint);
+  append_assignment(out, "snapshot_bundle_generation_vector_digest",
+                    snapshot_bundle_generation_vector_digest);
+  append_assignment(out, "snapshot_bundle_valid_from_anchor",
+                    std::to_string(snapshot_bundle_valid_from_anchor));
+  append_assignment(out, "snapshot_bundle_valid_from_anchor_bound",
+                    snapshot_bundle_valid_from_anchor_bound ? "true" : "false");
+  append_assignment(
+      out, "snapshot_bundle_valid_until_anchor",
+      std::to_string(contract.snapshot_bundle_valid_until_anchor));
+  append_assignment(
+      out, "snapshot_bundle_valid_until_anchor_bound",
+      contract.snapshot_bundle_valid_until_anchor_bound ? "true" : "false");
+  append_assignment(
+      out, "snapshot_bundle_influence_anchor_end_exclusive_max",
+      std::to_string(snapshot_bundle_influence_anchor_end_exclusive_max));
+  append_assignment(
+      out, "snapshot_bundle_influence_anchor_end_exclusive_max_bound",
+      snapshot_bundle_influence_anchor_end_exclusive_max_bound ? "true"
+                                                               : "false");
+  append_assignment(out, "snapshot_bundle_compatibility_closure_digest",
+                    snapshot_bundle_compatibility_closure_digest);
+  append_assignment(out, "snapshot_bundle_no_lookahead_certificate_digests",
+                    snapshot_bundle_no_lookahead_certificate_digests);
+  append_assignment(out, "snapshot_bundle_policy_execution_certificate_digest",
+                    snapshot_bundle_policy_execution_certificate_digest);
+  append_assignment(out, "snapshot_bundle_created_by_lattice_target",
+                    snapshot_bundle_created_by_lattice_target);
+  append_assignment(out, "bundle_representation_component_id",
+                    contract.bundle_representation_component_id);
+  append_assignment(out, "bundle_representation_jkimyei_digest",
+                    contract.bundle_representation_jkimyei_digest);
+  append_assignment(out, "bundle_representation_checkpoint_digest",
+                    contract.bundle_representation_checkpoint_digest);
+  append_assignment(out, "bundle_representation_generation_id",
+                    contract.bundle_representation_generation_id);
+  append_assignment(out, "bundle_representation_generation_vector_digest",
+                    contract.bundle_representation_generation_vector_digest);
+  append_assignment(out, "bundle_representation_generation_manifest_digest",
+                    contract.bundle_representation_generation_manifest_digest);
+  append_assignment(out, "bundle_mdn_component_id",
+                    contract.bundle_mdn_component_id);
+  append_assignment(out, "bundle_mdn_jkimyei_digest",
+                    contract.bundle_mdn_jkimyei_digest);
+  append_assignment(out, "bundle_mdn_checkpoint_digest",
+                    contract.bundle_mdn_checkpoint_digest);
+  append_assignment(out, "bundle_mdn_generation_id",
+                    contract.bundle_mdn_generation_id);
+  append_assignment(out, "bundle_mdn_generation_vector_digest",
+                    contract.bundle_mdn_generation_vector_digest);
+  append_assignment(out, "bundle_mdn_generation_manifest_digest",
+                    contract.bundle_mdn_generation_manifest_digest);
+  append_assignment(out, "bundle_policy_component_id",
+                    bundle_policy_component_id);
+  append_assignment(out, "bundle_policy_jkimyei_digest",
+                    bundle_policy_jkimyei_digest);
+  append_assignment(out, "bundle_policy_checkpoint_digest",
+                    bundle_policy_checkpoint_digest);
+  append_assignment(out, "bundle_policy_generation_id",
+                    bundle_policy_generation_id);
+  append_assignment(out, "bundle_policy_generation_vector_digest",
+                    bundle_policy_generation_vector_digest);
+  append_assignment(out, "bundle_policy_generation_manifest_digest",
+                    contract.bundle_policy_generation_manifest_digest);
+  append_assignment(out, "mdn_trained_against_representation_generation_id",
+                    contract.mdn_trained_against_representation_generation_id);
+  append_assignment(
+      out, "mdn_trained_against_representation_checkpoint_digest",
+      contract.mdn_trained_against_representation_checkpoint_digest);
+  append_assignment(
+      out, "mdn_trained_against_representation_generation_vector_digest",
+      contract.mdn_trained_against_representation_generation_vector_digest);
+  append_assignment(out, "mdn_representation_feature_schema_digest",
+                    contract.mdn_representation_feature_schema_digest);
+  append_assignment(out, "policy_trained_against_forecast_eval_fact_digest",
+                    policy_trained_against_forecast_eval_fact_digest);
+  append_assignment(out,
+                    "policy_trained_against_replay_environment_fact_digest",
+                    policy_trained_against_replay_environment_fact_digest);
+  append_assignment(
+      out, "policy_trained_against_representation_generation_vector_digest",
+      contract.policy_trained_against_representation_generation_vector_digest);
+  append_assignment(
+      out, "policy_trained_against_mdn_generation_vector_digest",
+      contract.policy_trained_against_mdn_generation_vector_digest);
+  append_assignment(
+      out, "policy_trained_against_policy_parent_generation_vector_digest",
+      policy_trained_against_policy_parent_generation_vector_digest);
+  append_assignment(out, "policy_execution_input_lock_digest",
+                    contract.policy_execution_input_lock_digest);
+  append_assignment(out,
+                    "policy_trained_against_no_lookahead_certificate_digest",
+                    policy_trained_against_no_lookahead_certificate_digest);
   append_assignment(out, "actor_architecture_digest",
                     contract.actor_architecture_digest);
   append_assignment(out, "critic_architecture_digest",
@@ -7628,6 +12138,32 @@ policy_training_lattice_identity_from_source_job(
                     contract.rollout_collection_schema_id);
   append_assignment(out, "rollout_collection_digest",
                     contract.rollout_collection_digest);
+  append_assignment(out, "certified_replay_bank_schema",
+                    contract.certified_replay_bank_schema);
+  append_assignment(out, "certified_replay_bank_manifest_path",
+                    contract.certified_replay_bank_manifest_path);
+  append_assignment(out, "certified_replay_bank_manifest_digest",
+                    contract.certified_replay_bank_manifest_digest);
+  append_assignment(out, "policy_experience_set_digest",
+                    contract.policy_experience_set_digest);
+  append_assignment(out, "policy_experience_mode",
+                    contract.policy_experience_mode);
+  append_assignment(out, "certified_replay_chunk_count",
+                    std::to_string(contract.certified_replay_chunk_count));
+  append_assignment_bool(out, "certified_replay_chunk_count_bound",
+                         contract.certified_replay_chunk_count_bound);
+  append_assignment(out, "certified_replay_sample_count",
+                    std::to_string(contract.certified_replay_sample_count));
+  append_assignment_bool(out, "certified_replay_sample_count_bound",
+                         contract.certified_replay_sample_count_bound);
+  append_assignment(
+      out, "certified_replay_coverage_anchor_begin",
+      std::to_string(contract.certified_replay_coverage_anchor_begin));
+  append_assignment(
+      out, "certified_replay_coverage_anchor_end_exclusive",
+      std::to_string(contract.certified_replay_coverage_anchor_end_exclusive));
+  append_assignment_bool(out, "certified_replay_coverage_anchor_range_bound",
+                         contract.certified_replay_coverage_anchor_range_bound);
   append_assignment(out, "ppo_update_report_schema_id",
                     contract.ppo_update_report_schema_id);
   append_assignment(out, "ppo_update_report_digest",
@@ -7650,6 +12186,10 @@ policy_training_lattice_identity_from_source_job(
                     std::to_string(contract.ppo_target_kl));
   append_assignment_bool(out, "ppo_target_kl_bound",
                          contract.ppo_target_kl_bound);
+  append_assignment(out, "ppo_learning_rate",
+                    std::to_string(contract.ppo_learning_rate));
+  append_assignment_bool(out, "ppo_learning_rate_bound",
+                         contract.ppo_learning_rate_bound);
   append_assignment(out, "ppo_entropy_coeff",
                     std::to_string(contract.ppo_entropy_coeff));
   append_assignment_bool(out, "ppo_entropy_coeff_bound",
@@ -7680,6 +12220,25 @@ policy_training_lattice_identity_from_source_job(
                     contract.causal_schedule_cursor_key_kind);
   append_assignment(out, "causal_schedule_no_future_snapshot_use_source",
                     contract.causal_schedule_no_future_snapshot_use_source);
+  append_assignment(out, "causal_provenance_schema",
+                    contract.causal_provenance_schema);
+  append_assignment(out, "causal_atom_schema", contract.causal_atom_schema);
+  append_assignment(out, "causal_interval_set_schema",
+                    contract.causal_interval_set_schema);
+  append_assignment(out, "causal_label_reward_horizon_policy_fingerprint",
+                    contract.causal_label_reward_horizon_policy_fingerprint);
+  append_assignment(out, "causal_fold_policy_fingerprint",
+                    contract.causal_fold_policy_fingerprint);
+  append_assignment(out, "causal_purged_embargo_policy_fingerprint",
+                    contract.causal_purged_embargo_policy_fingerprint);
+  append_assignment(out, "causal_artifact_production_schema",
+                    contract.causal_artifact_production_schema);
+  append_assignment(out, "causal_artifact_production_closure_digest",
+                    contract.causal_artifact_production_closure_digest);
+  append_assignment(out, "causal_interface_stability_contract_digest",
+                    contract.causal_interface_stability_contract_digest);
+  append_assignment(out, "causal_provenance_closure_digest",
+                    contract.causal_provenance_closure_digest);
   append_assignment(out, "normalization_fit_range_digest",
                     contract.normalization_fit_range_digest);
   append_assignment(out, "replay_buffer_source_range_digest",
@@ -7706,6 +12265,216 @@ policy_training_lattice_identity_from_source_job(
                     contract.parent_replay_environment_report_digest);
   append_assignment(out, "final_refit_parent_selected_checkpoint_digest",
                     contract.final_refit_parent_selected_checkpoint_digest);
+  append_assignment(out, "policy_execution_no_lookahead_certificate_schema",
+                    contract.policy_execution_no_lookahead_certificate_schema);
+  append_assignment(out, "policy_execution_no_lookahead_certificate_digest",
+                    contract.policy_execution_no_lookahead_certificate_digest);
+  append_assignment(out, "policy_execution_evidence_snapshot_digest",
+                    contract.policy_execution_evidence_snapshot_digest);
+  append_assignment(out, "policy_execution_provenance_closure_digest",
+                    contract.policy_execution_provenance_closure_digest);
+  append_assignment(out, "policy_execution_target_id",
+                    contract.policy_execution_target_id);
+  append_assignment(out, "policy_execution_target_anchor_begin",
+                    std::to_string(execution_target_begin));
+  append_assignment(out, "policy_execution_target_anchor_end_exclusive",
+                    std::to_string(execution_target_end));
+  append_assignment_bool(
+      out, "policy_execution_target_anchor_range_bound",
+      (contract.policy_execution_target_anchor_begin_bound &&
+       contract.policy_execution_target_anchor_end_exclusive_bound) ||
+          identity != nullptr);
+  append_assignment(out, "policy_execution_no_lookahead_contract_digest",
+                    contract.policy_execution_no_lookahead_contract_digest);
+  append_assignment(out, "embargo_policy_fingerprint",
+                    contract.embargo_policy_fingerprint);
+  append_assignment(
+      out, "embargo_purged_window_anchor_begin",
+      std::to_string(contract.embargo_purged_window_anchor_begin));
+  append_assignment(
+      out, "embargo_purged_window_anchor_end_exclusive",
+      std::to_string(contract.embargo_purged_window_anchor_end_exclusive));
+  append_assignment_bool(out, "embargo_purged_window_anchor_range_bound",
+                         contract.embargo_purged_window_anchor_range_bound);
+  append_assignment(
+      out, "policy_execution_input_parent_forecast_eval_fact_digest",
+      contract.policy_execution_input_parent_forecast_eval_fact_digest);
+  append_assignment(
+      out, "policy_execution_input_parent_forecast_artifact_digest",
+      contract.policy_execution_input_parent_forecast_artifact_digest);
+  append_assignment(
+      out, "policy_execution_input_parent_replay_environment_fact_digest",
+      contract.policy_execution_input_parent_replay_environment_fact_digest);
+  append_assignment(
+      out, "policy_execution_input_parent_replay_environment_report_digest",
+      contract.policy_execution_input_parent_replay_environment_report_digest);
+  append_assignment(out, "policy_execution_replay_job_dir_digest",
+                    contract.policy_execution_replay_job_dir_digest);
+  append_assignment(out, "policy_execution_consumed_artifact_digests",
+                    contract.policy_execution_consumed_artifact_digests);
+  append_assignment(out, "policy_execution_consumed_checkpoint_digests",
+                    contract.policy_execution_consumed_checkpoint_digests);
+  append_assignment(
+      out, "policy_execution_consumed_generation_vector_digests",
+      contract.policy_execution_consumed_generation_vector_digests);
+  append_assignment(out, "parent_policy_generation_id",
+                    contract.parent_policy_generation_id);
+  append_assignment(out, "parent_policy_generation_vector_digest",
+                    contract.parent_policy_generation_vector_digest);
+  append_assignment(out, "parent_policy_influence_schema",
+                    contract.parent_policy_influence_schema);
+  append_assignment_bool(out, "parent_policy_influence_complete",
+                         contract.parent_policy_influence_complete);
+  append_assignment(out, "parent_policy_influence_graph_order_fingerprint",
+                    contract.graph_order_fingerprint);
+  append_assignment(out, "parent_policy_influence_source_cursor_token",
+                    contract.source_cursor_token);
+  append_assignment(out, "parent_policy_influence_split_policy_fingerprint",
+                    contract.split_policy_fingerprint);
+  append_assignment(
+      out, "parent_policy_influence_anchor_begin_min",
+      std::to_string(contract.parent_policy_influence_anchor_begin_min));
+  append_assignment_bool(
+      out, "parent_policy_influence_anchor_begin_min_bound",
+      contract.parent_policy_influence_anchor_begin_min_bound);
+  append_assignment(
+      out, "parent_policy_influence_anchor_end_exclusive_max",
+      std::to_string(
+          contract.parent_policy_influence_anchor_end_exclusive_max));
+  append_assignment_bool(
+      out, "parent_policy_influence_anchor_end_exclusive_max_bound",
+      contract.parent_policy_influence_anchor_end_exclusive_max_bound);
+  append_assignment(
+      out,
+      "parent_policy_influence_label_or_reward_availability_end_exclusive_max",
+      std::to_string(
+          contract
+              .parent_policy_label_or_reward_availability_end_exclusive_max));
+  append_assignment_bool(
+      out,
+      "parent_policy_influence_label_or_reward_availability_end_exclusive_max_"
+      "bound",
+      contract
+          .parent_policy_label_or_reward_availability_end_exclusive_max_bound);
+  append_assignment(out,
+                    "parent_policy_influence_producer_generation_vector_digest",
+                    contract.parent_policy_generation_vector_digest);
+  append_assignment(out, "parent_policy_influence_provenance_closure_digest",
+                    contract.parent_policy_provenance_closure_digest);
+  append_assignment(out, "parent_policy_influence_no_lookahead_contract_digest",
+                    contract.parent_policy_no_lookahead_contract_digest.empty()
+                        ? contract.policy_execution_no_lookahead_contract_digest
+                        : contract.parent_policy_no_lookahead_contract_digest);
+  append_assignment(out, "parent_policy_valid_from_anchor",
+                    std::to_string(contract.parent_policy_valid_from_anchor));
+  append_assignment_bool(out, "parent_policy_valid_from_anchor_bound",
+                         contract.parent_policy_valid_from_anchor_bound);
+  append_assignment(out, "policy_output_generation_id", output_generation_id);
+  append_assignment(out, "policy_output_generation_vector_digest",
+                    output_generation_vector_digest);
+  append_assignment(out, "policy_output_fit_anchor_begin",
+                    std::to_string(output_fit_begin));
+  append_assignment(out, "policy_output_fit_anchor_end_exclusive",
+                    std::to_string(output_fit_end));
+  append_assignment_bool(
+      out, "policy_output_fit_anchor_range_bound",
+      (contract.policy_output_fit_anchor_begin_bound &&
+       contract.policy_output_fit_anchor_end_exclusive_bound) ||
+          identity != nullptr);
+  append_assignment(out, "policy_output_valid_from_anchor",
+                    std::to_string(output_valid_from));
+  append_assignment_bool(out, "policy_output_valid_from_anchor_bound",
+                         contract.policy_output_valid_from_anchor_bound ||
+                             identity != nullptr);
+  append_assignment(out, "policy_output_provenance_closure_digest",
+                    output_provenance_closure_digest);
+  auto append_csv_token = [](std::string csv,
+                             const std::string &value) -> std::string {
+    if (trim_ascii(value).empty()) {
+      return csv;
+    }
+    if (!trim_ascii(csv).empty()) {
+      csv += ",";
+    }
+    csv += trim_ascii(value);
+    return csv;
+  };
+  std::string output_parent_artifacts =
+      contract.policy_execution_consumed_artifact_digests;
+  output_parent_artifacts = append_csv_token(
+      std::move(output_parent_artifacts),
+      contract.policy_execution_no_lookahead_certificate_digest);
+  output_parent_artifacts =
+      append_csv_token(std::move(output_parent_artifacts),
+                       contract.policy_execution_provenance_closure_digest);
+  std::string output_parent_checkpoints =
+      contract.policy_execution_consumed_checkpoint_digests;
+  output_parent_checkpoints = append_csv_token(
+      std::move(output_parent_checkpoints), contract.parent_checkpoint_digest);
+  output_parent_checkpoints =
+      append_csv_token(std::move(output_parent_checkpoints),
+                       std::string(input_policy_checkpoint_digest));
+  std::string output_parent_generation_vectors =
+      contract.policy_execution_consumed_generation_vector_digests;
+  output_parent_generation_vectors =
+      append_csv_token(std::move(output_parent_generation_vectors),
+                       contract.parent_policy_generation_vector_digest);
+  const std::int64_t output_influence_begin =
+      contract.parent_policy_influence_anchor_begin_min_bound
+          ? std::min(contract.parent_policy_influence_anchor_begin_min,
+                     output_fit_begin)
+          : output_fit_begin;
+  const std::int64_t output_influence_end =
+      std::max(contract.parent_policy_influence_anchor_end_exclusive_max_bound
+                   ? contract.parent_policy_influence_anchor_end_exclusive_max
+                   : output_fit_begin,
+               output_fit_end);
+  const std::int64_t output_availability_end = std::max(
+      contract.parent_policy_label_or_reward_availability_end_exclusive_max_bound
+          ? contract
+                .parent_policy_label_or_reward_availability_end_exclusive_max
+          : output_fit_begin,
+      output_fit_end);
+  const bool output_influence_complete =
+      ppo_output && contract.parent_policy_influence_complete &&
+      contract.parent_policy_influence_anchor_end_exclusive_max_bound &&
+      contract
+          .parent_policy_label_or_reward_availability_end_exclusive_max_bound &&
+      !contract.policy_execution_provenance_closure_digest.empty() &&
+      !output_generation_vector_digest.empty() &&
+      !output_provenance_closure_digest.empty();
+  append_assignment(out, "influence_schema",
+                    cuwacunu::hero::runtime::
+                        k_no_lookahead_artifact_provenance_anchor_schema_v1);
+  append_assignment_bool(out, "influence_complete", output_influence_complete);
+  append_assignment(out, "influence_graph_order_fingerprint",
+                    contract.graph_order_fingerprint);
+  append_assignment(out, "influence_source_cursor_token",
+                    contract.source_cursor_token);
+  append_assignment(out, "influence_split_policy_fingerprint",
+                    contract.split_policy_fingerprint);
+  append_assignment(out, "influence_coverage_anchor_begin",
+                    std::to_string(output_fit_begin));
+  append_assignment(out, "influence_coverage_anchor_end",
+                    std::to_string(output_fit_end));
+  append_assignment(out, "influence_anchor_begin_min",
+                    std::to_string(output_influence_begin));
+  append_assignment(out, "influence_anchor_end_exclusive_max",
+                    std::to_string(output_influence_end));
+  append_assignment(out, "label_or_reward_availability_end_exclusive_max",
+                    std::to_string(output_availability_end));
+  append_assignment(out, "influence_producer_generation_vector_digest",
+                    output_generation_vector_digest);
+  append_assignment(out, "influence_parent_artifact_digests",
+                    output_parent_artifacts);
+  append_assignment(out, "influence_parent_checkpoint_digests",
+                    output_parent_checkpoints);
+  append_assignment(out, "influence_parent_generation_vector_digests",
+                    output_parent_generation_vectors);
+  append_assignment(out, "influence_provenance_closure_digest",
+                    output_provenance_closure_digest);
+  append_assignment(out, "influence_no_lookahead_contract_digest",
+                    contract.policy_execution_no_lookahead_contract_digest);
   append_assignment(out, "random_seed", std::to_string(contract.random_seed));
   append_assignment_bool(out, "training_range_disjoint_validation", true);
   append_assignment_bool(out, "training_range_disjoint_test", true);
@@ -7750,6 +12519,157 @@ policy_training_lattice_identity_from_source_job(
   return out.str();
 }
 
+[[nodiscard]] exposure::lattice_checkpoint_fact_t policy_output_checkpoint_fact(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    std::string_view checkpoint_digest, const fs::path &checkpoint_path,
+    std::string_view job_id, const policy_training_lattice_identity_t &identity,
+    std::string_view input_policy_checkpoint_digest,
+    std::string_view policy_training_fact_text_digest) {
+  exposure::lattice_checkpoint_fact_t fact{};
+  fact.checkpoint_path = checkpoint_path.lexically_normal();
+  fact.checkpoint_file_digest = std::string(checkpoint_digest);
+  fact.component = "wikimyei.policy.portfolio.graph_node_allocation";
+  fact.component_role = "policy";
+  fact.contract_fingerprint = contract.protocol_contract_fingerprint;
+  fact.protocol_id = contract.protocol_id;
+  fact.graph_order_fingerprint = contract.graph_order_fingerprint;
+  fact.source_cursor_token = contract.source_cursor_token;
+  fact.component_assembly_fingerprint = contract.component_assembly_fingerprint;
+  fact.created_by_job_id = std::string(job_id);
+  fact.created_by_wave_id = "policy_training_ppo_v0";
+  fact.created_by_exposure_fact_id =
+      std::string(policy_training_fact_text_digest);
+  fact.direct_exposure_digest = std::string(policy_training_fact_text_digest);
+  fact.input_checkpoints = {};
+  if (!trim_ascii(input_policy_checkpoint_digest).empty()) {
+    fact.read_checkpoint_digests.push_back(
+        std::string(input_policy_checkpoint_digest));
+  }
+  fact.read_generation_ids = {};
+  if (!trim_ascii(contract.parent_policy_generation_id).empty()) {
+    fact.parent_generation_ids.push_back(contract.parent_policy_generation_id);
+    fact.read_generation_ids.push_back(contract.parent_policy_generation_id);
+  }
+  fact.parent_generation_vector_digests =
+      split_csv(contract.policy_execution_consumed_generation_vector_digests);
+  if (!trim_ascii(contract.parent_policy_generation_vector_digest).empty()) {
+    fact.parent_generation_vector_digests.push_back(
+        contract.parent_policy_generation_vector_digest);
+  }
+  const std::string output_generation_id =
+      !contract.policy_output_generation_id.empty()
+          ? contract.policy_output_generation_id
+          : "policy_generation_" +
+                std::string(checkpoint_digest.substr(
+                    0, std::min<std::size_t>(16, checkpoint_digest.size())));
+  const std::string output_generation_vector_digest =
+      !contract.policy_output_generation_vector_digest.empty()
+          ? contract.policy_output_generation_vector_digest
+          : cuwacunu::hero::marshal::marshal_digest_for_text(
+                "policy_runtime_execution_generation_vector.v1",
+                std::string(checkpoint_digest));
+  const std::int64_t output_fit_begin =
+      contract.policy_output_fit_anchor_begin_bound
+          ? contract.policy_output_fit_anchor_begin
+          : (identity.anchor_begin.empty() ? 0
+                                           : std::stoll(identity.anchor_begin));
+  const std::int64_t output_fit_end =
+      contract.policy_output_fit_anchor_end_exclusive_bound
+          ? contract.policy_output_fit_anchor_end_exclusive
+          : (identity.anchor_end.empty() ? 0 : std::stoll(identity.anchor_end));
+  const std::int64_t output_valid_from =
+      contract.policy_output_valid_from_anchor_bound
+          ? contract.policy_output_valid_from_anchor
+          : output_fit_end;
+  const std::string output_closure_seed =
+      std::string("policy_runtime_execution_provenance.v1|") +
+      std::string(checkpoint_digest) + "|" + output_generation_vector_digest +
+      "|" + contract.policy_execution_provenance_closure_digest + "|" +
+      std::to_string(output_fit_begin) + "|" + std::to_string(output_fit_end) +
+      "|" + std::to_string(output_valid_from);
+  const std::string output_provenance_closure_digest =
+      !contract.policy_output_provenance_closure_digest.empty()
+          ? contract.policy_output_provenance_closure_digest
+          : cuwacunu::hero::marshal::marshal_digest_for_text(
+                "policy_runtime_execution_provenance.v1", output_closure_seed);
+  fact.checkpoint_id = exposure::exposure_digest_for_text(
+      std::string("checkpoint|") + fact.checkpoint_path.string() + "|" +
+      fact.checkpoint_file_digest + "|" + fact.direct_exposure_digest);
+  fact.generation_id = output_generation_id;
+  fact.generation_vector_member_digest = output_generation_vector_digest;
+  fact.fit_anchor_range = {.begin = output_fit_begin, .end = output_fit_end};
+  fact.fit_anchor_range_bound = output_fit_end >= output_fit_begin;
+  fact.valid_from_anchor = output_valid_from;
+  fact.valid_from_anchor_bound = true;
+  fact.no_lookahead_contract_digest =
+      contract.policy_execution_no_lookahead_contract_digest;
+  fact.generation_lane = "readiness_grade";
+  fact.influence_summary.schema =
+      exposure::k_no_lookahead_artifact_provenance_schema_anchor_v1;
+  fact.influence_summary.complete =
+      contract.parent_policy_influence_complete &&
+      contract.parent_policy_influence_anchor_end_exclusive_max_bound &&
+      contract
+          .parent_policy_label_or_reward_availability_end_exclusive_max_bound &&
+      !contract.policy_execution_provenance_closure_digest.empty();
+  fact.influence_summary.graph_order_fingerprint =
+      contract.graph_order_fingerprint;
+  fact.influence_summary.source_cursor_token = contract.source_cursor_token;
+  fact.influence_summary.split_policy_fingerprint =
+      contract.split_policy_fingerprint;
+  fact.influence_summary.coverage_anchor_range = fact.fit_anchor_range;
+  fact.influence_summary.coverage_anchor_range_bound =
+      fact.fit_anchor_range_bound;
+  fact.influence_summary.influence_anchor_begin_min =
+      contract.parent_policy_influence_anchor_begin_min_bound
+          ? std::min(contract.parent_policy_influence_anchor_begin_min,
+                     output_fit_begin)
+          : output_fit_begin;
+  fact.influence_summary.influence_anchor_begin_min_bound = true;
+  fact.influence_summary.influence_anchor_end_exclusive_max =
+      std::max(contract.parent_policy_influence_anchor_end_exclusive_max_bound
+                   ? contract.parent_policy_influence_anchor_end_exclusive_max
+                   : output_fit_begin,
+               output_fit_end);
+  fact.influence_summary.influence_anchor_end_exclusive_max_bound = true;
+  fact.influence_summary
+      .label_or_reward_availability_end_exclusive_max = std::max(
+      contract.parent_policy_label_or_reward_availability_end_exclusive_max_bound
+          ? contract
+                .parent_policy_label_or_reward_availability_end_exclusive_max
+          : output_fit_begin,
+      output_fit_end);
+  fact.influence_summary.label_or_reward_availability_end_exclusive_max_bound =
+      true;
+  fact.influence_summary.producer_generation_vector_digest =
+      fact.generation_vector_member_digest;
+  fact.influence_summary.parent_artifact_digests =
+      split_csv(contract.policy_execution_consumed_artifact_digests);
+  if (!trim_ascii(contract.policy_execution_no_lookahead_certificate_digest)
+           .empty()) {
+    fact.influence_summary.parent_artifact_digests.push_back(
+        contract.policy_execution_no_lookahead_certificate_digest);
+  }
+  if (!trim_ascii(contract.policy_execution_provenance_closure_digest)
+           .empty()) {
+    fact.influence_summary.parent_artifact_digests.push_back(
+        contract.policy_execution_provenance_closure_digest);
+  }
+  fact.influence_summary.parent_checkpoint_digests =
+      split_csv(contract.policy_execution_consumed_checkpoint_digests);
+  if (!trim_ascii(input_policy_checkpoint_digest).empty()) {
+    fact.influence_summary.parent_checkpoint_digests.push_back(
+        std::string(input_policy_checkpoint_digest));
+  }
+  fact.influence_summary.parent_generation_vector_digests =
+      fact.parent_generation_vector_digests;
+  fact.influence_summary.provenance_closure_digest =
+      output_provenance_closure_digest;
+  fact.influence_summary.no_lookahead_contract_digest =
+      fact.no_lookahead_contract_digest;
+  return fact;
+}
+
 [[nodiscard]] std::string
 unique_policy_training_attempt_leaf(std::string_view contract_digest) {
   const auto stamp = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -7780,178 +12700,6 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
                                                std::string_view flag,
                                                std::vector<std::string> *argv,
                                                std::string *err);
-
-[[nodiscard]] bool execute_policy_training_noop(
-    const std::string &args,
-    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
-    const std::string &contract_text, std::string_view contract_digest,
-    runtime_context_t *ctx, std::string *out, std::string *err) {
-  if (!policy_bool_or(ctx->policy, "allow_execute", false)) {
-    *err = "E_RUNTIME_EXECUTE_DENIED: allow_execute is false";
-    return false;
-  }
-  if (!policy_bool_or(ctx->policy, "allow_train_execute", false)) {
-    *err = "E_RUNTIME_TRAIN_DENIED: allow_train_execute is false";
-    return false;
-  }
-  if (!policy_training_execute_kind_supported(contract)) {
-    *err = policy_training_unsupported_execute_reason(contract);
-    return false;
-  }
-
-  int timeout_seconds = 0;
-  if (!policy_runtime_timeout_seconds(ctx->policy, &timeout_seconds, err)) {
-    return false;
-  }
-  if (contract.max_wall_clock_seconds > 0) {
-    timeout_seconds = static_cast<int>(contract.max_wall_clock_seconds);
-  }
-
-  std::string job_dir_arg;
-  std::string job_id_arg;
-  (void)extract_json_string_field(args, "job_dir", &job_dir_arg);
-  (void)extract_json_string_field(args, "job_id", &job_id_arg);
-
-  const fs::path root = runtime_root(ctx->policy);
-  const std::string job_stable_id =
-      "policy_training_" + std::string(contract_digest.substr(0, 16));
-  const std::string attempt_leaf =
-      unique_policy_training_attempt_leaf(contract_digest);
-  const std::string job_id = trim_ascii(job_id_arg).empty()
-                                 ? job_stable_id + "." + attempt_leaf
-                                 : trim_ascii(job_id_arg);
-  fs::path job_dir;
-  if (!trim_ascii(job_dir_arg).empty()) {
-    job_dir = normalize_path(fs::path(job_dir_arg));
-    if (!explicit_job_dir_allowed(ctx->policy, job_dir) &&
-        !path_within(root, job_dir)) {
-      *err =
-          "E_RUNTIME_JOB_DIR_DENIED: job_dir is outside Runtime Hero roots: " +
-          job_dir.string();
-      return false;
-    }
-  } else {
-    job_dir = cuwacunu::hero::runtime::job_layout::job_dir(
-        root, "wikimyei.policy.portfolio.graph_node_allocation",
-        contract.policy_id,
-        cuwacunu::hero::runtime::policy_operator_surface_digest(contract),
-        "train", job_id);
-  }
-  if (path_exists_and_is_nonempty_dir(job_dir)) {
-    *err = "E_RUNTIME_POLICY_TRAINING_JOB_DIR_EXISTS: refusing to overwrite "
-           "existing job_dir: " +
-           job_dir.string();
-    return false;
-  }
-
-  try {
-    fs::create_directories(job_dir);
-    cuwacunu::hero::runtime::job_layout::write_runtime_layout_marker(root);
-
-    const fs::path checkpoint_dir =
-        job_dir / "artifacts" /
-        "wikimyei.policy.portfolio.graph_node_allocation" / "checkpoints";
-    const fs::path checkpoint_path =
-        checkpoint_dir / "noop_policy_training.checkpoint";
-    const std::string checkpoint_text =
-        policy_training_checkpoint_text(contract, contract_digest);
-    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-        checkpoint_path, checkpoint_text);
-    const std::string checkpoint_digest = file_digest_or_empty(
-        checkpoint_path, "kikijyeba.runtime.policy_training."
-                         "noop_checkpoint.v1");
-
-    const fs::path report_path = job_dir / "policy_training.report";
-    const std::string report_text = policy_training_report_text(
-        contract, contract_digest, checkpoint_path, checkpoint_digest);
-    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-        report_path, report_text);
-
-    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-        job_dir / "job.manifest",
-        policy_training_manifest_text(contract, contract_digest, job_id,
-                                      job_stable_id, attempt_leaf,
-                                      ctx->global_config_path));
-    cuwacunu::hero::runtime::job_layout::write_component_spawn_ref(
-        root, "wikimyei.policy.portfolio.graph_node_allocation",
-        contract.policy_id, contract.policy_id,
-        cuwacunu::hero::runtime::policy_operator_surface_digest(contract),
-        "hero.runtime.policy_training",
-        "policy_training_contract_" + std::string(contract_digest),
-        "policy_training_contract_" + std::string(contract_digest));
-    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-        job_dir / "policy_training.contract", contract_text);
-
-    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-        job_dir / "runtime.result.fact",
-        policy_training_runtime_result_fact_text(job_id, checkpoint_path));
-    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-        job_dir / "runtime.checkpoint_io.fact",
-        policy_training_checkpoint_io_fact_text(job_id, checkpoint_path,
-                                                checkpoint_digest));
-    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-        job_dir / "runtime.health_measurement.fact",
-        policy_training_health_fact_text(job_id));
-
-    const auto policy_training_identity =
-        policy_training_lattice_identity_from_source_job(
-            fs::path(contract.replay_job_dir), job_id,
-            contract.parent_forecast_eval_fact_digest,
-            contract.parent_observer_belief_fact_digest,
-            "policy_training_pre_ppo");
-    const auto *identity_ptr =
-        policy_training_identity.parent_exposure_fact_digest.empty()
-            ? nullptr
-            : &policy_training_identity;
-    const std::string fact_text =
-        policy_training_fact_text(contract, checkpoint_digest,
-                                  /*runtime_trainer=*/false, {}, {},
-                                  identity_ptr);
-    const fs::path policy_fact_path = job_dir / "runtime.policy_training.fact";
-    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-        policy_fact_path, fact_text);
-    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-        job_dir / "job.state",
-        policy_training_state_text(job_id, job_stable_id, attempt_leaf,
-                                   checkpoint_path, report_path));
-
-    std::ostringstream json;
-    json << "{\"ok\":true,\"requested_mode\":\"execute\",\"dry_run\":false"
-         << ",\"schema_version\":\"kikijyeba.runtime.policy_training_"
-            "execution_packet.v1\""
-         << ",\"policy_training_execution_supported\":true"
-         << ",\"trainer_kind\":\"noop_policy_training.v1\""
-         << ",\"ppo_implemented\":false"
-         << ",\"contract_digest\":" << json_quote(contract_digest)
-         << ",\"checkpoint_digest\":" << json_quote(checkpoint_digest)
-         << ",\"job_id\":" << json_quote(job_id)
-         << ",\"job_dir\":" << json_quote(job_dir.string())
-         << ",\"manifest_path\":"
-         << json_quote((job_dir / "job.manifest").string())
-         << ",\"state_path\":" << json_quote((job_dir / "job.state").string())
-         << ",\"report_path\":" << json_quote(report_path.string())
-         << ",\"checkpoint_path\":" << json_quote(checkpoint_path.string())
-         << ",\"policy_training_fact_path\":"
-         << json_quote(policy_fact_path.string()) << ",\"artifacts\":"
-         << job_artifacts_json(job_dir, report_path.string(), false,
-                               static_cast<std::size_t>(policy_int_or(
-                                   ctx->policy, "max_capture_bytes", 65536)))
-         << ",\"terminal_evidence\":" << runtime_terminal_evidence_json(job_dir)
-         << ",\"authority\":{\"runtime_executes_policy_training_smoke\":true,"
-            "\"runtime_executes_live_capital\":false,"
-            "\"runtime_trains_ppo\":false,"
-            "\"runtime_selects_policy\":false,"
-            "\"runtime_proves_lattice_target\":false}"
-         << ",\"next_safe_actions\":[\"inspect_policy_training_artifact\","
-            "\"evaluate_policy_training_artifact_ready\"]}";
-    *out = json.str();
-    return true;
-  } catch (const std::exception &ex) {
-    *err =
-        std::string("E_RUNTIME_POLICY_TRAINING_EXECUTION_FAILED: ") + ex.what();
-    return false;
-  }
-}
 
 [[nodiscard]] bool execute_policy_training_ppo_v0(
     const std::string &args,
@@ -8089,6 +12837,7 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
 
   fs::path input_replay_report_path;
   fs::path source_replay_job_dir;
+  std::string source_replay_job_dir_digest;
   if (!trim_ascii(report_path_arg).empty()) {
     input_replay_report_path = normalize_path(fs::path(report_path_arg));
     if (!explicit_job_dir_allowed(ctx->policy, input_replay_report_path) &&
@@ -8140,6 +12889,131 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
              batch_index_path.string();
       return false;
     }
+    source_replay_job_dir_digest = file_digest_or_empty(
+        batch_index_path, "policy_execution_replay_job_dir_anchor.v1");
+    if (contract.policy_execution_no_lookahead_certificate_schema !=
+        cuwacunu::hero::runtime::
+            k_no_lookahead_artifact_provenance_certificate_v1) {
+      *err =
+          "E_RUNTIME_POLICY_EXECUTION_INPUT_LOCK_MISSING: replay_job_dir PPO "
+          "execution requires no_lookahead_artifact_provenance.v1 lock";
+      return false;
+    }
+    if (contract.policy_execution_no_lookahead_certificate_digest.empty() ||
+        contract.policy_execution_evidence_snapshot_digest.empty() ||
+        contract.policy_execution_provenance_closure_digest.empty()) {
+      *err = "E_RUNTIME_POLICY_EXECUTION_INPUT_LOCK_INCOMPLETE: certificate "
+             "digest, evidence snapshot, and provenance closure are required";
+      return false;
+    }
+    if (!contract.policy_execution_target_anchor_begin_bound ||
+        !contract.policy_execution_target_anchor_end_exclusive_bound) {
+      *err =
+          "E_RUNTIME_POLICY_EXECUTION_TARGET_ANCHOR_RANGE_MISSING: certified "
+          "policy execution target anchor range is required";
+      return false;
+    }
+    if (contract.policy_execution_no_lookahead_contract_digest.empty()) {
+      *err = "E_RUNTIME_POLICY_EXECUTION_CONTRACT_DIGEST_MISSING: "
+             "no-lookahead contract digest is required";
+      return false;
+    }
+    const auto consumed_artifacts =
+        split_csv(contract.policy_execution_consumed_artifact_digests);
+    const auto consumed_artifact_contains = [&](const std::string &digest) {
+      if (trim_ascii(digest).empty()) {
+        return false;
+      }
+      return std::find(consumed_artifacts.begin(), consumed_artifacts.end(),
+                       trim_ascii(digest)) != consumed_artifacts.end();
+    };
+    if (contract.policy_execution_input_parent_forecast_eval_fact_digest !=
+        contract.parent_forecast_eval_fact_digest) {
+      *err =
+          "E_RUNTIME_POLICY_EXECUTION_CERTIFIED_FORECAST_MISMATCH: certified "
+          "forecast fact digest does not match the execution contract";
+      return false;
+    }
+    if (contract.policy_execution_replay_job_dir_digest.empty() ||
+        contract.policy_execution_replay_job_dir_digest !=
+            source_replay_job_dir_digest) {
+      *err = "E_RUNTIME_POLICY_EXECUTION_CERTIFIED_REPLAY_MISMATCH: "
+             "replay_job_dir digest does not match the certified input lock";
+      return false;
+    }
+    const auto source_forecast_fact =
+        parse_kv_file(source_replay_job_dir / "lattice.forecast_eval.fact");
+    if (!source_forecast_fact.empty()) {
+      const auto source_forecast_digest =
+          kv_get(source_forecast_fact, "fact_digest");
+      const auto source_forecast_split =
+          kv_get(source_forecast_fact, "split_policy_fingerprint");
+      const auto source_forecast_artifact =
+          kv_get(source_forecast_fact, "forecast_artifact_digest");
+      const bool legacy_splitless_forecast_alias =
+          trim_ascii(source_forecast_split).empty() &&
+          !trim_ascii(source_forecast_artifact).empty() &&
+          source_forecast_artifact ==
+              contract.policy_execution_input_parent_forecast_artifact_digest &&
+          consumed_artifact_contains(
+              contract.policy_execution_input_parent_forecast_eval_fact_digest);
+      if (!source_forecast_digest.empty() &&
+          source_forecast_digest !=
+              contract
+                  .policy_execution_input_parent_forecast_eval_fact_digest &&
+          !legacy_splitless_forecast_alias) {
+        *err = "E_RUNTIME_POLICY_EXECUTION_CERTIFIED_FORECAST_MISMATCH: source "
+               "replay forecast fact differs from the certified lock";
+        return false;
+      }
+      if (!source_forecast_artifact.empty() &&
+          source_forecast_artifact !=
+              contract.policy_execution_input_parent_forecast_artifact_digest) {
+        *err = "E_RUNTIME_POLICY_EXECUTION_CERTIFIED_FORECAST_MISMATCH: source "
+               "forecast artifact differs from the certified lock";
+        return false;
+      }
+      const auto source_anchor_begin =
+          kv_get(source_forecast_fact, "anchor_begin");
+      const auto source_anchor_end = kv_get(source_forecast_fact, "anchor_end");
+      int source_begin = 0;
+      int source_end = 0;
+      if (!source_anchor_begin.empty() && !source_anchor_end.empty() &&
+          parse_int(source_anchor_begin, &source_begin) &&
+          parse_int(source_anchor_end, &source_end) &&
+          (source_begin != contract.policy_execution_target_anchor_begin ||
+           source_end !=
+               contract.policy_execution_target_anchor_end_exclusive)) {
+        *err =
+            "E_RUNTIME_POLICY_EXECUTION_TARGET_ANCHOR_RANGE_MISMATCH: source "
+            "forecast target differs from the certified lock";
+        return false;
+      }
+    }
+    const auto source_replay_fact = parse_kv_file(
+        source_replay_job_dir / "lattice.replay_environment.fact");
+    if (!source_replay_fact.empty()) {
+      const auto source_replay_digest =
+          kv_get(source_replay_fact, "fact_digest");
+      if (!source_replay_digest.empty() &&
+          source_replay_digest !=
+              contract
+                  .policy_execution_input_parent_replay_environment_fact_digest) {
+        *err = "E_RUNTIME_POLICY_EXECUTION_CERTIFIED_REPLAY_MISMATCH: source "
+               "replay fact differs from the certified lock";
+        return false;
+      }
+      const auto source_replay_report =
+          kv_get(source_replay_fact, "experiment_report_digest");
+      if (!source_replay_report.empty() &&
+          source_replay_report !=
+              contract
+                  .policy_execution_input_parent_replay_environment_report_digest) {
+        *err = "E_RUNTIME_POLICY_EXECUTION_CERTIFIED_REPLAY_MISMATCH: source "
+               "replay report differs from the certified lock";
+        return false;
+      }
+    }
   }
 
   ppo_v0_rollout_collection_t rollout_collection =
@@ -8185,6 +13059,10 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
         report_dir / "policy_quality_report.report";
     const fs::path policy_quality_replay_report_path =
         report_dir / "policy_quality_replay.report";
+    const fs::path performance_profile_report_path =
+        report_dir / "policy_training_anchor_v1_performance_profile.report";
+    const fs::path certified_replay_bank_manifest_path =
+        report_dir / "certified_replay_bank_manifest.report";
     fs::path replay_config_path;
     fs::path exec_path;
     std::string accounting_numeraire_node_id;
@@ -8198,9 +13076,11 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     bool policy_quality_report_ready = false;
     std::string policy_quality_report_reason{
         "fresh_runtime_replay_job_dir_required_for_policy_quality_report"};
+    const std::string requested_experiment_id = trim_ascii(experiment_id_arg);
     const std::string child_experiment_id_root =
-        trim_ascii(experiment_id_arg).empty() ? job_id
-                                              : trim_ascii(experiment_id_arg);
+        requested_experiment_id.empty()
+            ? job_id
+            : requested_experiment_id + "." + sanitize_path_component(job_id);
     const std::string replay_policy_set_digest =
         trim_ascii(policy_set_digest_arg).empty()
             ? contract.policy_family_id
@@ -8335,6 +13215,14 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
       for (auto &sample : rollout_collection.samples) {
         sample.source = "kikijyeba_on_policy_replay";
       }
+      rollout_collection.policy_experience_mode =
+          contract.policy_experience_mode;
+      if (!build_certified_replay_chunks_from_source_job(
+              source_replay_job_dir, contract, source_replay_job_dir_digest,
+              &rollout_collection.certified_replay_chunks, err)) {
+        return false;
+      }
+      bind_certified_replay_bank_summary(&rollout_collection);
       if (!rollout_collection.policy_distribution_evidence_bound) {
         *err = "E_RUNTIME_POLICY_TRAINING_PPO_DISTRIBUTION_EVIDENCE_MISSING: "
                "fresh on-policy PPO replay collection must bind old-policy "
@@ -8408,6 +13296,56 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     emitted_contract.actor_checkpoint_digest = actor_checkpoint_digest;
     emitted_contract.critic_checkpoint_digest = critic_checkpoint_digest;
     emitted_contract.optimizer_state_digest = optimizer_state_digest;
+    if (!rollout_collection.certified_replay_chunks.empty()) {
+      rollout_collection.certified_replay_bank_manifest_path =
+          certified_replay_bank_manifest_path;
+      bind_certified_replay_bank_summary(&rollout_collection);
+      cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
+          certified_replay_bank_manifest_path,
+          certified_replay_bank_manifest_text(emitted_contract, contract_digest,
+                                              rollout_collection));
+      rollout_collection.certified_replay_bank_manifest_digest =
+          file_digest_or_empty(certified_replay_bank_manifest_path,
+                               "certified_replay_bank_manifest.v1");
+      emitted_contract.certified_replay_bank_schema =
+          "certified_replay_bank_manifest.v1";
+      emitted_contract.certified_replay_bank_manifest_path =
+          certified_replay_bank_manifest_path.string();
+      emitted_contract.certified_replay_bank_manifest_digest =
+          rollout_collection.certified_replay_bank_manifest_digest;
+      emitted_contract.policy_experience_set_digest =
+          rollout_collection.policy_experience_set_digest;
+      emitted_contract.policy_experience_mode =
+          rollout_collection.policy_experience_mode;
+      {
+        auto consumed_artifacts = split_csv(
+            emitted_contract.policy_execution_consumed_artifact_digests);
+        append_unique_policy_execution_consumed_artifact(
+            &consumed_artifacts,
+            emitted_contract.policy_execution_replay_job_dir_digest);
+        append_unique_policy_execution_consumed_artifact(
+            &consumed_artifacts,
+            emitted_contract.certified_replay_bank_manifest_digest);
+        append_unique_policy_execution_consumed_artifact(
+            &consumed_artifacts, emitted_contract.policy_experience_set_digest);
+        emitted_contract.policy_execution_consumed_artifact_digests =
+            csv_from_strings(consumed_artifacts);
+      }
+      emitted_contract.certified_replay_chunk_count = static_cast<std::int64_t>(
+          rollout_collection.certified_replay_chunks.size());
+      emitted_contract.certified_replay_chunk_count_bound = true;
+      emitted_contract.certified_replay_sample_count = 0;
+      for (const auto &chunk : rollout_collection.certified_replay_chunks) {
+        emitted_contract.certified_replay_sample_count += chunk.anchor_count;
+      }
+      emitted_contract.certified_replay_sample_count_bound = true;
+      emitted_contract.certified_replay_coverage_anchor_begin =
+          rollout_collection.certified_replay_coverage_anchor_begin;
+      emitted_contract.certified_replay_coverage_anchor_end_exclusive =
+          rollout_collection.certified_replay_coverage_anchor_end_exclusive;
+      emitted_contract.certified_replay_coverage_anchor_range_bound =
+          rollout_collection.certified_replay_coverage_anchor_range_bound;
+    }
 
     cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
         rollout_collection_path,
@@ -8677,12 +13615,50 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     emitted_contract.policy_quality_report_digest = file_digest_or_empty(
         policy_quality_report_path,
         cuwacunu::hero::runtime::k_policy_quality_report_schema_v1);
-    if (cuwacunu::hero::runtime::policy_kind_is_ppo_adapter(
+    cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
+        performance_profile_report_path,
+        policy_training_anchor_v1_performance_profile_report_text(
+            emitted_contract, contract_digest, actor_checkpoint_path,
+            emitted_contract.actor_checkpoint_digest, rollout_collection_path,
+            emitted_contract.rollout_collection_digest, ppo_update_report_path,
+            emitted_contract.ppo_update_report_digest, validation_rollout_path,
+            emitted_contract.validation_rollout_report_digest,
+            validation_rollout_ready, validation_rollout_collection,
+            policy_quality_report_path,
+            emitted_contract.policy_quality_report_digest,
+            policy_quality_report_ready, policy_quality_collection, metrics,
+            rollout_collection));
+    const std::string performance_profile_report_digest = file_digest_or_empty(
+        performance_profile_report_path,
+        "policy_training_anchor_v1_performance_profile.v1");
+    const bool emitted_ppo_adapter =
+        cuwacunu::hero::runtime::policy_kind_is_ppo_adapter(
             emitted_contract.policy_kind,
-            emitted_contract.ppo_policy_artifact_contract_id)) {
+            emitted_contract.ppo_policy_artifact_contract_id);
+    if (emitted_ppo_adapter) {
       emitted_contract.parent_allocation_engine_fact_digest.clear();
+      emitted_contract.parent_replay_environment_fact_digest.clear();
     }
-    if (policy_quality_report_ready) {
+    if (!emitted_ppo_adapter &&
+        (!emitted_contract
+              .policy_execution_input_parent_replay_environment_fact_digest
+              .empty() ||
+         !emitted_contract
+              .policy_execution_input_parent_replay_environment_report_digest
+              .empty())) {
+      emitted_contract.parent_replay_environment_fact_digest =
+          emitted_contract
+              .policy_execution_input_parent_replay_environment_fact_digest;
+      emitted_contract.parent_replay_environment_report_digest =
+          emitted_contract
+              .policy_execution_input_parent_replay_environment_report_digest;
+    } else if (emitted_ppo_adapter &&
+               !rollout_collection.input_replay_report_path.empty()) {
+      emitted_contract.parent_replay_environment_report_digest =
+          replay_report_digest_for_path_or_empty(
+              rollout_collection.input_replay_report_path);
+      emitted_contract.parent_replay_environment_fact_digest.clear();
+    } else if (policy_quality_report_ready) {
       emitted_contract.parent_replay_environment_report_digest =
           replay_report_digest_for_path_or_empty(
               policy_quality_replay_report_path);
@@ -8710,8 +13686,9 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
             emitted_contract.ppo_update_report_digest, validation_rollout_path,
             emitted_contract.validation_rollout_report_digest,
             policy_quality_report_path,
-            emitted_contract.policy_quality_report_digest, metrics,
-            rollout_collection));
+            emitted_contract.policy_quality_report_digest,
+            performance_profile_report_path, performance_profile_report_digest,
+            metrics, rollout_collection));
 
     const std::string ppo_protocol_status =
         rollout_collection.on_policy_runtime_collection_complete
@@ -8774,9 +13751,33 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
         rollout_collection.input_policy_checkpoint_path.string(),
         rollout_collection.input_policy_checkpoint_digest,
         &policy_training_identity, &metrics);
+    auto output_checkpoint_fact = policy_output_checkpoint_fact(
+        emitted_contract, emitted_contract.actor_checkpoint_digest,
+        actor_checkpoint_path, job_id, policy_training_identity,
+        rollout_collection.input_policy_checkpoint_digest,
+        cuwacunu::hero::lattice::exposure::exposure_digest_for_text(fact_text));
+    auto output_update_fact = cuwacunu::hero::lattice::exposure::
+        make_component_training_update_fact_from_checkpoint_fact(
+            output_checkpoint_fact, "train");
+    output_update_fact.split_role = policy_training_identity.split_role;
+    output_update_fact.optimizer_update_count = metrics.optimizer_steps;
+    output_update_fact.optimizer_update_count_bound =
+        metrics.optimizer_steps > 0;
+    output_checkpoint_fact.producer_component_update_fact_digest =
+        cuwacunu::hero::lattice::exposure::
+            component_training_update_fact_digest(output_update_fact);
     const fs::path policy_fact_path = job_dir / "runtime.policy_training.fact";
     cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
         policy_fact_path, fact_text);
+    cuwacunu::hero::lattice::exposure::
+        write_component_training_update_fact_sidecar(
+            cuwacunu::hero::lattice::exposure::
+                component_training_update_fact_path_for_job_dir(job_dir),
+            output_update_fact);
+    cuwacunu::hero::lattice::exposure::write_checkpoint_fact_sidecar(
+        cuwacunu::hero::lattice::exposure::checkpoint_fact_path_for_job_dir(
+            job_dir),
+        std::move(output_checkpoint_fact));
     cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
         job_dir / "job.state",
         policy_training_ppo_state_text(job_id, job_stable_id, attempt_leaf,
@@ -8846,6 +13847,10 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
          << ",\"policy_quality_report_ref\":"
          << json_quote(display::report_ref(
                 emitted_contract.policy_quality_report_digest))
+         << ",\"performance_profile_report_digest\":"
+         << json_quote(performance_profile_report_digest)
+         << ",\"performance_profile_report_ref\":"
+         << json_quote(display::report_ref(performance_profile_report_digest))
          << ",\"optimizer_steps\":" << metrics.optimizer_steps
          << ",\"sample_count\":" << metrics.sample_count
          << ",\"rollout_collection_source\":"
@@ -8861,6 +13866,26 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
          << ",\"input_replay_report_ref\":"
          << json_quote(display::report_ref(
                 rollout_collection.input_replay_report_digest))
+         << ",\"certified_replay_bank_manifest_path\":"
+         << json_quote(
+                rollout_collection.certified_replay_bank_manifest_path.string())
+         << ",\"certified_replay_bank_manifest_digest\":"
+         << json_quote(rollout_collection.certified_replay_bank_manifest_digest)
+         << ",\"policy_experience_set_digest\":"
+         << json_quote(rollout_collection.policy_experience_set_digest)
+         << ",\"policy_experience_mode\":"
+         << json_quote(rollout_collection.policy_experience_mode)
+         << ",\"certified_replay_chunk_count\":"
+         << rollout_collection.certified_replay_chunks.size()
+         << ",\"certified_replay_sample_count\":"
+         << emitted_contract.certified_replay_sample_count
+         << ",\"certified_replay_coverage_anchor_begin\":"
+         << emitted_contract.certified_replay_coverage_anchor_begin
+         << ",\"certified_replay_coverage_anchor_end_exclusive\":"
+         << emitted_contract.certified_replay_coverage_anchor_end_exclusive
+         << ",\"certified_replay_coverage_anchor_range_bound\":"
+         << bool_json(
+                emitted_contract.certified_replay_coverage_anchor_range_bound)
          << ",\"input_policy_checkpoint_path\":"
          << json_quote(rollout_collection.input_policy_checkpoint_path.string())
          << ",\"input_policy_checkpoint_digest\":"
@@ -8890,6 +13915,8 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
          << json_quote(validation_rollout_path.string())
          << ",\"policy_quality_report_path\":"
          << json_quote(policy_quality_report_path.string())
+         << ",\"performance_profile_report_path\":"
+         << json_quote(performance_profile_report_path.string())
          << ",\"policy_quality_report_ready\":"
          << bool_json(policy_quality_report_ready)
          << ",\"policy_quality_replay_report_path\":"
@@ -8940,11 +13967,139 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
   }
 }
 
+[[nodiscard]] bool find_policy_training_replay_source_job(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    const runtime_context_t &ctx, fs::path *out, std::string *err);
+
+[[nodiscard]] bool canonicalize_policy_training_replay_job_dir_from_runtime(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    runtime_context_t *ctx, std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  if (!trim_ascii(contract->replay_job_dir).empty()) {
+    return true;
+  }
+  if (ctx == nullptr || trim_ascii(contract->config_path).empty() ||
+      trim_ascii(contract->validation_range_digest).empty()) {
+    return true;
+  }
+
+  const fs::path config_path =
+      effective_config_path(*ctx, contract->config_path);
+  const fs::path runtime_policy_path =
+      resolve_runtime_hero_dsl_path(config_path);
+  runtime_policy_t runtime_policy{};
+  if (!load_runtime_policy(runtime_policy_path, config_path, &runtime_policy,
+                           err)) {
+    return false;
+  }
+  runtime_context_t resolved_ctx = *ctx;
+  resolved_ctx.global_config_path = config_path;
+  resolved_ctx.policy_path = runtime_policy_path;
+  resolved_ctx.policy = std::move(runtime_policy);
+
+  fs::path replay_job_dir;
+  if (!find_policy_training_replay_source_job(*contract, resolved_ctx,
+                                              &replay_job_dir, err)) {
+    return false;
+  }
+  contract->replay_job_dir = replay_job_dir.string();
+  return true;
+}
+
 [[nodiscard]] bool handle_policy_training_contract_object(
     cuwacunu::hero::runtime::policy_training_job_contract_t contract,
     const std::string &execution_args, std::string_view requested_mode,
     runtime_context_t *ctx, std::string *out, std::string *err) {
   namespace runtime_contract = cuwacunu::hero::runtime;
+  apply_policy_training_request_fixed_contract_values(&contract);
+  if (!canonicalize_policy_training_causal_embargo_defaults(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_replay_job_dir_from_runtime(&contract, ctx,
+                                                                err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_replay_artifact_identity(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_range_mirrors(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_target_range_from_validation(&contract,
+                                                                 err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_embargo_window_from_target_range(&contract,
+                                                                     err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_parent_input_mirrors(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_execution_consumed_artifacts(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_execution_consumed_checkpoints(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_execution_consumed_generation_vectors(&contract,
+                                                                 err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_execution_target_id(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_bundle_generation_mirrors(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_output_anchor_mirrors(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_accounting_numeraire_from_config(&contract,
+                                                                     err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_environment_execution_defaults(&contract,
+                                                                   err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_policy_surface_from_config(&contract,
+                                                               err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_policy_source_identity(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_wave_defaults_from_config(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_no_lookahead_from_protocol(&contract,
+                                                               err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_protocol_graph_identity(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_target_node_ids_from_graph(&contract,
+                                                               err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_jkimyei_ppo_defaults(&contract, err)) {
+    return false;
+  }
+  if (!assign_or_confirm_policy_training_ppo_config_digest(&contract, err)) {
+    return false;
+  }
+  apply_policy_training_request_fixed_contract_values(&contract);
+  if (!canonicalize_policy_training_fresh_spawn_parent_defaults(&contract,
+                                                                err)) {
+    return false;
+  }
   if (runtime_contract::policy_training_requires_ppo_artifact_contract(
           contract)) {
     contract.component_assembly_fingerprint =
@@ -8963,13 +14118,13 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
   const auto contract_digest =
       runtime_contract::policy_training_contract_digest_for_text(contract_text);
   if (requested_mode == "execute") {
-    if (policy_training_execute_kind_is_ppo_v0(contract)) {
-      return execute_policy_training_ppo_v0(execution_args, contract,
-                                            contract_text, contract_digest, ctx,
-                                            out, err);
+    if (!policy_training_execute_kind_is_ppo_v0(contract)) {
+      *err = policy_training_unsupported_execute_reason(contract);
+      return false;
     }
-    return execute_policy_training_noop(execution_args, contract, contract_text,
-                                        contract_digest, ctx, out, err);
+    return execute_policy_training_ppo_v0(execution_args, contract,
+                                          contract_text, contract_digest, ctx,
+                                          out, err);
   }
   const bool execution_supported =
       policy_training_execute_kind_supported(contract);
@@ -8981,8 +14136,7 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
        << ",\"contract_digest\":" << json_quote(contract_digest)
        << ",\"policy_training_execution_supported\":"
        << bool_json(execution_supported)
-       << ",\"supported_execute_policy_kinds\":[\"noop_policy_training.v1\","
-          "\"ppo_policy_adapter.v1\"]"
+       << ",\"supported_execute_policy_kinds\":[\"ppo_policy_adapter.v1\"]"
        << ",\"artifact_schema_id\":" << json_quote(contract.artifact_schema_id)
        << ",\"contract\":" << policy_training_contract_json(contract)
        << ",\"contract_text\":" << json_quote(contract_text)
@@ -9017,6 +14171,36 @@ void apply_policy_training_request_fixed_contract_values(
       runtime_contract::k_policy_training_causal_schedule_schema_v1;
   contract->causal_schedule_no_future_snapshot_use_source =
       runtime_contract::k_policy_training_schedule_no_future_snapshot_source_v1;
+  contract->causal_provenance_schema =
+      runtime_contract::k_causal_provenance_generalization_v1;
+  contract->causal_atom_schema =
+      runtime_contract::k_causal_atom_anchor_interval_v1;
+  contract->causal_interval_set_schema =
+      runtime_contract::k_causal_interval_set_anchor_half_open_v1;
+  if (contract->causal_label_reward_horizon_policy_fingerprint.empty()) {
+    contract->causal_label_reward_horizon_policy_fingerprint =
+        "label_reward_horizon.anchor_scalar_v1";
+  }
+  if (contract->causal_fold_policy_fingerprint.empty()) {
+    contract->causal_fold_policy_fingerprint =
+        "fold_policy.single_time_split_v1";
+  }
+  if (contract->causal_purged_embargo_policy_fingerprint.empty()) {
+    contract->causal_purged_embargo_policy_fingerprint =
+        contract->embargo_policy_fingerprint;
+  }
+  contract->causal_artifact_production_schema =
+      runtime_contract::k_runtime_artifact_production_inline_policy_v1;
+  if (contract->causal_artifact_production_closure_digest.empty()) {
+    contract->causal_artifact_production_closure_digest =
+        contract->policy_execution_provenance_closure_digest;
+  }
+  contract->causal_interface_stability_contract_digest = runtime_contract::
+      k_interface_stability_trained_against_generation_vector_v1;
+  if (contract->causal_provenance_closure_digest.empty()) {
+    contract->causal_provenance_closure_digest =
+        contract->policy_execution_provenance_closure_digest;
+  }
 
   if (!runtime_contract::policy_training_requires_ppo_artifact_contract(
           *contract)) {
@@ -9028,6 +14212,13 @@ void apply_policy_training_request_fixed_contract_values(
       runtime_contract::k_graph_node_allocation_policy_family_v1;
   contract->policy_checkpoint_schema_id =
       runtime_contract::k_ppo_policy_checkpoint_schema_v1;
+  if (contract->policy_jkimyei_component_role.empty()) {
+    contract->policy_jkimyei_component_role = "policy";
+  }
+  if (!contract->policy_jkimyei_serving_order_index_bound) {
+    contract->policy_jkimyei_serving_order_index = 2;
+    contract->policy_jkimyei_serving_order_index_bound = true;
+  }
   contract->optimizer_state_schema_id =
       "kikijyeba.runtime.ppo_optimizer_state.v1";
   contract->device_policy = "require_cuda";
@@ -9035,10 +14226,21 @@ void apply_policy_training_request_fixed_contract_values(
   contract->cuda_device_index_bound = true;
   contract->advantage_estimator_id =
       runtime_contract::k_gae_advantage_estimator_v1;
+  if (contract->advantage_normalization_policy.empty()) {
+    contract->advantage_normalization_policy =
+        runtime_contract::k_ppo_advantage_normalization_policy_v1;
+  }
   contract->rollout_collection_schema_id =
       runtime_contract::k_ppo_rollout_collection_schema_v1;
   contract->ppo_update_report_schema_id =
       runtime_contract::k_ppo_update_report_schema_v1;
+  contract->actor_checkpoint_digest.clear();
+  contract->critic_checkpoint_digest.clear();
+  contract->optimizer_state_digest.clear();
+  contract->rollout_collection_digest.clear();
+  contract->ppo_update_report_digest.clear();
+  contract->validation_rollout_report_digest.clear();
+  contract->policy_quality_report_digest.clear();
 }
 
 [[nodiscard]] bool handle_policy_training_contract(
@@ -9058,13 +14260,23 @@ void apply_policy_training_request_fixed_contract_values(
           ? &*selected_wave
           : nullptr;
   runtime_contract::policy_training_job_contract_t contract{};
+  (void)extract_json_string_field(args, "config_path", &contract.config_path);
+  (void)extract_json_string_field(args, "accounting_numeraire_node_id",
+                                  &contract.accounting_numeraire_node_id);
+  (void)extract_json_string_field(args, "target_node_ids",
+                                  &contract.target_node_ids);
+  (void)extract_json_string_field(args, "experiment_id",
+                                  &contract.experiment_id);
+  (void)extract_json_string_field(args, "policy_set_digest",
+                                  &contract.policy_set_digest);
+  (void)extract_json_string_field(args, "protocol_contract_fingerprint",
+                                  &contract.protocol_contract_fingerprint);
+  (void)extract_json_string_field(args, "graph_order_fingerprint",
+                                  &contract.graph_order_fingerprint);
+  (void)extract_json_string_field(args, "training_config_digest",
+                                  &contract.training_config_digest);
   if (!parse_required_string_arg(args, "protocol_id", &contract.protocol_id,
                                  err) ||
-      !parse_required_string_arg(args, "protocol_contract_fingerprint",
-                                 &contract.protocol_contract_fingerprint,
-                                 err) ||
-      !parse_required_string_arg(args, "graph_order_fingerprint",
-                                 &contract.graph_order_fingerprint, err) ||
       !parse_required_string_arg(args, "source_cursor_token",
                                  &contract.source_cursor_token, err) ||
       !parse_required_string_arg_or_wave(args, "policy_id", wave_defaults,
@@ -9073,10 +14285,6 @@ void apply_policy_training_request_fixed_contract_values(
       !parse_required_string_arg_or_wave(args, "policy_kind", wave_defaults,
                                          "POLICY_KIND", &contract.policy_kind,
                                          err) ||
-      !parse_required_string_arg(args, "policy_architecture_digest",
-                                 &contract.policy_architecture_digest, err) ||
-      !parse_required_string_arg(args, "training_config_digest",
-                                 &contract.training_config_digest, err) ||
       !parse_required_string_arg(args, "training_range_digest",
                                  &contract.training_range_digest, err) ||
       !parse_required_string_arg(args, "validation_range_digest",
@@ -9094,26 +14302,23 @@ void apply_policy_training_request_fixed_contract_values(
       !parse_required_string_arg_or_wave(
           args, "training_schedule_mode", wave_defaults,
           "TRAINING_SCHEDULE_MODE", &contract.training_schedule_mode, err) ||
-      !parse_required_string_arg(args, "causal_schedule_digest",
-                                 &contract.causal_schedule_digest, err) ||
+      !parse_required_string_arg_or_wave(
+          args, "causal_schedule_digest", wave_defaults,
+          "CAUSAL_SCHEDULE_DIGEST", &contract.causal_schedule_digest, err) ||
       !parse_required_string_arg(args, "causal_schedule_cursor_key_kind",
                                  &contract.causal_schedule_cursor_key_kind,
                                  err) ||
-      !parse_required_string_arg(args, "normalization_fit_range_digest",
-                                 &contract.normalization_fit_range_digest,
-                                 err) ||
-      !parse_required_string_arg(args, "replay_buffer_source_range_digest",
-                                 &contract.replay_buffer_source_range_digest,
-                                 err) ||
-      !parse_required_string_arg(args, "early_stopping_policy_digest",
-                                 &contract.early_stopping_policy_digest, err) ||
-      !parse_required_string_arg(
-          args, "hyperparameter_selection_policy_digest",
+      !parse_required_string_arg_or_wave(
+          args, "early_stopping_policy_digest", wave_defaults,
+          "EARLY_STOPPING_POLICY_DIGEST",
+          &contract.early_stopping_policy_digest, err) ||
+      !parse_required_string_arg_or_wave(
+          args, "hyperparameter_selection_policy_digest", wave_defaults,
+          "HYPERPARAMETER_SELECTION_POLICY_DIGEST",
           &contract.hyperparameter_selection_policy_digest, err) ||
-      !parse_required_string_arg(args, "selector_policy_digest",
-                                 &contract.selector_policy_digest, err) ||
-      !parse_required_string_arg(args, "parent_checkpoint_digest",
-                                 &contract.parent_checkpoint_digest, err) ||
+      !parse_required_string_arg_or_wave(
+          args, "selector_policy_digest", wave_defaults,
+          "SELECTOR_POLICY_DIGEST", &contract.selector_policy_digest, err) ||
       !parse_required_string_arg(args, "parent_forecast_eval_fact_digest",
                                  &contract.parent_forecast_eval_fact_digest,
                                  err) ||
@@ -9128,6 +14333,12 @@ void apply_policy_training_request_fixed_contract_values(
                                   &contract.component_assembly_fingerprint);
   (void)extract_json_string_field(args, "selector_split",
                                   &contract.selector_split);
+  (void)extract_json_string_field(args, "parent_checkpoint_digest",
+                                  &contract.parent_checkpoint_digest);
+  (void)extract_json_string_field(args, "normalization_fit_range_digest",
+                                  &contract.normalization_fit_range_digest);
+  (void)extract_json_string_field(args, "replay_buffer_source_range_digest",
+                                  &contract.replay_buffer_source_range_digest);
   (void)extract_json_string_field(
       args, "final_refit_parent_selected_checkpoint_digest",
       &contract.final_refit_parent_selected_checkpoint_digest);
@@ -9140,6 +14351,96 @@ void apply_policy_training_request_fixed_contract_values(
   (void)extract_json_string_field(
       args, "parent_replay_environment_report_digest",
       &contract.parent_replay_environment_report_digest);
+  (void)extract_json_string_field(
+      args, "policy_execution_no_lookahead_certificate_schema",
+      &contract.policy_execution_no_lookahead_certificate_schema);
+  (void)extract_json_string_field(
+      args, "policy_execution_no_lookahead_certificate_digest",
+      &contract.policy_execution_no_lookahead_certificate_digest);
+  (void)extract_json_string_field(
+      args, "policy_execution_evidence_snapshot_digest",
+      &contract.policy_execution_evidence_snapshot_digest);
+  (void)extract_json_string_field(
+      args, "policy_execution_provenance_closure_digest",
+      &contract.policy_execution_provenance_closure_digest);
+  (void)extract_json_string_field(args, "policy_execution_target_id",
+                                  &contract.policy_execution_target_id);
+  (void)extract_json_string_field(
+      args, "policy_execution_no_lookahead_contract_digest",
+      &contract.policy_execution_no_lookahead_contract_digest);
+  (void)extract_json_string_field(args, "embargo_policy_fingerprint",
+                                  &contract.embargo_policy_fingerprint);
+  (void)extract_json_string_field(args, "causal_provenance_schema",
+                                  &contract.causal_provenance_schema);
+  (void)extract_json_string_field(args, "causal_atom_schema",
+                                  &contract.causal_atom_schema);
+  (void)extract_json_string_field(args, "causal_interval_set_schema",
+                                  &contract.causal_interval_set_schema);
+  (void)extract_json_string_field(
+      args, "causal_label_reward_horizon_policy_fingerprint",
+      &contract.causal_label_reward_horizon_policy_fingerprint);
+  (void)extract_json_string_field(args, "causal_fold_policy_fingerprint",
+                                  &contract.causal_fold_policy_fingerprint);
+  (void)extract_json_string_field(
+      args, "causal_purged_embargo_policy_fingerprint",
+      &contract.causal_purged_embargo_policy_fingerprint);
+  (void)extract_json_string_field(args, "causal_artifact_production_schema",
+                                  &contract.causal_artifact_production_schema);
+  (void)extract_json_string_field(
+      args, "causal_artifact_production_closure_digest",
+      &contract.causal_artifact_production_closure_digest);
+  (void)extract_json_string_field(
+      args, "causal_interface_stability_contract_digest",
+      &contract.causal_interface_stability_contract_digest);
+  (void)extract_json_string_field(args, "causal_provenance_closure_digest",
+                                  &contract.causal_provenance_closure_digest);
+  (void)extract_json_string_field(
+      args, "policy_execution_input_parent_forecast_eval_fact_digest",
+      &contract.policy_execution_input_parent_forecast_eval_fact_digest);
+  (void)extract_json_string_field(
+      args, "policy_execution_input_parent_forecast_artifact_digest",
+      &contract.policy_execution_input_parent_forecast_artifact_digest);
+  (void)extract_json_string_field(
+      args, "policy_execution_input_parent_replay_environment_fact_digest",
+      &contract.policy_execution_input_parent_replay_environment_fact_digest);
+  (void)extract_json_string_field(
+      args, "policy_execution_input_parent_replay_environment_report_digest",
+      &contract.policy_execution_input_parent_replay_environment_report_digest);
+  (void)extract_json_string_field(
+      args, "policy_execution_replay_job_dir_digest",
+      &contract.policy_execution_replay_job_dir_digest);
+  (void)extract_json_string_field(
+      args, "policy_execution_consumed_artifact_digests",
+      &contract.policy_execution_consumed_artifact_digests);
+  (void)extract_json_string_field(
+      args, "policy_execution_consumed_checkpoint_digests",
+      &contract.policy_execution_consumed_checkpoint_digests);
+  (void)extract_json_string_field(
+      args, "policy_execution_consumed_generation_vector_digests",
+      &contract.policy_execution_consumed_generation_vector_digests);
+  (void)extract_json_string_field(args, "parent_policy_generation_id",
+                                  &contract.parent_policy_generation_id);
+  (void)extract_json_string_field(
+      args, "parent_policy_generation_vector_digest",
+      &contract.parent_policy_generation_vector_digest);
+  (void)extract_json_string_field(args, "parent_policy_influence_schema",
+                                  &contract.parent_policy_influence_schema);
+  (void)extract_json_string_field(
+      args, "parent_policy_provenance_closure_digest",
+      &contract.parent_policy_provenance_closure_digest);
+  (void)extract_json_string_field(
+      args, "parent_policy_no_lookahead_contract_digest",
+      &contract.parent_policy_no_lookahead_contract_digest);
+  (void)extract_json_string_field(args, "policy_output_generation_id",
+                                  &contract.policy_output_generation_id);
+  (void)extract_json_string_field(
+      args, "policy_output_generation_vector_digest",
+      &contract.policy_output_generation_vector_digest);
+  (void)extract_json_string_field(
+      args, "policy_output_provenance_closure_digest",
+      &contract.policy_output_provenance_closure_digest);
+  (void)extract_json_string_field(args, "policy_architecture_digest",
+                                  &contract.policy_architecture_digest);
   (void)extract_json_string_field(args, "policy_dsl_digest",
                                   &contract.policy_dsl_digest);
   (void)extract_json_string_field(args, "policy_net_digest",
@@ -9149,12 +14450,163 @@ void apply_policy_training_request_fixed_contract_values(
       &contract.policy_input_feature_manifest_digest);
   (void)extract_json_string_field(args, "policy_jkimyei_digest",
                                   &contract.policy_jkimyei_digest);
+  (void)extract_json_string_field(
+      args, "policy_jkimyei_no_lookahead_contract_id",
+      &contract.policy_jkimyei_no_lookahead_contract_id);
+  (void)extract_json_string_field(
+      args, "policy_jkimyei_no_lookahead_contract_digest",
+      &contract.policy_jkimyei_no_lookahead_contract_digest);
+  (void)extract_json_string_field(
+      args, "policy_jkimyei_component_order_contract_id",
+      &contract.policy_jkimyei_component_order_contract_id);
+  (void)extract_json_string_field(
+      args, "policy_jkimyei_component_order_contract_digest",
+      &contract.policy_jkimyei_component_order_contract_digest);
+  (void)extract_json_string_field(args, "policy_jkimyei_component_role",
+                                  &contract.policy_jkimyei_component_role);
+  int policy_serving_order_index = 0;
+  const bool policy_serving_order_index_present = extract_json_raw_field(
+      args, "policy_jkimyei_serving_order_index", nullptr);
+  if (parse_optional_int_arg(args, "policy_jkimyei_serving_order_index", 0,
+                             &policy_serving_order_index, err)) {
+    contract.policy_jkimyei_serving_order_index = policy_serving_order_index;
+    contract.policy_jkimyei_serving_order_index_bound =
+        policy_serving_order_index_present;
+  } else {
+    return false;
+  }
+  if (!parse_optional_bool_arg(
+          args, "policy_jkimyei_serving_order_index_bound",
+          contract.policy_jkimyei_serving_order_index_bound,
+          &contract.policy_jkimyei_serving_order_index_bound, err)) {
+    return false;
+  }
   (void)extract_json_string_field(args, "target_node_universe_digest",
                                   &contract.target_node_universe_digest);
   (void)extract_json_string_field(args, "action_distribution_config_digest",
                                   &contract.action_distribution_config_digest);
-  (void)extract_json_string_field(args, "snapshot_family_digest",
-                                  &contract.snapshot_family_digest);
+  if (extract_json_raw_field(args, "snapshot_family_digest", nullptr)) {
+    (void)extract_json_string_field(args, "snapshot_family_digest",
+                                    &contract.snapshot_family_digest);
+  } else if (wave_defaults != nullptr) {
+    contract.snapshot_family_digest =
+        wave_value_or_empty(*wave_defaults, "SNAPSHOT_FAMILY_DIGEST");
+  }
+  (void)extract_json_string_field(args, "snapshot_bundle_schema",
+                                  &contract.snapshot_bundle_schema);
+  (void)extract_json_string_field(args, "snapshot_bundle_id",
+                                  &contract.snapshot_bundle_id);
+  (void)extract_json_string_field(args, "snapshot_bundle_kind",
+                                  &contract.snapshot_bundle_kind);
+  (void)extract_json_string_field(args, "snapshot_bundle_selection_basis",
+                                  &contract.snapshot_bundle_selection_basis);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_no_lookahead_contract_id",
+      &contract.snapshot_bundle_no_lookahead_contract_id);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_no_lookahead_contract_digest",
+      &contract.snapshot_bundle_no_lookahead_contract_digest);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_component_order_contract_id",
+      &contract.snapshot_bundle_component_order_contract_id);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_component_order_contract_digest",
+      &contract.snapshot_bundle_component_order_contract_digest);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_protocol_contract_fingerprint",
+      &contract.snapshot_bundle_protocol_contract_fingerprint);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_generation_vector_digest",
+      &contract.snapshot_bundle_generation_vector_digest);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_compatibility_closure_digest",
+      &contract.snapshot_bundle_compatibility_closure_digest);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_no_lookahead_certificate_digests",
+      &contract.snapshot_bundle_no_lookahead_certificate_digests);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_policy_execution_certificate_digest",
+      &contract.snapshot_bundle_policy_execution_certificate_digest);
+  (void)extract_json_string_field(
+      args, "snapshot_bundle_created_by_lattice_target",
+      &contract.snapshot_bundle_created_by_lattice_target);
+  (void)extract_json_string_field(args, "bundle_representation_component_id",
+                                  &contract.bundle_representation_component_id);
+  (void)extract_json_string_field(
+      args, "bundle_representation_jkimyei_digest",
+      &contract.bundle_representation_jkimyei_digest);
+  (void)extract_json_string_field(
+      args, "bundle_representation_checkpoint_digest",
+      &contract.bundle_representation_checkpoint_digest);
+  (void)extract_json_string_field(
+      args, "bundle_representation_generation_id",
+      &contract.bundle_representation_generation_id);
+  (void)extract_json_string_field(
+      args, "bundle_representation_generation_vector_digest",
+      &contract.bundle_representation_generation_vector_digest);
+  (void)extract_json_string_field(
+      args, "bundle_representation_generation_manifest_digest",
+      &contract.bundle_representation_generation_manifest_digest);
+  (void)extract_json_string_field(args, "bundle_mdn_component_id",
+                                  &contract.bundle_mdn_component_id);
+  (void)extract_json_string_field(args, "bundle_mdn_jkimyei_digest",
+                                  &contract.bundle_mdn_jkimyei_digest);
+  (void)extract_json_string_field(args, "bundle_mdn_checkpoint_digest",
+                                  &contract.bundle_mdn_checkpoint_digest);
+  (void)extract_json_string_field(args, "bundle_mdn_generation_id",
+                                  &contract.bundle_mdn_generation_id);
+  (void)extract_json_string_field(
+      args, "bundle_mdn_generation_vector_digest",
+      &contract.bundle_mdn_generation_vector_digest);
+  (void)extract_json_string_field(
+      args, "bundle_mdn_generation_manifest_digest",
+      &contract.bundle_mdn_generation_manifest_digest);
+  (void)extract_json_string_field(args, "bundle_policy_component_id",
+                                  &contract.bundle_policy_component_id);
+  (void)extract_json_string_field(args, "bundle_policy_jkimyei_digest",
+                                  &contract.bundle_policy_jkimyei_digest);
+  (void)extract_json_string_field(args, "bundle_policy_checkpoint_digest",
+                                  &contract.bundle_policy_checkpoint_digest);
+  (void)extract_json_string_field(args, "bundle_policy_generation_id",
+                                  &contract.bundle_policy_generation_id);
+  (void)extract_json_string_field(
+      args, "bundle_policy_generation_vector_digest",
+      &contract.bundle_policy_generation_vector_digest);
+  (void)extract_json_string_field(
+      args, "bundle_policy_generation_manifest_digest",
+      &contract.bundle_policy_generation_manifest_digest);
+  (void)extract_json_string_field(
+      args, "mdn_trained_against_representation_generation_id",
+      &contract.mdn_trained_against_representation_generation_id);
+  (void)extract_json_string_field(
+      args, "mdn_trained_against_representation_checkpoint_digest",
+      &contract.mdn_trained_against_representation_checkpoint_digest);
+  (void)extract_json_string_field(
+      args, "mdn_trained_against_representation_generation_vector_digest",
+      &contract.mdn_trained_against_representation_generation_vector_digest);
+  (void)extract_json_string_field(
+      args, "mdn_representation_feature_schema_digest",
+      &contract.mdn_representation_feature_schema_digest);
+  (void)extract_json_string_field(
+      args, "policy_trained_against_forecast_eval_fact_digest",
+      &contract.policy_trained_against_forecast_eval_fact_digest);
+  (void)extract_json_string_field(
+      args, "policy_trained_against_replay_environment_fact_digest",
+      &contract.policy_trained_against_replay_environment_fact_digest);
+  (void)extract_json_string_field(
+      args, "policy_trained_against_representation_generation_vector_digest",
+      &contract.policy_trained_against_representation_generation_vector_digest);
+  (void)extract_json_string_field(
+      args, "policy_trained_against_mdn_generation_vector_digest",
+      &contract.policy_trained_against_mdn_generation_vector_digest);
+  (void)extract_json_string_field(
+      args, "policy_trained_against_policy_parent_generation_vector_digest",
+      &contract.policy_trained_against_policy_parent_generation_vector_digest);
+  (void)extract_json_string_field(args, "policy_execution_input_lock_digest",
+                                  &contract.policy_execution_input_lock_digest);
+  (void)extract_json_string_field(
+      args, "policy_trained_against_no_lookahead_certificate_digest",
+      &contract.policy_trained_against_no_lookahead_certificate_digest);
   (void)extract_json_string_field(args, "actor_architecture_digest",
                                   &contract.actor_architecture_digest);
   (void)extract_json_string_field(args, "critic_architecture_digest",
@@ -9189,6 +14641,184 @@ void apply_policy_training_request_fixed_contract_values(
 
   int parsed_int = 0;
   double parsed_double = 0.0;
+  bool parsed_bool = false;
+  if (extract_json_raw_field(args, "snapshot_bundle_valid_from_anchor",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args, "snapshot_bundle_valid_from_anchor", 0,
+                                &parsed_int, err)) {
+      return false;
+    }
+    contract.snapshot_bundle_valid_from_anchor = parsed_int;
+    contract.snapshot_bundle_valid_from_anchor_bound = true;
+  }
+  if (!parse_optional_bool_arg(
+          args, "snapshot_bundle_valid_from_anchor_bound",
+          contract.snapshot_bundle_valid_from_anchor_bound,
+          &contract.snapshot_bundle_valid_from_anchor_bound, err)) {
+    return false;
+  }
+  if (extract_json_raw_field(args, "snapshot_bundle_valid_until_anchor",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args, "snapshot_bundle_valid_until_anchor", 0,
+                                &parsed_int, err)) {
+      return false;
+    }
+    contract.snapshot_bundle_valid_until_anchor = parsed_int;
+    contract.snapshot_bundle_valid_until_anchor_bound = true;
+  }
+  if (!parse_optional_bool_arg(
+          args, "snapshot_bundle_valid_until_anchor_bound",
+          contract.snapshot_bundle_valid_until_anchor_bound,
+          &contract.snapshot_bundle_valid_until_anchor_bound, err)) {
+    return false;
+  }
+  if (extract_json_raw_field(
+          args, "snapshot_bundle_influence_anchor_end_exclusive_max",
+          nullptr)) {
+    if (!parse_optional_int_arg(
+            args, "snapshot_bundle_influence_anchor_end_exclusive_max", 0,
+            &parsed_int, err)) {
+      return false;
+    }
+    contract.snapshot_bundle_influence_anchor_end_exclusive_max = parsed_int;
+    contract.snapshot_bundle_influence_anchor_end_exclusive_max_bound = true;
+  }
+  if (!parse_optional_bool_arg(
+          args, "snapshot_bundle_influence_anchor_end_exclusive_max_bound",
+          contract.snapshot_bundle_influence_anchor_end_exclusive_max_bound,
+          &contract.snapshot_bundle_influence_anchor_end_exclusive_max_bound,
+          err)) {
+    return false;
+  }
+  if (extract_json_raw_field(args, "policy_execution_target_anchor_begin",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args, "policy_execution_target_anchor_begin", 0,
+                                &parsed_int, err)) {
+      return false;
+    }
+    contract.policy_execution_target_anchor_begin = parsed_int;
+    contract.policy_execution_target_anchor_begin_bound = true;
+  }
+  if (extract_json_raw_field(
+          args, "policy_execution_target_anchor_end_exclusive", nullptr)) {
+    if (!parse_optional_int_arg(args,
+                                "policy_execution_target_anchor_end_exclusive",
+                                0, &parsed_int, err)) {
+      return false;
+    }
+    contract.policy_execution_target_anchor_end_exclusive = parsed_int;
+    contract.policy_execution_target_anchor_end_exclusive_bound = true;
+  }
+  if (extract_json_raw_field(args, "embargo_purged_window_anchor_begin",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args, "embargo_purged_window_anchor_begin", 0,
+                                &parsed_int, err)) {
+      return false;
+    }
+    contract.embargo_purged_window_anchor_begin = parsed_int;
+  }
+  if (extract_json_raw_field(args, "embargo_purged_window_anchor_end_exclusive",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args,
+                                "embargo_purged_window_anchor_end_exclusive", 0,
+                                &parsed_int, err)) {
+      return false;
+    }
+    contract.embargo_purged_window_anchor_end_exclusive = parsed_int;
+  }
+  if (extract_json_raw_field(args, "embargo_purged_window_anchor_range_bound",
+                             nullptr)) {
+    if (!parse_optional_bool_arg(args,
+                                 "embargo_purged_window_anchor_range_bound",
+                                 false, &parsed_bool, err)) {
+      return false;
+    }
+    contract.embargo_purged_window_anchor_range_bound = parsed_bool;
+  } else if (extract_json_raw_field(args, "embargo_purged_window_anchor_begin",
+                                    nullptr) &&
+             extract_json_raw_field(
+                 args, "embargo_purged_window_anchor_end_exclusive", nullptr)) {
+    contract.embargo_purged_window_anchor_range_bound = true;
+  }
+  if (extract_json_raw_field(args, "parent_policy_influence_complete",
+                             nullptr)) {
+    if (!parse_optional_bool_arg(args, "parent_policy_influence_complete",
+                                 false, &parsed_bool, err)) {
+      return false;
+    }
+    contract.parent_policy_influence_complete = parsed_bool;
+  }
+  if (extract_json_raw_field(args, "parent_policy_influence_anchor_begin_min",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args,
+                                "parent_policy_influence_anchor_begin_min", 0,
+                                &parsed_int, err)) {
+      return false;
+    }
+    contract.parent_policy_influence_anchor_begin_min = parsed_int;
+    contract.parent_policy_influence_anchor_begin_min_bound = true;
+  }
+  if (extract_json_raw_field(
+          args, "parent_policy_influence_anchor_end_exclusive_max", nullptr)) {
+    if (!parse_optional_int_arg(
+            args, "parent_policy_influence_anchor_end_exclusive_max", 0,
+            &parsed_int, err)) {
+      return false;
+    }
+    contract.parent_policy_influence_anchor_end_exclusive_max = parsed_int;
+    contract.parent_policy_influence_anchor_end_exclusive_max_bound = true;
+  }
+  if (extract_json_raw_field(args,
+                             "parent_policy_influence_label_or_reward_"
+                             "availability_end_exclusive_max",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args,
+                                "parent_policy_influence_label_or_reward_"
+                                "availability_end_exclusive_max",
+                                0, &parsed_int, err)) {
+      return false;
+    }
+    contract.parent_policy_label_or_reward_availability_end_exclusive_max =
+        parsed_int;
+    contract
+        .parent_policy_label_or_reward_availability_end_exclusive_max_bound =
+        true;
+  }
+  if (extract_json_raw_field(args, "parent_policy_valid_from_anchor",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args, "parent_policy_valid_from_anchor", 0,
+                                &parsed_int, err)) {
+      return false;
+    }
+    contract.parent_policy_valid_from_anchor = parsed_int;
+    contract.parent_policy_valid_from_anchor_bound = true;
+  }
+  if (extract_json_raw_field(args, "policy_output_fit_anchor_begin", nullptr)) {
+    if (!parse_optional_int_arg(args, "policy_output_fit_anchor_begin", 0,
+                                &parsed_int, err)) {
+      return false;
+    }
+    contract.policy_output_fit_anchor_begin = parsed_int;
+    contract.policy_output_fit_anchor_begin_bound = true;
+  }
+  if (extract_json_raw_field(args, "policy_output_fit_anchor_end_exclusive",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args, "policy_output_fit_anchor_end_exclusive",
+                                0, &parsed_int, err)) {
+      return false;
+    }
+    contract.policy_output_fit_anchor_end_exclusive = parsed_int;
+    contract.policy_output_fit_anchor_end_exclusive_bound = true;
+  }
+  if (extract_json_raw_field(args, "policy_output_valid_from_anchor",
+                             nullptr)) {
+    if (!parse_optional_int_arg(args, "policy_output_valid_from_anchor", 0,
+                                &parsed_int, err)) {
+      return false;
+    }
+    contract.policy_output_valid_from_anchor = parsed_int;
+    contract.policy_output_valid_from_anchor_bound = true;
+  }
   if (extract_json_raw_field(args, "ppo_gamma", nullptr)) {
     if (!parse_optional_double_arg(args, "ppo_gamma", 0.0, &parsed_double,
                                    err)) {
@@ -9220,6 +14850,14 @@ void apply_policy_training_request_fixed_contract_values(
     }
     contract.ppo_target_kl = parsed_double;
     contract.ppo_target_kl_bound = true;
+  }
+  if (extract_json_raw_field(args, "ppo_learning_rate", nullptr)) {
+    if (!parse_optional_double_arg(args, "ppo_learning_rate", 0.0,
+                                   &parsed_double, err)) {
+      return false;
+    }
+    contract.ppo_learning_rate = parsed_double;
+    contract.ppo_learning_rate_bound = true;
   }
   if (extract_json_raw_field(args, "ppo_entropy_coeff", nullptr)) {
     if (!parse_optional_double_arg(args, "ppo_entropy_coeff", 0.0,
@@ -9277,10 +14915,13 @@ void apply_policy_training_request_fixed_contract_values(
     return false;
   }
   contract.max_steps = parsed_int;
+  const bool has_max_parallel_jobs =
+      extract_json_raw_field(args, "max_parallel_jobs", nullptr);
   if (!parse_optional_int_arg(args, "max_parallel_jobs", 1, &parsed_int, err)) {
     return false;
   }
   contract.max_parallel_jobs = parsed_int;
+  contract.max_parallel_jobs_bound = has_max_parallel_jobs;
   if (!parse_policy_training_required_int(args, "max_wall_clock_seconds",
                                           &parsed_int, err)) {
     return false;
@@ -9321,6 +14962,80 @@ void apply_policy_training_request_fixed_contract_values(
   }
 
   apply_policy_training_request_fixed_contract_values(&contract);
+  if (!canonicalize_policy_training_causal_embargo_defaults(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_replay_artifact_identity(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_range_mirrors(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_target_range_from_validation(&contract,
+                                                                 err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_embargo_window_from_target_range(&contract,
+                                                                     err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_parent_input_mirrors(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_execution_consumed_artifacts(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_execution_consumed_checkpoints(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_execution_consumed_generation_vectors(&contract,
+                                                                 err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_execution_target_id(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_bundle_generation_mirrors(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_output_anchor_mirrors(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_accounting_numeraire_from_config(&contract,
+                                                                     err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_environment_execution_defaults(&contract,
+                                                                   err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_policy_surface_from_config(&contract,
+                                                               err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_policy_source_identity(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_wave_defaults_from_config(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_no_lookahead_from_protocol(&contract,
+                                                               err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_protocol_graph_identity(&contract, err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_target_node_ids_from_graph(&contract,
+                                                               err)) {
+    return false;
+  }
+  if (!canonicalize_policy_training_jkimyei_ppo_defaults(&contract, err)) {
+    return false;
+  }
+  if (!assign_or_confirm_policy_training_ppo_config_digest(&contract, err)) {
+    return false;
+  }
   return handle_policy_training_contract_object(contract, args, requested_mode,
                                                 ctx, out, err);
 }
@@ -10859,14 +16574,22 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   return extract_json_raw_field(args, "policy_kind", nullptr) ||
          extract_json_raw_field(args, "policy_id", nullptr) ||
          extract_json_raw_field(args, "training_schedule_mode", nullptr) ||
-         extract_json_raw_field(args, "causal_schedule_digest", nullptr);
+         extract_json_raw_field(args, "causal_schedule_digest", nullptr) ||
+         extract_json_raw_field(args, "early_stopping_policy_digest",
+                                nullptr) ||
+         extract_json_raw_field(args, "hyperparameter_selection_policy_digest",
+                                nullptr) ||
+         extract_json_raw_field(args, "selector_policy_digest", nullptr);
 }
 
 [[nodiscard]] bool policy_training_wave_requested(
     const std::unordered_map<std::string, std::string> &request) {
   return request.count("policy_kind") != 0 || request.count("policy_id") != 0 ||
          request.count("training_schedule_mode") != 0 ||
-         request.count("causal_schedule_digest") != 0;
+         request.count("causal_schedule_digest") != 0 ||
+         request.count("early_stopping_policy_digest") != 0 ||
+         request.count("hyperparameter_selection_policy_digest") != 0 ||
+         request.count("selector_policy_digest") != 0;
 }
 
 [[nodiscard]] bool append_policy_training_request_json_fields(
@@ -10903,9 +16626,105 @@ replay_dry_run_json(const std::vector<std::string> &argv,
       {"policy_input_feature_manifest_digest",
        kv_json_field_kind_t::string_value},
       {"policy_jkimyei_digest", kv_json_field_kind_t::string_value},
+      {"policy_jkimyei_no_lookahead_contract_id",
+       kv_json_field_kind_t::string_value},
+      {"policy_jkimyei_no_lookahead_contract_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_jkimyei_component_order_contract_id",
+       kv_json_field_kind_t::string_value},
+      {"policy_jkimyei_component_order_contract_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_jkimyei_component_role", kv_json_field_kind_t::string_value},
+      {"policy_jkimyei_serving_order_index",
+       kv_json_field_kind_t::number_value},
       {"target_node_universe_digest", kv_json_field_kind_t::string_value},
       {"action_distribution_config_digest", kv_json_field_kind_t::string_value},
       {"snapshot_family_digest", kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_schema", kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_id", kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_kind", kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_selection_basis", kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_no_lookahead_contract_id",
+       kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_no_lookahead_contract_digest",
+       kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_component_order_contract_id",
+       kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_component_order_contract_digest",
+       kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_protocol_contract_fingerprint",
+       kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_valid_from_anchor", kv_json_field_kind_t::number_value},
+      {"snapshot_bundle_valid_from_anchor_bound",
+       kv_json_field_kind_t::bool_value},
+      {"snapshot_bundle_valid_until_anchor",
+       kv_json_field_kind_t::number_value},
+      {"snapshot_bundle_valid_until_anchor_bound",
+       kv_json_field_kind_t::bool_value},
+      {"snapshot_bundle_influence_anchor_end_exclusive_max",
+       kv_json_field_kind_t::number_value},
+      {"snapshot_bundle_influence_anchor_end_exclusive_max_bound",
+       kv_json_field_kind_t::bool_value},
+      {"snapshot_bundle_compatibility_closure_digest",
+       kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_no_lookahead_certificate_digests",
+       kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_policy_execution_certificate_digest",
+       kv_json_field_kind_t::string_value},
+      {"snapshot_bundle_created_by_lattice_target",
+       kv_json_field_kind_t::string_value},
+      {"bundle_representation_component_id",
+       kv_json_field_kind_t::string_value},
+      {"bundle_representation_jkimyei_digest",
+       kv_json_field_kind_t::string_value},
+      {"bundle_representation_checkpoint_digest",
+       kv_json_field_kind_t::string_value},
+      {"bundle_representation_generation_id",
+       kv_json_field_kind_t::string_value},
+      {"bundle_representation_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"bundle_representation_generation_manifest_digest",
+       kv_json_field_kind_t::string_value},
+      {"bundle_mdn_component_id", kv_json_field_kind_t::string_value},
+      {"bundle_mdn_jkimyei_digest", kv_json_field_kind_t::string_value},
+      {"bundle_mdn_checkpoint_digest", kv_json_field_kind_t::string_value},
+      {"bundle_mdn_generation_id", kv_json_field_kind_t::string_value},
+      {"bundle_mdn_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"bundle_mdn_generation_manifest_digest",
+       kv_json_field_kind_t::string_value},
+      {"bundle_policy_component_id", kv_json_field_kind_t::string_value},
+      {"bundle_policy_jkimyei_digest", kv_json_field_kind_t::string_value},
+      {"bundle_policy_checkpoint_digest", kv_json_field_kind_t::string_value},
+      {"bundle_policy_generation_id", kv_json_field_kind_t::string_value},
+      {"bundle_policy_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"bundle_policy_generation_manifest_digest",
+       kv_json_field_kind_t::string_value},
+      {"mdn_trained_against_representation_generation_id",
+       kv_json_field_kind_t::string_value},
+      {"mdn_trained_against_representation_checkpoint_digest",
+       kv_json_field_kind_t::string_value},
+      {"mdn_trained_against_representation_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"mdn_representation_feature_schema_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_trained_against_forecast_eval_fact_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_trained_against_replay_environment_fact_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_trained_against_representation_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_trained_against_mdn_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_trained_against_policy_parent_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_input_lock_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_trained_against_no_lookahead_certificate_digest",
+       kv_json_field_kind_t::string_value},
       {"actor_architecture_digest", kv_json_field_kind_t::string_value},
       {"critic_architecture_digest", kv_json_field_kind_t::string_value},
       {"actor_checkpoint_digest", kv_json_field_kind_t::string_value},
@@ -10944,11 +16763,67 @@ replay_dry_run_json(const std::vector<std::string> &argv,
        kv_json_field_kind_t::string_value},
       {"final_refit_parent_selected_checkpoint_digest",
        kv_json_field_kind_t::string_value},
+      {"policy_execution_no_lookahead_certificate_schema",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_no_lookahead_certificate_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_evidence_snapshot_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_provenance_closure_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_target_id", kv_json_field_kind_t::string_value},
+      {"policy_execution_no_lookahead_contract_digest",
+       kv_json_field_kind_t::string_value},
+      {"embargo_policy_fingerprint", kv_json_field_kind_t::string_value},
+      {"causal_provenance_schema", kv_json_field_kind_t::string_value},
+      {"causal_atom_schema", kv_json_field_kind_t::string_value},
+      {"causal_interval_set_schema", kv_json_field_kind_t::string_value},
+      {"causal_label_reward_horizon_policy_fingerprint",
+       kv_json_field_kind_t::string_value},
+      {"causal_fold_policy_fingerprint", kv_json_field_kind_t::string_value},
+      {"causal_purged_embargo_policy_fingerprint",
+       kv_json_field_kind_t::string_value},
+      {"causal_artifact_production_schema", kv_json_field_kind_t::string_value},
+      {"causal_artifact_production_closure_digest",
+       kv_json_field_kind_t::string_value},
+      {"causal_interface_stability_contract_digest",
+       kv_json_field_kind_t::string_value},
+      {"causal_provenance_closure_digest", kv_json_field_kind_t::string_value},
+      {"policy_execution_input_parent_forecast_eval_fact_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_input_parent_forecast_artifact_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_input_parent_replay_environment_fact_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_input_parent_replay_environment_report_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_replay_job_dir_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_consumed_artifact_digests",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_consumed_checkpoint_digests",
+       kv_json_field_kind_t::string_value},
+      {"policy_execution_consumed_generation_vector_digests",
+       kv_json_field_kind_t::string_value},
+      {"parent_policy_generation_id", kv_json_field_kind_t::string_value},
+      {"parent_policy_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"parent_policy_influence_schema", kv_json_field_kind_t::string_value},
+      {"parent_policy_provenance_closure_digest",
+       kv_json_field_kind_t::string_value},
+      {"parent_policy_no_lookahead_contract_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_output_generation_id", kv_json_field_kind_t::string_value},
+      {"policy_output_generation_vector_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_output_provenance_closure_digest",
+       kv_json_field_kind_t::string_value},
       {"policy_artifact_digest", kv_json_field_kind_t::string_value},
       {"ppo_gamma", kv_json_field_kind_t::number_value},
       {"ppo_gae_lambda", kv_json_field_kind_t::number_value},
       {"ppo_clip_epsilon", kv_json_field_kind_t::number_value},
       {"ppo_target_kl", kv_json_field_kind_t::number_value},
+      {"ppo_learning_rate", kv_json_field_kind_t::number_value},
       {"ppo_entropy_coeff", kv_json_field_kind_t::number_value},
       {"ppo_value_loss_coeff", kv_json_field_kind_t::number_value},
       {"ppo_max_grad_norm", kv_json_field_kind_t::number_value},
@@ -10957,17 +16832,37 @@ replay_dry_run_json(const std::vector<std::string> &argv,
       {"max_node_weight", kv_json_field_kind_t::number_value},
       {"max_turnover_l1", kv_json_field_kind_t::number_value},
       {"ppo_minibatch_size", kv_json_field_kind_t::int_value},
+      {"parent_policy_influence_label_or_reward_availability_end_exclusive_max",
+       kv_json_field_kind_t::int_value},
       {"ppo_epochs_per_rollout", kv_json_field_kind_t::int_value},
       {"random_seed", kv_json_field_kind_t::int_value},
       {"max_episodes", kv_json_field_kind_t::int_value},
       {"max_steps", kv_json_field_kind_t::int_value},
       {"max_parallel_jobs", kv_json_field_kind_t::int_value},
       {"max_wall_clock_seconds", kv_json_field_kind_t::int_value},
+      {"policy_execution_target_anchor_begin", kv_json_field_kind_t::int_value},
+      {"policy_execution_target_anchor_end_exclusive",
+       kv_json_field_kind_t::int_value},
+      {"embargo_purged_window_anchor_begin", kv_json_field_kind_t::int_value},
+      {"embargo_purged_window_anchor_end_exclusive",
+       kv_json_field_kind_t::int_value},
+      {"parent_policy_influence_anchor_begin_min",
+       kv_json_field_kind_t::int_value},
+      {"parent_policy_influence_anchor_end_exclusive_max",
+       kv_json_field_kind_t::int_value},
+      {"parent_policy_valid_from_anchor", kv_json_field_kind_t::int_value},
+      {"policy_output_fit_anchor_begin", kv_json_field_kind_t::int_value},
+      {"policy_output_fit_anchor_end_exclusive",
+       kv_json_field_kind_t::int_value},
+      {"policy_output_valid_from_anchor", kv_json_field_kind_t::int_value},
       {"causal_schedule_readiness_eligible", kv_json_field_kind_t::bool_value},
       {"causal_schedule_no_future_snapshot_use",
        kv_json_field_kind_t::bool_value},
       {"offline_full_window_research_allowed",
        kv_json_field_kind_t::bool_value},
+      {"embargo_purged_window_anchor_range_bound",
+       kv_json_field_kind_t::bool_value},
+      {"parent_policy_influence_complete", kv_json_field_kind_t::bool_value},
       {"final_refit_uses_validation", kv_json_field_kind_t::bool_value},
       {"validation_no_longer_proof", kv_json_field_kind_t::bool_value},
       {"sealed_test_required", kv_json_field_kind_t::bool_value},
@@ -11009,6 +16904,251 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   append_string("target_node_ids", contract.target_node_ids);
   append_string("experiment_id", contract.experiment_id);
   append_string("policy_set_digest", contract.policy_set_digest);
+  append_string("policy_jkimyei_no_lookahead_contract_id",
+                contract.policy_jkimyei_no_lookahead_contract_id);
+  append_string("policy_jkimyei_no_lookahead_contract_digest",
+                contract.policy_jkimyei_no_lookahead_contract_digest);
+  append_string("policy_jkimyei_component_order_contract_id",
+                contract.policy_jkimyei_component_order_contract_id);
+  append_string("policy_jkimyei_component_order_contract_digest",
+                contract.policy_jkimyei_component_order_contract_digest);
+  append_string("policy_jkimyei_component_role",
+                contract.policy_jkimyei_component_role);
+  if (contract.policy_jkimyei_serving_order_index_bound) {
+    append_int("policy_jkimyei_serving_order_index",
+               contract.policy_jkimyei_serving_order_index);
+  }
+  append_string("snapshot_bundle_schema", contract.snapshot_bundle_schema);
+  append_string("snapshot_bundle_id", contract.snapshot_bundle_id);
+  append_string("snapshot_bundle_kind", contract.snapshot_bundle_kind);
+  append_string("snapshot_bundle_selection_basis",
+                contract.snapshot_bundle_selection_basis);
+  append_string("snapshot_bundle_no_lookahead_contract_id",
+                contract.snapshot_bundle_no_lookahead_contract_id);
+  append_string("snapshot_bundle_no_lookahead_contract_digest",
+                contract.snapshot_bundle_no_lookahead_contract_digest);
+  append_string("snapshot_bundle_component_order_contract_id",
+                contract.snapshot_bundle_component_order_contract_id);
+  append_string("snapshot_bundle_component_order_contract_digest",
+                contract.snapshot_bundle_component_order_contract_digest);
+  append_string("snapshot_bundle_protocol_contract_fingerprint",
+                contract.snapshot_bundle_protocol_contract_fingerprint);
+  append_string("snapshot_bundle_generation_vector_digest",
+                contract.snapshot_bundle_generation_vector_digest);
+  append_string("snapshot_bundle_compatibility_closure_digest",
+                contract.snapshot_bundle_compatibility_closure_digest);
+  append_string("snapshot_bundle_no_lookahead_certificate_digests",
+                contract.snapshot_bundle_no_lookahead_certificate_digests);
+  append_string("snapshot_bundle_policy_execution_certificate_digest",
+                contract.snapshot_bundle_policy_execution_certificate_digest);
+  append_string("snapshot_bundle_created_by_lattice_target",
+                contract.snapshot_bundle_created_by_lattice_target);
+  append_string("bundle_representation_component_id",
+                contract.bundle_representation_component_id);
+  append_string("bundle_representation_jkimyei_digest",
+                contract.bundle_representation_jkimyei_digest);
+  append_string("bundle_representation_checkpoint_digest",
+                contract.bundle_representation_checkpoint_digest);
+  append_string("bundle_representation_generation_id",
+                contract.bundle_representation_generation_id);
+  append_string("bundle_representation_generation_vector_digest",
+                contract.bundle_representation_generation_vector_digest);
+  append_string("bundle_representation_generation_manifest_digest",
+                contract.bundle_representation_generation_manifest_digest);
+  append_string("bundle_mdn_component_id", contract.bundle_mdn_component_id);
+  append_string("bundle_mdn_jkimyei_digest",
+                contract.bundle_mdn_jkimyei_digest);
+  append_string("bundle_mdn_checkpoint_digest",
+                contract.bundle_mdn_checkpoint_digest);
+  append_string("bundle_mdn_generation_id", contract.bundle_mdn_generation_id);
+  append_string("bundle_mdn_generation_vector_digest",
+                contract.bundle_mdn_generation_vector_digest);
+  append_string("bundle_mdn_generation_manifest_digest",
+                contract.bundle_mdn_generation_manifest_digest);
+  append_string("bundle_policy_component_id",
+                contract.bundle_policy_component_id);
+  append_string("bundle_policy_jkimyei_digest",
+                contract.bundle_policy_jkimyei_digest);
+  append_string("bundle_policy_checkpoint_digest",
+                contract.bundle_policy_checkpoint_digest);
+  append_string("bundle_policy_generation_id",
+                contract.bundle_policy_generation_id);
+  append_string("bundle_policy_generation_vector_digest",
+                contract.bundle_policy_generation_vector_digest);
+  append_string("bundle_policy_generation_manifest_digest",
+                contract.bundle_policy_generation_manifest_digest);
+  append_string("mdn_trained_against_representation_generation_id",
+                contract.mdn_trained_against_representation_generation_id);
+  append_string("mdn_trained_against_representation_checkpoint_digest",
+                contract.mdn_trained_against_representation_checkpoint_digest);
+  append_string(
+      "mdn_trained_against_representation_generation_vector_digest",
+      contract.mdn_trained_against_representation_generation_vector_digest);
+  append_string("mdn_representation_feature_schema_digest",
+                contract.mdn_representation_feature_schema_digest);
+  append_string("policy_trained_against_forecast_eval_fact_digest",
+                contract.policy_trained_against_forecast_eval_fact_digest);
+  append_string("policy_trained_against_replay_environment_fact_digest",
+                contract.policy_trained_against_replay_environment_fact_digest);
+  append_string(
+      "policy_trained_against_representation_generation_vector_digest",
+      contract.policy_trained_against_representation_generation_vector_digest);
+  append_string("policy_trained_against_mdn_generation_vector_digest",
+                contract.policy_trained_against_mdn_generation_vector_digest);
+  append_string(
+      "policy_trained_against_policy_parent_generation_vector_digest",
+      contract.policy_trained_against_policy_parent_generation_vector_digest);
+  append_string("policy_execution_input_lock_digest",
+                contract.policy_execution_input_lock_digest);
+  append_string(
+      "policy_trained_against_no_lookahead_certificate_digest",
+      contract.policy_trained_against_no_lookahead_certificate_digest);
+  append_string("policy_execution_no_lookahead_certificate_schema",
+                contract.policy_execution_no_lookahead_certificate_schema);
+  append_string("policy_execution_no_lookahead_certificate_digest",
+                contract.policy_execution_no_lookahead_certificate_digest);
+  append_string("policy_execution_evidence_snapshot_digest",
+                contract.policy_execution_evidence_snapshot_digest);
+  append_string("policy_execution_provenance_closure_digest",
+                contract.policy_execution_provenance_closure_digest);
+  append_string("policy_execution_target_id",
+                contract.policy_execution_target_id);
+  append_string("policy_execution_no_lookahead_contract_digest",
+                contract.policy_execution_no_lookahead_contract_digest);
+  append_string("embargo_policy_fingerprint",
+                contract.embargo_policy_fingerprint);
+  append_string("causal_provenance_schema", contract.causal_provenance_schema);
+  append_string("causal_atom_schema", contract.causal_atom_schema);
+  append_string("causal_interval_set_schema",
+                contract.causal_interval_set_schema);
+  append_string("causal_label_reward_horizon_policy_fingerprint",
+                contract.causal_label_reward_horizon_policy_fingerprint);
+  append_string("causal_fold_policy_fingerprint",
+                contract.causal_fold_policy_fingerprint);
+  append_string("causal_purged_embargo_policy_fingerprint",
+                contract.causal_purged_embargo_policy_fingerprint);
+  append_string("causal_artifact_production_schema",
+                contract.causal_artifact_production_schema);
+  append_string("causal_artifact_production_closure_digest",
+                contract.causal_artifact_production_closure_digest);
+  append_string("causal_interface_stability_contract_digest",
+                contract.causal_interface_stability_contract_digest);
+  append_string("causal_provenance_closure_digest",
+                contract.causal_provenance_closure_digest);
+  append_string(
+      "policy_execution_input_parent_forecast_eval_fact_digest",
+      contract.policy_execution_input_parent_forecast_eval_fact_digest);
+  append_string(
+      "policy_execution_input_parent_forecast_artifact_digest",
+      contract.policy_execution_input_parent_forecast_artifact_digest);
+  append_string(
+      "policy_execution_input_parent_replay_environment_fact_digest",
+      contract.policy_execution_input_parent_replay_environment_fact_digest);
+  append_string(
+      "policy_execution_input_parent_replay_environment_report_digest",
+      contract.policy_execution_input_parent_replay_environment_report_digest);
+  append_string("policy_execution_replay_job_dir_digest",
+                contract.policy_execution_replay_job_dir_digest);
+  append_string("policy_execution_consumed_artifact_digests",
+                contract.policy_execution_consumed_artifact_digests);
+  append_string("policy_execution_consumed_checkpoint_digests",
+                contract.policy_execution_consumed_checkpoint_digests);
+  append_string("policy_execution_consumed_generation_vector_digests",
+                contract.policy_execution_consumed_generation_vector_digests);
+  append_string("parent_policy_generation_id",
+                contract.parent_policy_generation_id);
+  append_string("parent_policy_generation_vector_digest",
+                contract.parent_policy_generation_vector_digest);
+  append_string("parent_policy_influence_schema",
+                contract.parent_policy_influence_schema);
+  append_string("parent_policy_provenance_closure_digest",
+                contract.parent_policy_provenance_closure_digest);
+  append_string("parent_policy_no_lookahead_contract_digest",
+                contract.parent_policy_no_lookahead_contract_digest);
+  append_string("policy_output_generation_id",
+                contract.policy_output_generation_id);
+  append_string("policy_output_generation_vector_digest",
+                contract.policy_output_generation_vector_digest);
+  append_string("policy_output_provenance_closure_digest",
+                contract.policy_output_provenance_closure_digest);
+  if (contract.snapshot_bundle_valid_from_anchor_bound) {
+    append_int("snapshot_bundle_valid_from_anchor",
+               contract.snapshot_bundle_valid_from_anchor);
+  }
+  append_raw_json_field(
+      out, "snapshot_bundle_valid_from_anchor_bound",
+      contract.snapshot_bundle_valid_from_anchor_bound ? "true" : "false",
+      &first);
+  if (contract.snapshot_bundle_valid_until_anchor_bound) {
+    append_int("snapshot_bundle_valid_until_anchor",
+               contract.snapshot_bundle_valid_until_anchor);
+  }
+  append_raw_json_field(
+      out, "snapshot_bundle_valid_until_anchor_bound",
+      contract.snapshot_bundle_valid_until_anchor_bound ? "true" : "false",
+      &first);
+  if (contract.snapshot_bundle_influence_anchor_end_exclusive_max_bound) {
+    append_int("snapshot_bundle_influence_anchor_end_exclusive_max",
+               contract.snapshot_bundle_influence_anchor_end_exclusive_max);
+  }
+  append_raw_json_field(
+      out, "snapshot_bundle_influence_anchor_end_exclusive_max_bound",
+      contract.snapshot_bundle_influence_anchor_end_exclusive_max_bound
+          ? "true"
+          : "false",
+      &first);
+  if (contract.policy_execution_target_anchor_begin_bound) {
+    append_int("policy_execution_target_anchor_begin",
+               contract.policy_execution_target_anchor_begin);
+  }
+  if (contract.policy_execution_target_anchor_end_exclusive_bound) {
+    append_int("policy_execution_target_anchor_end_exclusive",
+               contract.policy_execution_target_anchor_end_exclusive);
+  }
+  append_raw_json_field(
+      out, "embargo_purged_window_anchor_range_bound",
+      contract.embargo_purged_window_anchor_range_bound ? "true" : "false",
+      &first);
+  if (contract.embargo_purged_window_anchor_range_bound) {
+    append_int("embargo_purged_window_anchor_begin",
+               contract.embargo_purged_window_anchor_begin);
+    append_int("embargo_purged_window_anchor_end_exclusive",
+               contract.embargo_purged_window_anchor_end_exclusive);
+  }
+  append_raw_json_field(
+      out, "parent_policy_influence_complete",
+      contract.parent_policy_influence_complete ? "true" : "false", &first);
+  if (contract.parent_policy_influence_anchor_begin_min_bound) {
+    append_int("parent_policy_influence_anchor_begin_min",
+               contract.parent_policy_influence_anchor_begin_min);
+  }
+  if (contract.parent_policy_influence_anchor_end_exclusive_max_bound) {
+    append_int("parent_policy_influence_anchor_end_exclusive_max",
+               contract.parent_policy_influence_anchor_end_exclusive_max);
+  }
+  if (contract
+          .parent_policy_label_or_reward_availability_end_exclusive_max_bound) {
+    append_int(
+        "parent_policy_influence_label_or_reward_availability_end_exclusive_"
+        "max",
+        contract.parent_policy_label_or_reward_availability_end_exclusive_max);
+  }
+  if (contract.parent_policy_valid_from_anchor_bound) {
+    append_int("parent_policy_valid_from_anchor",
+               contract.parent_policy_valid_from_anchor);
+  }
+  if (contract.policy_output_fit_anchor_begin_bound) {
+    append_int("policy_output_fit_anchor_begin",
+               contract.policy_output_fit_anchor_begin);
+  }
+  if (contract.policy_output_fit_anchor_end_exclusive_bound) {
+    append_int("policy_output_fit_anchor_end_exclusive",
+               contract.policy_output_fit_anchor_end_exclusive);
+  }
+  if (contract.policy_output_valid_from_anchor_bound) {
+    append_int("policy_output_valid_from_anchor",
+               contract.policy_output_valid_from_anchor);
+  }
   if (contract.linear_transaction_cost_rate_bound) {
     append_double("linear_transaction_cost_rate",
                   contract.linear_transaction_cost_rate);
@@ -11071,8 +17211,14 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   }
   auto contract_kv = parse_assignment_text(contract_text, false);
   cuwacunu::hero::runtime::policy_training_job_contract_t contract{};
-  if (!policy_training_contract_from_kv(contract_kv, &contract, err)) {
+  if (!policy_training_contract_from_kv(contract_kv, &contract, err,
+                                        contract_path)) {
     return false;
+  }
+  if (cuwacunu::hero::runtime::policy_training_requires_ppo_artifact_contract(
+          contract)) {
+    contract.component_assembly_fingerprint =
+        cuwacunu::hero::runtime::policy_operator_surface_digest(contract);
   }
   const std::string canonical_contract_text = contract.to_text();
   const std::string contract_digest =
@@ -11087,6 +17233,201 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   return handle_policy_training_contract_object(
       contract, policy_training_contract_execution_args_json(contract),
       requested_mode, ctx, out, err);
+}
+
+struct policy_training_replay_source_candidate_t {
+  fs::path job_dir{};
+  std::int64_t attempt_index{0};
+  fs::file_time_type state_mtime{};
+};
+
+[[nodiscard]] bool policy_training_replay_source_candidate_better(
+    const policy_training_replay_source_candidate_t &candidate,
+    const policy_training_replay_source_candidate_t &best) {
+  if (candidate.attempt_index != best.attempt_index) {
+    return candidate.attempt_index > best.attempt_index;
+  }
+  if (candidate.state_mtime != best.state_mtime) {
+    return candidate.state_mtime > best.state_mtime;
+  }
+  return candidate.job_dir.string() > best.job_dir.string();
+}
+
+[[nodiscard]] bool find_policy_training_replay_source_job(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    const runtime_context_t &ctx, fs::path *out, std::string *err) {
+  if (out != nullptr) {
+    out->clear();
+  }
+  std::int64_t validation_begin = 0;
+  std::int64_t validation_end = 0;
+  if (!parse_policy_training_anchor_range_digest(
+          contract.validation_range_digest, "validation", &validation_begin,
+          &validation_end)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_REPLAY_SOURCE_RANGE_UNRESOLVED: "
+             "validation_range_digest does not encode an anchor range";
+    }
+    return false;
+  }
+
+  const fs::path component_root = runtime_root(ctx.policy) / "components" /
+                                  "wikimyei.inference.expected_value.mdn";
+  if (!fs::is_directory(component_root)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_REPLAY_SOURCE_NOT_FOUND: missing " +
+             component_root.string();
+    }
+    return false;
+  }
+
+  std::optional<policy_training_replay_source_candidate_t> best;
+  std::error_code ec;
+  fs::recursive_directory_iterator it(
+      component_root, fs::directory_options::skip_permission_denied, ec);
+  const fs::recursive_directory_iterator end;
+  for (; !ec && it != end; it.increment(ec)) {
+    if (!it->is_regular_file(ec) || it->path().filename() != "job.state") {
+      continue;
+    }
+    const auto state = parse_kv_file(it->path());
+    if (lowercase_ascii(trim_ascii(kv_get(state, "status"))) != "completed") {
+      continue;
+    }
+    if (trim_ascii(kv_get(state, "target_component_family_id")) !=
+            "wikimyei.inference.expected_value.mdn" ||
+        trim_ascii(kv_get(state, "wave_action")) != "run") {
+      continue;
+    }
+    std::int64_t candidate_begin = 0;
+    std::int64_t candidate_end = 0;
+    if (!parse_int64(kv_get(state, "resolved_anchor_index_begin"),
+                     &candidate_begin) ||
+        !parse_int64(kv_get(state, "resolved_anchor_index_end"),
+                     &candidate_end) ||
+        candidate_begin != validation_begin ||
+        candidate_end != validation_end) {
+      continue;
+    }
+
+    const fs::path job_dir = normalize_path(it->path().parent_path());
+    const fs::path replay_batch_index =
+        runtime_replay_batch_index_path(job_dir);
+    if (!fs::is_regular_file(replay_batch_index)) {
+      continue;
+    }
+
+    const auto manifest = parse_kv_file(job_dir / "job.manifest");
+    const std::string contract_protocol_id = trim_ascii(contract.protocol_id);
+    const std::string contract_graph_order =
+        trim_ascii(contract.graph_order_fingerprint);
+    const std::string contract_protocol_fingerprint =
+        trim_ascii(contract.protocol_contract_fingerprint);
+    const auto matches_declared_identity =
+        [](const std::string &contract_value,
+           const std::string &candidate_value) {
+          return contract_value.empty() || candidate_value.empty() ||
+                 contract_value == candidate_value;
+        };
+    if (!matches_declared_identity(
+            contract_protocol_id,
+            trim_ascii(kv_get(manifest, "protocol_id"))) ||
+        !matches_declared_identity(
+            contract_graph_order,
+            trim_ascii(kv_get(manifest, "graph_order_fingerprint"))) ||
+        !matches_declared_identity(
+            contract_protocol_fingerprint,
+            trim_ascii(kv_get(manifest, "protocol_contract_fingerprint")))) {
+      continue;
+    }
+
+    std::int64_t attempt_index = 0;
+    (void)parse_int64(kv_get(state, "job_attempt_index"), &attempt_index);
+    std::error_code mtime_ec;
+    policy_training_replay_source_candidate_t candidate{
+        job_dir, attempt_index, fs::last_write_time(it->path(), mtime_ec)};
+    if (!best.has_value() ||
+        policy_training_replay_source_candidate_better(candidate, *best)) {
+      best = std::move(candidate);
+    }
+  }
+
+  if (ec) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_REPLAY_SOURCE_SCAN_FAILED: " +
+             ec.message();
+    }
+    return false;
+  }
+  if (!best.has_value()) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_REPLAY_SOURCE_NOT_FOUND: no completed "
+          "wikimyei.inference.expected_value.mdn replay job matches validation "
+          "anchor range " +
+          std::to_string(validation_begin) + "_" +
+          std::to_string(validation_end);
+    }
+    return false;
+  }
+
+  if (out != nullptr) {
+    *out = best->job_dir;
+  }
+  return true;
+}
+
+[[nodiscard]] bool synthesize_policy_training_wave_contract(
+    const std::string &run_args, runtime_context_t *ctx,
+    cuwacunu::hero::runtime::policy_training_job_contract_t *out,
+    std::string *err) {
+  if (ctx == nullptr || out == nullptr) {
+    if (err != nullptr) {
+      *err = "runtime context and contract output are required";
+    }
+    return false;
+  }
+
+  std::string config_arg;
+  (void)extract_json_string_field(run_args, "config_path", &config_arg);
+  const fs::path config_path = effective_config_path(*ctx, config_arg);
+  const fs::path runtime_policy_path =
+      resolve_runtime_hero_dsl_path(config_path);
+  runtime_policy_t runtime_policy{};
+  if (!load_runtime_policy(runtime_policy_path, config_path, &runtime_policy,
+                           err)) {
+    return false;
+  }
+  runtime_context_t resolved_ctx = *ctx;
+  resolved_ctx.global_config_path = config_path;
+  resolved_ctx.policy_path = runtime_policy_path;
+  resolved_ctx.policy = std::move(runtime_policy);
+
+  std::unordered_map<std::string, std::string> fields{
+      {"config_path", config_path.string()},
+      {"experiment_id", "policy_training_ppo_v0.runtime_wave_activation"},
+      {"resume_mode", "fresh_spawn"},
+      {"max_episodes", "16"},
+      {"max_wall_clock_seconds", "86400"}};
+
+  cuwacunu::hero::runtime::policy_training_job_contract_t seed_contract{};
+  if (!policy_training_contract_from_kv(fields, &seed_contract, err)) {
+    return false;
+  }
+
+  fs::path replay_job_dir;
+  if (!find_policy_training_replay_source_job(seed_contract, resolved_ctx,
+                                              &replay_job_dir, err)) {
+    return false;
+  }
+  fields["replay_job_dir"] = replay_job_dir.string();
+
+  cuwacunu::hero::runtime::policy_training_job_contract_t contract{};
+  if (!policy_training_contract_from_kv(fields, &contract, err)) {
+    return false;
+  }
+  *out = std::move(contract);
+  return true;
 }
 
 [[nodiscard]] bool handle_runtime_wave_run_materialized(
@@ -11110,63 +17451,21 @@ replay_dry_run_json(const std::vector<std::string> &argv,
       selected_wave.has_value() &&
       wave_info_requests_policy_training(*selected_wave);
   if (active_policy_training_wave) {
-    const std::string target =
-        wave_value_or_empty(*selected_wave, "TARGET").empty()
-            ? "wikimyei.policy.portfolio.graph_node_allocation"
-            : wave_value_or_empty(*selected_wave, "TARGET");
-    const std::string wave_id = wave_value_or_empty(*selected_wave, "WAVE_ID");
-    const std::string policy_id =
-        wave_value_or_empty(*selected_wave, "POLICY_ID");
-    const std::string policy_kind =
-        wave_value_or_empty(*selected_wave, "POLICY_KIND");
-    const std::string training_schedule_mode =
-        wave_value_or_empty(*selected_wave, "TRAINING_SCHEDULE_MODE");
     if (requested_mode == "dry_run") {
-      std::ostringstream json;
-      json << "{\"ok\":true,\"requested_mode\":\"dry_run\",\"dry_run\":true"
-           << ",\"schema_version\":\"kikijyeba.runtime.component_wave_"
-              "driver_plan.v1\""
-           << ",\"wave_id\":" << json_quote(wave_id)
-           << ",\"target_component_family_id\":" << json_quote(target)
-           << ",\"component_driver_id\":\"hero.runtime."
-              "graph_node_allocation_policy_component_driver.v1\""
-           << ",\"component_driver_kind\":\"contract_backed_policy_training\""
-           << ",\"contract_required\":true"
-           << ",\"contract_path_bound\":false"
-           << ",\"policy_id\":";
-      if (policy_id.empty()) {
-        json << "null";
-      } else {
-        json << json_quote(policy_id);
+      cuwacunu::hero::runtime::policy_training_job_contract_t contract{};
+      if (!synthesize_policy_training_wave_contract(run_args, ctx, &contract,
+                                                    err)) {
+        return false;
       }
-      json << ",\"policy_kind\":";
-      if (policy_kind.empty()) {
-        json << "null";
-      } else {
-        json << json_quote(policy_kind);
-      }
-      json << ",\"training_schedule_mode\":";
-      if (training_schedule_mode.empty()) {
-        json << "null";
-      } else {
-        json << json_quote(training_schedule_mode);
-      }
-      json << ",\"authority\":{\"runtime_executes_component_wave\":true,"
-              "\"runtime_component_driver_specialized\":true,"
-              "\"environment_replay_dispatch\":false,"
-              "\"runtime_emits_environment_admission_fact\":false,"
-              "\"runtime_selects_policy\":false,"
-              "\"runtime_executes_live_capital\":false}"
-           << ",\"next_safe_actions\":[\"materialize_policy_training_"
-              "contract\",\"run_policy_component_wave_with_contract_path\","
-              "\"inspect_policy_component_wave\"]}";
-      *out = json.str();
-      return true;
+      return handle_policy_training_contract_object(
+          contract, policy_training_contract_execution_args_json(contract),
+          requested_mode, ctx, out, err);
     }
-    *err = "E_RUNTIME_POLICY_COMPONENT_DRIVER_CONTRACT_REQUIRED: active wave "
-           "TARGET=wikimyei.policy.portfolio.graph_node_allocation uses the "
-           "contract-backed policy component driver; provide contract_path or "
-           "request dry_run";
+    *err =
+        "E_RUNTIME_POLICY_COMPONENT_DRIVER_MATERIALIZED_CONTRACT_REQUIRED: "
+        "active policy-training waves can synthesize dry_run contracts from "
+        "Runtime state, but execute requires a materialized contract_path with "
+        "policy-execution no-lookahead proof locks";
     return false;
   }
 
@@ -11378,7 +17677,8 @@ resolve_runtime_hero_dsl_path(const std::filesystem::path &global_config_path) {
           read_ini_value(global_config_path, "HERO", "runtime_hero_dsl_path")) {
     return resolve_against(global_config_path, *fresh);
   }
-  return kDefaultRuntimePolicyPath;
+  return config_paths::default_config_sibling_path(global_config_path,
+                                                   "hero.runtime.dsl");
 }
 
 bool load_runtime_policy(const std::filesystem::path &policy_path,

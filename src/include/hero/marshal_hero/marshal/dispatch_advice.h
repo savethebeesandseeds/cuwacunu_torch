@@ -26,6 +26,12 @@ inline constexpr const char *k_marshal_dispatch_request_schema_v1 =
 inline constexpr const char *k_marshal_dispatch_non_authority_statement =
     "marshal dispatch advice and receipts are audit metadata only; target "
     "satisfaction remains a lattice proof over runtime evidence";
+inline constexpr const char *k_marshal_no_lookahead_certificate_schema_v1 =
+    "no_lookahead_artifact_provenance.v1";
+inline constexpr const char *k_marshal_snapshot_bundle_certificate_schema_v1 =
+    "snapshot_bundle_publishability.v1";
+inline constexpr const char *k_marshal_causal_provenance_certificate_schema_v1 =
+    "causal_provenance_generalization.v1";
 
 enum class marshal_dispatch_mode_t {
   unknown,
@@ -77,6 +83,42 @@ enum class marshal_refusal_reason_t {
   dry_run_receipt_missing,
   dry_run_receipt_mismatch,
   runtime_checkpoint_input_missing,
+  missing_lattice_certificate_ref,
+  no_lookahead_certificate_state_missing,
+  no_lookahead_certificate_schema_mismatch,
+  no_lookahead_certificate_not_checked,
+  no_lookahead_certificate_incomplete,
+  no_lookahead_certificate_not_admissible,
+  no_lookahead_certificate_check_failed,
+  no_lookahead_certificate_target_mismatch,
+  no_lookahead_certificate_anchor_range_mismatch,
+  no_lookahead_certificate_contract_digest_mismatch,
+  no_lookahead_certificate_artifact_digest_mismatch,
+  no_lookahead_certificate_generation_closure_mismatch,
+  no_lookahead_certificate_state_stale_or_unbound,
+  label_reward_availability_frontier_not_checked,
+  label_reward_availability_frontier_incomplete,
+  label_reward_availability_frontier_not_admissible,
+  label_reward_availability_frontier_missing,
+  embargo_purged_window_not_checked,
+  embargo_purged_window_incomplete,
+  embargo_purged_window_not_admissible,
+  embargo_purged_window_missing,
+  snapshot_bundle_certificate_state_missing,
+  snapshot_bundle_certificate_schema_mismatch,
+  snapshot_bundle_certificate_not_checked,
+  snapshot_bundle_certificate_incomplete,
+  snapshot_bundle_certificate_not_admissible,
+  snapshot_bundle_id_missing,
+  snapshot_bundle_generation_vector_missing,
+  snapshot_bundle_compatibility_closure_missing,
+  causal_provenance_certificate_state_missing,
+  causal_provenance_certificate_schema_mismatch,
+  causal_provenance_certificate_not_checked,
+  causal_provenance_certificate_incomplete,
+  causal_provenance_certificate_not_admissible,
+  causal_artifact_production_closure_missing,
+  causal_interface_stability_contract_missing,
 };
 
 [[nodiscard]] inline const char *to_string(marshal_refusal_reason_t reason) {
@@ -137,6 +179,83 @@ enum class marshal_refusal_reason_t {
     return "dry_run_receipt_mismatch";
   case marshal_refusal_reason_t::runtime_checkpoint_input_missing:
     return "runtime_checkpoint_input_missing";
+  case marshal_refusal_reason_t::missing_lattice_certificate_ref:
+    return "missing_lattice_certificate_ref";
+  case marshal_refusal_reason_t::no_lookahead_certificate_state_missing:
+    return "no_lookahead_certificate_state_missing";
+  case marshal_refusal_reason_t::no_lookahead_certificate_schema_mismatch:
+    return "no_lookahead_certificate_schema_mismatch";
+  case marshal_refusal_reason_t::no_lookahead_certificate_not_checked:
+    return "no_lookahead_certificate_not_checked";
+  case marshal_refusal_reason_t::no_lookahead_certificate_incomplete:
+    return "no_lookahead_certificate_incomplete";
+  case marshal_refusal_reason_t::no_lookahead_certificate_not_admissible:
+    return "no_lookahead_certificate_not_admissible";
+  case marshal_refusal_reason_t::no_lookahead_certificate_check_failed:
+    return "no_lookahead_certificate_check_failed";
+  case marshal_refusal_reason_t::no_lookahead_certificate_target_mismatch:
+    return "no_lookahead_certificate_target_mismatch";
+  case marshal_refusal_reason_t::no_lookahead_certificate_anchor_range_mismatch:
+    return "no_lookahead_certificate_anchor_range_mismatch";
+  case marshal_refusal_reason_t::
+      no_lookahead_certificate_contract_digest_mismatch:
+    return "no_lookahead_certificate_contract_digest_mismatch";
+  case marshal_refusal_reason_t::
+      no_lookahead_certificate_artifact_digest_mismatch:
+    return "no_lookahead_certificate_artifact_digest_mismatch";
+  case marshal_refusal_reason_t::
+      no_lookahead_certificate_generation_closure_mismatch:
+    return "no_lookahead_certificate_generation_closure_mismatch";
+  case marshal_refusal_reason_t::
+      no_lookahead_certificate_state_stale_or_unbound:
+    return "no_lookahead_certificate_state_stale_or_unbound";
+  case marshal_refusal_reason_t::label_reward_availability_frontier_not_checked:
+    return "label_reward_availability_frontier_not_checked";
+  case marshal_refusal_reason_t::label_reward_availability_frontier_incomplete:
+    return "label_reward_availability_frontier_incomplete";
+  case marshal_refusal_reason_t::
+      label_reward_availability_frontier_not_admissible:
+    return "label_reward_availability_frontier_not_admissible";
+  case marshal_refusal_reason_t::label_reward_availability_frontier_missing:
+    return "label_reward_availability_frontier_missing";
+  case marshal_refusal_reason_t::embargo_purged_window_not_checked:
+    return "embargo_purged_window_not_checked";
+  case marshal_refusal_reason_t::embargo_purged_window_incomplete:
+    return "embargo_purged_window_incomplete";
+  case marshal_refusal_reason_t::embargo_purged_window_not_admissible:
+    return "embargo_purged_window_not_admissible";
+  case marshal_refusal_reason_t::embargo_purged_window_missing:
+    return "embargo_purged_window_missing";
+  case marshal_refusal_reason_t::snapshot_bundle_certificate_state_missing:
+    return "snapshot_bundle_certificate_state_missing";
+  case marshal_refusal_reason_t::snapshot_bundle_certificate_schema_mismatch:
+    return "snapshot_bundle_certificate_schema_mismatch";
+  case marshal_refusal_reason_t::snapshot_bundle_certificate_not_checked:
+    return "snapshot_bundle_certificate_not_checked";
+  case marshal_refusal_reason_t::snapshot_bundle_certificate_incomplete:
+    return "snapshot_bundle_certificate_incomplete";
+  case marshal_refusal_reason_t::snapshot_bundle_certificate_not_admissible:
+    return "snapshot_bundle_certificate_not_admissible";
+  case marshal_refusal_reason_t::snapshot_bundle_id_missing:
+    return "snapshot_bundle_id_missing";
+  case marshal_refusal_reason_t::snapshot_bundle_generation_vector_missing:
+    return "snapshot_bundle_generation_vector_missing";
+  case marshal_refusal_reason_t::snapshot_bundle_compatibility_closure_missing:
+    return "snapshot_bundle_compatibility_closure_missing";
+  case marshal_refusal_reason_t::causal_provenance_certificate_state_missing:
+    return "causal_provenance_certificate_state_missing";
+  case marshal_refusal_reason_t::causal_provenance_certificate_schema_mismatch:
+    return "causal_provenance_certificate_schema_mismatch";
+  case marshal_refusal_reason_t::causal_provenance_certificate_not_checked:
+    return "causal_provenance_certificate_not_checked";
+  case marshal_refusal_reason_t::causal_provenance_certificate_incomplete:
+    return "causal_provenance_certificate_incomplete";
+  case marshal_refusal_reason_t::causal_provenance_certificate_not_admissible:
+    return "causal_provenance_certificate_not_admissible";
+  case marshal_refusal_reason_t::causal_artifact_production_closure_missing:
+    return "causal_artifact_production_closure_missing";
+  case marshal_refusal_reason_t::causal_interface_stability_contract_missing:
+    return "causal_interface_stability_contract_missing";
   default:
     return "unknown_required_field";
   }
@@ -178,6 +297,66 @@ struct marshal_suggested_wave_t {
   }
 };
 
+struct marshal_lattice_certificate_state_t {
+  bool present{false};
+  std::string schema{};
+  std::string certificate_ref{};
+  std::string certificate_digest{};
+  std::string target_id{};
+  std::optional<std::size_t> target_anchor_index_begin{std::nullopt};
+  std::optional<std::size_t> target_anchor_index_end{std::nullopt};
+  std::string no_lookahead_contract_digest{};
+  bool no_lookahead_provenance_checked{false};
+  bool no_lookahead_provenance_complete{false};
+  bool no_lookahead_provenance_admissible{false};
+  bool proof_certificate_check_passed{false};
+  bool influence_anchor_end_exclusive_max_bound{false};
+  std::int64_t influence_anchor_end_exclusive_max{0};
+  bool label_or_reward_availability_frontier_checked{false};
+  bool label_or_reward_availability_frontier_complete{false};
+  bool label_or_reward_availability_frontier_admissible{false};
+  bool label_or_reward_availability_end_exclusive_max_bound{false};
+  std::int64_t label_or_reward_availability_end_exclusive_max{0};
+  bool embargo_purged_window_checked{false};
+  bool embargo_purged_window_complete{false};
+  bool embargo_purged_window_admissible{false};
+  std::string embargo_policy_fingerprint{};
+  bool embargo_purged_window_anchor_range_bound{false};
+  std::int64_t embargo_purged_window_anchor_begin{0};
+  std::int64_t embargo_purged_window_anchor_end_exclusive{0};
+  std::vector<std::string> consumed_artifact_digests{};
+  std::vector<std::string> consumed_checkpoint_digests{};
+  std::vector<std::string> consumed_generation_vector_digests{};
+  std::string provenance_closure_digest{};
+  std::string evidence_snapshot_digest{};
+  std::string snapshot_bundle_certificate_schema{};
+  bool snapshot_bundle_publishability_checked{false};
+  bool snapshot_bundle_publishability_complete{false};
+  bool snapshot_bundle_publishability_admissible{false};
+  std::string snapshot_bundle_id{};
+  std::string snapshot_bundle_kind{};
+  std::string snapshot_bundle_generation_vector_digest{};
+  std::optional<std::int64_t> snapshot_bundle_valid_from_anchor{std::nullopt};
+  std::string snapshot_bundle_compatibility_closure_digest{};
+  std::vector<std::string> snapshot_bundle_component_generation_ids{};
+  std::vector<std::string> snapshot_bundle_component_checkpoint_digests{};
+  std::vector<std::string>
+      snapshot_bundle_component_generation_vector_digests{};
+  std::string causal_provenance_certificate_schema{};
+  bool causal_provenance_checked{false};
+  bool causal_provenance_complete{false};
+  bool causal_provenance_admissible{false};
+  std::string causal_atom_schema{};
+  std::string causal_interval_set_schema{};
+  std::string causal_label_reward_horizon_policy_fingerprint{};
+  std::string causal_fold_policy_fingerprint{};
+  std::string causal_purged_embargo_policy_fingerprint{};
+  std::string causal_artifact_production_schema{};
+  std::string causal_artifact_production_closure_digest{};
+  std::string causal_interface_stability_contract_digest{};
+  std::string causal_provenance_closure_digest{};
+};
+
 struct marshal_dispatch_advice_t {
   std::string schema_version{k_marshal_dispatch_advice_schema_v1};
   std::string config_path{};
@@ -198,6 +377,8 @@ struct marshal_dispatch_advice_t {
   std::string advice_receipt_digest{};
   std::string advice_signature_key_id{};
   std::string advice_signature{};
+  std::map<std::string, marshal_lattice_certificate_state_t>
+      lattice_certificate_states{};
 };
 
 struct marshal_dispatch_request_t {
@@ -229,6 +410,9 @@ struct marshal_dispatch_validation_context_t {
   std::string trusted_lattice_advice_verification_key{};
   bool allow_execute{false};
   bool allow_execute_mode{false};
+  std::vector<std::string> required_lattice_certificate_schemas{};
+  std::map<std::string, std::string>
+      required_lattice_certificate_contract_digests{};
 };
 
 struct marshal_dispatch_validation_result_t {
@@ -472,6 +656,154 @@ suggested_wave_digest(const marshal_suggested_wave_t &wave) {
                                  canonical_suggested_wave_text(wave));
 }
 
+[[nodiscard]] inline std::string canonical_lattice_certificate_state_text(
+    const marshal_lattice_certificate_state_t &state) {
+  std::ostringstream out;
+  detail::append_kv(out, "present", detail::bool_text(state.present));
+  detail::append_kv(out, "schema", state.schema);
+  detail::append_kv(out, "certificate_ref", state.certificate_ref);
+  detail::append_kv(out, "certificate_digest", state.certificate_digest);
+  detail::append_kv(out, "target_id", state.target_id);
+  detail::append_kv(
+      out, "target_anchor_index_begin",
+      detail::optional_size_text(state.target_anchor_index_begin));
+  detail::append_kv(out, "target_anchor_index_end",
+                    detail::optional_size_text(state.target_anchor_index_end));
+  detail::append_kv(out, "no_lookahead_contract_digest",
+                    state.no_lookahead_contract_digest);
+  detail::append_kv(out, "no_lookahead_provenance_checked",
+                    detail::bool_text(state.no_lookahead_provenance_checked));
+  detail::append_kv(out, "no_lookahead_provenance_complete",
+                    detail::bool_text(state.no_lookahead_provenance_complete));
+  detail::append_kv(
+      out, "no_lookahead_provenance_admissible",
+      detail::bool_text(state.no_lookahead_provenance_admissible));
+  detail::append_kv(out, "proof_certificate_check_passed",
+                    detail::bool_text(state.proof_certificate_check_passed));
+  detail::append_kv(
+      out, "influence_anchor_end_exclusive_max_bound",
+      detail::bool_text(state.influence_anchor_end_exclusive_max_bound));
+  detail::append_kv(out, "influence_anchor_end_exclusive_max",
+                    std::to_string(state.influence_anchor_end_exclusive_max));
+  detail::append_kv(
+      out, "label_or_reward_availability_frontier_checked",
+      detail::bool_text(state.label_or_reward_availability_frontier_checked));
+  detail::append_kv(
+      out, "label_or_reward_availability_frontier_complete",
+      detail::bool_text(state.label_or_reward_availability_frontier_complete));
+  detail::append_kv(
+      out, "label_or_reward_availability_frontier_admissible",
+      detail::bool_text(
+          state.label_or_reward_availability_frontier_admissible));
+  detail::append_kv(
+      out, "label_or_reward_availability_end_exclusive_max_bound",
+      detail::bool_text(
+          state.label_or_reward_availability_end_exclusive_max_bound));
+  detail::append_kv(
+      out, "label_or_reward_availability_end_exclusive_max",
+      std::to_string(state.label_or_reward_availability_end_exclusive_max));
+  detail::append_kv(out, "embargo_purged_window_checked",
+                    detail::bool_text(state.embargo_purged_window_checked));
+  detail::append_kv(out, "embargo_purged_window_complete",
+                    detail::bool_text(state.embargo_purged_window_complete));
+  detail::append_kv(out, "embargo_purged_window_admissible",
+                    detail::bool_text(state.embargo_purged_window_admissible));
+  detail::append_kv(out, "embargo_policy_fingerprint",
+                    state.embargo_policy_fingerprint);
+  detail::append_kv(
+      out, "embargo_purged_window_anchor_range_bound",
+      detail::bool_text(state.embargo_purged_window_anchor_range_bound));
+  detail::append_kv(out, "embargo_purged_window_anchor_begin",
+                    std::to_string(state.embargo_purged_window_anchor_begin));
+  detail::append_kv(
+      out, "embargo_purged_window_anchor_end_exclusive",
+      std::to_string(state.embargo_purged_window_anchor_end_exclusive));
+  detail::append_string_vector(out, "consumed_artifact_digests",
+                               state.consumed_artifact_digests);
+  detail::append_string_vector(out, "consumed_checkpoint_digests",
+                               state.consumed_checkpoint_digests);
+  detail::append_string_vector(out, "consumed_generation_vector_digests",
+                               state.consumed_generation_vector_digests);
+  detail::append_kv(out, "provenance_closure_digest",
+                    state.provenance_closure_digest);
+  detail::append_kv(out, "evidence_snapshot_digest",
+                    state.evidence_snapshot_digest);
+  detail::append_kv(out, "snapshot_bundle_certificate_schema",
+                    state.snapshot_bundle_certificate_schema);
+  detail::append_kv(
+      out, "snapshot_bundle_publishability_checked",
+      detail::bool_text(state.snapshot_bundle_publishability_checked));
+  detail::append_kv(
+      out, "snapshot_bundle_publishability_complete",
+      detail::bool_text(state.snapshot_bundle_publishability_complete));
+  detail::append_kv(
+      out, "snapshot_bundle_publishability_admissible",
+      detail::bool_text(state.snapshot_bundle_publishability_admissible));
+  detail::append_kv(out, "snapshot_bundle_id", state.snapshot_bundle_id);
+  detail::append_kv(out, "snapshot_bundle_kind", state.snapshot_bundle_kind);
+  detail::append_kv(out, "snapshot_bundle_generation_vector_digest",
+                    state.snapshot_bundle_generation_vector_digest);
+  detail::append_kv(
+      out, "snapshot_bundle_valid_from_anchor",
+      state.snapshot_bundle_valid_from_anchor.has_value()
+          ? std::to_string(*state.snapshot_bundle_valid_from_anchor)
+          : "<none>");
+  detail::append_kv(out, "snapshot_bundle_compatibility_closure_digest",
+                    state.snapshot_bundle_compatibility_closure_digest);
+  detail::append_string_vector(out, "snapshot_bundle_component_generation_ids",
+                               state.snapshot_bundle_component_generation_ids);
+  detail::append_string_vector(
+      out, "snapshot_bundle_component_checkpoint_digests",
+      state.snapshot_bundle_component_checkpoint_digests);
+  detail::append_string_vector(
+      out, "snapshot_bundle_component_generation_vector_digests",
+      state.snapshot_bundle_component_generation_vector_digests);
+  detail::append_kv(out, "causal_provenance_certificate_schema",
+                    state.causal_provenance_certificate_schema);
+  detail::append_kv(out, "causal_provenance_checked",
+                    detail::bool_text(state.causal_provenance_checked));
+  detail::append_kv(out, "causal_provenance_complete",
+                    detail::bool_text(state.causal_provenance_complete));
+  detail::append_kv(out, "causal_provenance_admissible",
+                    detail::bool_text(state.causal_provenance_admissible));
+  detail::append_kv(out, "causal_atom_schema", state.causal_atom_schema);
+  detail::append_kv(out, "causal_interval_set_schema",
+                    state.causal_interval_set_schema);
+  detail::append_kv(out, "causal_label_reward_horizon_policy_fingerprint",
+                    state.causal_label_reward_horizon_policy_fingerprint);
+  detail::append_kv(out, "causal_fold_policy_fingerprint",
+                    state.causal_fold_policy_fingerprint);
+  detail::append_kv(out, "causal_purged_embargo_policy_fingerprint",
+                    state.causal_purged_embargo_policy_fingerprint);
+  detail::append_kv(out, "causal_artifact_production_schema",
+                    state.causal_artifact_production_schema);
+  detail::append_kv(out, "causal_artifact_production_closure_digest",
+                    state.causal_artifact_production_closure_digest);
+  detail::append_kv(out, "causal_interface_stability_contract_digest",
+                    state.causal_interface_stability_contract_digest);
+  detail::append_kv(out, "causal_provenance_closure_digest",
+                    state.causal_provenance_closure_digest);
+  return out.str();
+}
+
+[[nodiscard]] inline std::string canonical_lattice_certificate_states_text(
+    const std::map<std::string, marshal_lattice_certificate_state_t> &states) {
+  std::ostringstream out;
+  detail::append_kv(out, "lattice_certificate_states.count",
+                    std::to_string(states.size()));
+  std::size_t i = 0;
+  for (const auto &[schema, state] : states) {
+    detail::append_kv(
+        out, "lattice_certificate_states." + std::to_string(i) + ".schema_key",
+        schema);
+    detail::append_kv(
+        out, "lattice_certificate_states." + std::to_string(i) + ".state",
+        canonical_lattice_certificate_state_text(state));
+    ++i;
+  }
+  return out.str();
+}
+
 [[nodiscard]] inline std::string
 canonical_dispatch_advice_text(const marshal_dispatch_advice_t &advice) {
   const auto computed_plan_basis_digest = plan_basis_digest(advice.plan_basis);
@@ -517,6 +849,9 @@ canonical_dispatch_advice_text(const marshal_dispatch_advice_t &advice) {
   detail::append_kv(out, "advice_receipt_digest", advice.advice_receipt_digest);
   detail::append_kv(out, "advice_signature_key_id",
                     advice.advice_signature_key_id);
+  detail::append_kv(out, "lattice_certificate_states",
+                    canonical_lattice_certificate_states_text(
+                        advice.lattice_certificate_states));
   detail::append_kv(out, "non_authority_statement",
                     k_marshal_dispatch_non_authority_statement);
   return out.str();
@@ -646,6 +981,11 @@ dispatch_request_identity_digest(const marshal_dispatch_request_t &request) {
                     detail::bool_text(context.allow_execute));
   detail::append_kv(out, "allow_execute_mode",
                     detail::bool_text(context.allow_execute_mode));
+  detail::append_string_vector(out, "required_lattice_certificate_schemas",
+                               context.required_lattice_certificate_schemas);
+  detail::append_string_map(
+      out, "required_lattice_certificate_contract_digests",
+      context.required_lattice_certificate_contract_digests);
   return out.str();
 }
 
@@ -668,6 +1008,266 @@ inline void add_refusal(marshal_dispatch_validation_result_t &result,
 [[nodiscard]] inline bool same_path_text(const std::string &lhs,
                                          const std::string &rhs) {
   return detail::normalize_path_text(lhs) == detail::normalize_path_text(rhs);
+}
+
+[[nodiscard]] inline std::optional<std::size_t>
+expected_anchor_begin(const marshal_dispatch_advice_t &advice) {
+  if (advice.plan_basis.target_anchor_index_begin.has_value()) {
+    return advice.plan_basis.target_anchor_index_begin;
+  }
+  return advice.suggested_wave.anchor_index_begin;
+}
+
+[[nodiscard]] inline std::optional<std::size_t>
+expected_anchor_end(const marshal_dispatch_advice_t &advice) {
+  if (advice.plan_basis.target_anchor_index_end.has_value()) {
+    return advice.plan_basis.target_anchor_index_end;
+  }
+  return advice.suggested_wave.anchor_index_end;
+}
+
+inline void validate_no_lookahead_certificate_state(
+    const marshal_lattice_certificate_state_t *state,
+    const marshal_dispatch_advice_t &advice,
+    const marshal_dispatch_validation_context_t &context,
+    marshal_dispatch_validation_result_t &result) {
+  if (state == nullptr || !state->present) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::no_lookahead_certificate_state_missing,
+        "readiness-grade dispatch requires a Lattice "
+        "no-lookahead certificate state");
+    return;
+  }
+
+  if (state->schema != k_marshal_no_lookahead_certificate_schema_v1) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::no_lookahead_certificate_schema_mismatch,
+        "no-lookahead certificate schema does not match " +
+            std::string(k_marshal_no_lookahead_certificate_schema_v1));
+  }
+  if (!state->no_lookahead_provenance_checked) {
+    add_refusal(result,
+                marshal_refusal_reason_t::no_lookahead_certificate_not_checked,
+                "Lattice did not mark no-lookahead provenance as checked");
+  }
+  if (!state->no_lookahead_provenance_complete) {
+    add_refusal(result,
+                marshal_refusal_reason_t::no_lookahead_certificate_incomplete,
+                "Lattice did not mark no-lookahead provenance as complete");
+  }
+  if (!state->no_lookahead_provenance_admissible) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::no_lookahead_certificate_not_admissible,
+        "Lattice did not mark no-lookahead provenance as admissible");
+  }
+  if (!state->proof_certificate_check_passed) {
+    add_refusal(result,
+                marshal_refusal_reason_t::no_lookahead_certificate_check_failed,
+                "Lattice proof certificate check did not pass");
+  }
+  if (!state->label_or_reward_availability_frontier_checked) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::
+            label_reward_availability_frontier_not_checked,
+        "label/reward availability frontier was not checked by Lattice");
+  }
+  if (!state->label_or_reward_availability_frontier_complete) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::label_reward_availability_frontier_incomplete,
+        "label/reward availability frontier is incomplete");
+  }
+  if (!state->label_or_reward_availability_frontier_admissible) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::
+            label_reward_availability_frontier_not_admissible,
+        "label/reward availability frontier is not admissible for the target");
+  }
+  if (!state->label_or_reward_availability_end_exclusive_max_bound) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::label_reward_availability_frontier_missing,
+        "label/reward availability frontier is missing");
+  }
+  if (!state->embargo_purged_window_checked) {
+    add_refusal(result,
+                marshal_refusal_reason_t::embargo_purged_window_not_checked,
+                "embargo/purged window was not checked by Lattice");
+  }
+  if (!state->embargo_purged_window_complete) {
+    add_refusal(result,
+                marshal_refusal_reason_t::embargo_purged_window_incomplete,
+                "embargo/purged window proof is incomplete");
+  }
+  if (!state->embargo_purged_window_admissible) {
+    add_refusal(result,
+                marshal_refusal_reason_t::embargo_purged_window_not_admissible,
+                "embargo/purged window is not admissible for the target");
+  }
+  if (state->embargo_policy_fingerprint.empty() ||
+      !state->embargo_purged_window_anchor_range_bound) {
+    add_refusal(result, marshal_refusal_reason_t::embargo_purged_window_missing,
+                "embargo/purged window metadata is missing");
+  }
+  if (state->target_id.empty() || state->target_id != advice.target_id) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::no_lookahead_certificate_target_mismatch,
+        "no-lookahead certificate state target differs from advice "
+        "target");
+  }
+
+  const auto expected_begin = expected_anchor_begin(advice);
+  const auto expected_end = expected_anchor_end(advice);
+  if (expected_begin.has_value() || expected_end.has_value()) {
+    if (!state->target_anchor_index_begin.has_value() ||
+        !state->target_anchor_index_end.has_value() ||
+        state->target_anchor_index_begin != expected_begin ||
+        state->target_anchor_index_end != expected_end) {
+      add_refusal(result,
+                  marshal_refusal_reason_t::
+                      no_lookahead_certificate_anchor_range_mismatch,
+                  "no-lookahead certificate state target anchor range differs "
+                  "from advice target range");
+    }
+  }
+
+  const auto expected_contract =
+      context.required_lattice_certificate_contract_digests.find(
+          k_marshal_no_lookahead_certificate_schema_v1);
+  if (state->no_lookahead_contract_digest.empty() ||
+      (expected_contract !=
+           context.required_lattice_certificate_contract_digests.end() &&
+       state->no_lookahead_contract_digest != expected_contract->second)) {
+    add_refusal(result,
+                marshal_refusal_reason_t::
+                    no_lookahead_certificate_contract_digest_mismatch,
+                "no-lookahead certificate contract digest is missing or does "
+                "not match the required contract");
+  }
+  if (state->consumed_artifact_digests.empty()) {
+    add_refusal(result,
+                marshal_refusal_reason_t::
+                    no_lookahead_certificate_artifact_digest_mismatch,
+                "no-lookahead certificate state has no consumed artifact "
+                "digest closure");
+  }
+  if (state->consumed_generation_vector_digests.empty()) {
+    add_refusal(result,
+                marshal_refusal_reason_t::
+                    no_lookahead_certificate_generation_closure_mismatch,
+                "no-lookahead certificate state has no consumed generation "
+                "vector closure");
+  }
+  if (state->certificate_digest.empty() ||
+      state->evidence_snapshot_digest.empty()) {
+    add_refusal(result,
+                marshal_refusal_reason_t::
+                    no_lookahead_certificate_state_stale_or_unbound,
+                "no-lookahead certificate state is not bound to a Lattice "
+                "certificate/evidence snapshot digest");
+  }
+  if (state->snapshot_bundle_certificate_schema.empty()) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::snapshot_bundle_certificate_state_missing,
+        "readiness-grade dispatch requires a Lattice snapshot bundle "
+        "publishability certificate state");
+  } else if (state->snapshot_bundle_certificate_schema !=
+             k_marshal_snapshot_bundle_certificate_schema_v1) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::snapshot_bundle_certificate_schema_mismatch,
+        "snapshot bundle certificate schema does not match " +
+            std::string(k_marshal_snapshot_bundle_certificate_schema_v1));
+  }
+  if (!state->snapshot_bundle_publishability_checked) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::snapshot_bundle_certificate_not_checked,
+        "Lattice did not mark snapshot bundle publishability as checked");
+  }
+  if (!state->snapshot_bundle_publishability_complete) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::snapshot_bundle_certificate_incomplete,
+        "Lattice did not mark snapshot bundle publishability as complete");
+  }
+  if (!state->snapshot_bundle_publishability_admissible) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::snapshot_bundle_certificate_not_admissible,
+        "Lattice did not mark snapshot bundle as admissible");
+  }
+  if (state->snapshot_bundle_id.empty()) {
+    add_refusal(result, marshal_refusal_reason_t::snapshot_bundle_id_missing,
+                "snapshot bundle certificate state has no bundle_id");
+  }
+  if (state->snapshot_bundle_generation_vector_digest.empty() ||
+      state->snapshot_bundle_component_generation_vector_digests.empty()) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::snapshot_bundle_generation_vector_missing,
+        "snapshot bundle certificate state has no bundle generation-vector "
+        "closure");
+  }
+  if (state->snapshot_bundle_compatibility_closure_digest.empty()) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::snapshot_bundle_compatibility_closure_missing,
+        "snapshot bundle certificate state has no compatibility closure");
+  }
+  if (state->causal_provenance_certificate_schema.empty()) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::causal_provenance_certificate_state_missing,
+        "readiness-grade dispatch requires a Lattice causal provenance "
+        "generalization certificate state");
+  } else if (state->causal_provenance_certificate_schema !=
+             k_marshal_causal_provenance_certificate_schema_v1) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::causal_provenance_certificate_schema_mismatch,
+        "causal provenance certificate schema does not match " +
+            std::string(k_marshal_causal_provenance_certificate_schema_v1));
+  }
+  if (!state->causal_provenance_checked) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::causal_provenance_certificate_not_checked,
+        "Lattice did not mark causal provenance as checked");
+  }
+  if (!state->causal_provenance_complete) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::causal_provenance_certificate_incomplete,
+        "Lattice did not mark causal provenance as complete");
+  }
+  if (!state->causal_provenance_admissible) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::causal_provenance_certificate_not_admissible,
+        "Lattice did not mark causal provenance as admissible");
+  }
+  if (state->causal_artifact_production_schema.empty() ||
+      state->causal_artifact_production_closure_digest.empty() ||
+      state->causal_provenance_closure_digest.empty()) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::causal_artifact_production_closure_missing,
+        "causal artifact-production closure is missing");
+  }
+  if (state->causal_interface_stability_contract_digest.empty()) {
+    add_refusal(
+        result,
+        marshal_refusal_reason_t::causal_interface_stability_contract_missing,
+        "causal interface-stability contract is missing");
+  }
 }
 
 [[nodiscard]] inline marshal_dispatch_validation_result_t
@@ -786,6 +1386,27 @@ validate_dispatch_advice(const marshal_dispatch_advice_t &advice,
   if (!request.requested_overrides.empty()) {
     add_refusal(result, marshal_refusal_reason_t::unknown_required_field,
                 "operator overrides are not accepted by M1 schema");
+  }
+
+  for (const auto &required_schema :
+       context.required_lattice_certificate_schemas) {
+    if (required_schema == k_marshal_no_lookahead_certificate_schema_v1) {
+      const auto state_it =
+          advice.lattice_certificate_states.find(required_schema);
+      validate_no_lookahead_certificate_state(
+          state_it == advice.lattice_certificate_states.end()
+              ? nullptr
+              : &state_it->second,
+          advice, context, result);
+    } else {
+      const auto it = request.lattice_certificate_refs.find(required_schema);
+      if (it == request.lattice_certificate_refs.end() || it->second.empty()) {
+        add_refusal(result,
+                    marshal_refusal_reason_t::missing_lattice_certificate_ref,
+                    "request is missing required Lattice certificate ref for " +
+                        required_schema);
+      }
+    }
   }
 
   if (request.requested_mode == marshal_dispatch_mode_t::unknown ||

@@ -6,6 +6,7 @@
 #include "ujcamei/source/registry/source_registry_decoder.h"
 #include "ujcamei/source/retrieval/retrieval_channel_decoder.h"
 
+#include "hero/config_path_defaults.h"
 #include "piaabo/core/utils.h"
 
 #include <cctype>
@@ -14,10 +15,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <unordered_map>
 #include <unordered_set>
@@ -57,9 +60,42 @@ std::string &source_runtime_last_config_path_() {
   return false;
 }
 
+[[nodiscard]] bool ends_with(std::string_view text, std::string_view suffix) {
+  return text.size() >= suffix.size() &&
+         text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+[[nodiscard]] std::string
+resolve_config_relative_path(const std::string &config_path,
+                             const std::string &raw_path) {
+  std::filesystem::path path(trim_ascii_ws_copy(raw_path));
+  if (path.empty() || path.is_absolute()) {
+    return path.string();
+  }
+  return (std::filesystem::path(config_path).parent_path() / path)
+      .lexically_normal()
+      .string();
+}
+
 [[nodiscard]] bool valid_source_kind(const std::string &source_kind) {
   const std::string kind = trim_ascii_ws_copy(source_kind);
   return kind == "real" || kind == "synthetic" || kind == "derived";
+}
+
+void resolve_source_paths_relative_to_registry(
+    source_universe_t &universe, const std::string &source_registry_dsl_path) {
+  for (auto &source_form : universe.source_forms) {
+    source_form.source = resolve_config_relative_path(source_registry_dsl_path,
+                                                      source_form.source);
+  }
+}
+
+void resolve_source_paths_relative_to_registry(
+    source_spec_t &spec, const std::string &source_registry_dsl_path) {
+  for (auto &source_form : spec.source_forms) {
+    source_form.source = resolve_config_relative_path(source_registry_dsl_path,
+                                                      source_form.source);
+  }
 }
 
 [[nodiscard]] bool valid_bool_text(const std::string &text) {
@@ -204,6 +240,9 @@ parse_simple_config_file(const std::string &config_path) {
       throw std::runtime_error("invalid config line " +
                                std::to_string(line_number) + " in " +
                                config_path + ": empty key or value");
+    }
+    if (ends_with(key, "_path")) {
+      value = resolve_config_relative_path(config_path, value);
     }
     out[std::move(key)] = std::move(value);
   }
@@ -604,7 +643,7 @@ source_spec_t decode_source_spec_from_split_dsl(std::string source_grammar,
 }
 
 std::string default_source_config_path() {
-  return "/cuwacunu/src/config/.config";
+  return cuwacunu::hero::config_paths::default_global_config_path().string();
 }
 
 source_registry_config_paths_t
@@ -638,21 +677,27 @@ source_spec_t decode_source_spec_from_config(std::string config_path) {
       cfg, "kikijyeba_topology_graph_dsl_bnf_path", config_path);
   const auto graph_first_graph_dsl_path = required_config_value(
       cfg, "kikijyeba_topology_graph_dsl_path", config_path);
-  return decode_source_spec_from_split_dsl(
+  auto spec = decode_source_spec_from_split_dsl(
       read_text_file_or_throw(paths.source_registry_dsl_bnf_path),
       read_text_file_or_throw(paths.source_registry_dsl_path),
       read_text_file_or_throw(graph_first_retrieval_channels_dsl_bnf_path),
       read_text_file_or_throw(graph_first_retrieval_channels_dsl_path),
       read_text_file_or_throw(graph_first_graph_dsl_bnf_path),
       read_text_file_or_throw(graph_first_graph_dsl_path));
+  resolve_source_paths_relative_to_registry(spec,
+                                            paths.source_registry_dsl_path);
+  return spec;
 }
 
 source_universe_t decode_source_universe_from_config(std::string config_path) {
   const auto paths =
       load_source_registry_config_paths_from_config(std::move(config_path));
-  return decode_source_universe_from_split_dsl(
+  auto universe = decode_source_universe_from_split_dsl(
       read_text_file_or_throw(paths.source_registry_dsl_bnf_path),
       read_text_file_or_throw(paths.source_registry_dsl_path));
+  resolve_source_paths_relative_to_registry(universe,
+                                            paths.source_registry_dsl_path);
+  return universe;
 }
 
 source_universe_t decode_source_universe_from_default_config() {

@@ -139,7 +139,7 @@ struct lattice_dependency_clause_t {
   std::string target_id{};
   std::string upstream_target_id{};
   std::string binding{"loaded_representation_checkpoint"};
-  bool require_exact_loaded_checkpoint{false};
+  bool require_exact_loaded_checkpoint{true};
   std::vector<lattice_clause_field_t> fields{};
 };
 
@@ -7991,6 +7991,56 @@ struct lattice_target_proof_certificate_t {
     bool model_state_mutation{false};
     bool raw_potential_tradable_return{false};
     bool replay_executor{false};
+    std::string no_lookahead_certificate_schema{};
+    bool no_lookahead_provenance_checked{false};
+    bool no_lookahead_provenance_complete{false};
+    bool no_lookahead_provenance_admissible{false};
+    bool influence_anchor_end_exclusive_max_bound{false};
+    std::int64_t influence_anchor_end_exclusive_max{0};
+    bool label_or_reward_availability_frontier_checked{false};
+    bool label_or_reward_availability_frontier_complete{false};
+    bool label_or_reward_availability_frontier_admissible{false};
+    bool label_or_reward_availability_end_exclusive_max_bound{false};
+    std::int64_t label_or_reward_availability_end_exclusive_max{0};
+    bool embargo_purged_window_checked{false};
+    bool embargo_purged_window_complete{false};
+    bool embargo_purged_window_admissible{false};
+    std::string embargo_policy_fingerprint{};
+    bool embargo_purged_window_anchor_range_bound{false};
+    std::int64_t embargo_purged_window_anchor_begin{0};
+    std::int64_t embargo_purged_window_anchor_end_exclusive{0};
+    std::string no_lookahead_contract_digest{};
+    std::vector<std::string> consumed_artifact_digests{};
+    std::vector<std::string> consumed_checkpoint_digests{};
+    std::vector<std::string> consumed_generation_vector_digests{};
+    std::string provenance_closure_digest{};
+    std::string snapshot_bundle_certificate_schema{};
+    bool snapshot_bundle_publishability_checked{false};
+    bool snapshot_bundle_publishability_complete{false};
+    bool snapshot_bundle_publishability_admissible{false};
+    std::string snapshot_bundle_id{};
+    std::string snapshot_bundle_kind{};
+    std::string snapshot_bundle_generation_vector_digest{};
+    bool snapshot_bundle_valid_from_anchor_bound{false};
+    std::int64_t snapshot_bundle_valid_from_anchor{0};
+    std::string snapshot_bundle_compatibility_closure_digest{};
+    std::vector<std::string> snapshot_bundle_component_generation_ids{};
+    std::vector<std::string> snapshot_bundle_component_checkpoint_digests{};
+    std::vector<std::string>
+        snapshot_bundle_component_generation_vector_digests{};
+    std::string causal_provenance_certificate_schema{};
+    bool causal_provenance_checked{false};
+    bool causal_provenance_complete{false};
+    bool causal_provenance_admissible{false};
+    std::string causal_atom_schema{};
+    std::string causal_interval_set_schema{};
+    std::string causal_label_reward_horizon_policy_fingerprint{};
+    std::string causal_fold_policy_fingerprint{};
+    std::string causal_purged_embargo_policy_fingerprint{};
+    std::string causal_artifact_production_schema{};
+    std::string causal_artifact_production_closure_digest{};
+    std::string causal_interface_stability_contract_digest{};
+    std::string causal_provenance_closure_digest{};
     bool lineage_bound{false};
     bool passed{false};
     std::vector<std::string> issues{};
@@ -9308,6 +9358,46 @@ latest_satisfying_reference_target_id(const std::string &source) {
   return kv::trim(trimmed.substr(prefix.size()));
 }
 
+[[nodiscard]] inline std::string
+latest_satisfying_reference(const std::string &target_id) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto trimmed = kv::trim(target_id);
+  if (trimmed.empty()) {
+    return {};
+  }
+  return "latest_satisfying:" + trimmed;
+}
+
+[[nodiscard]] inline std::string
+default_lattice_warning_kind_for_target(const lattice_target_spec_t &spec) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  if (!is_artifact_readiness_target_class(spec.target_class)) {
+    return {};
+  }
+  const auto fact_family = kv::lowercase(kv::trim(spec.subject_fact_family));
+  if (fact_family == "forecast_baseline" || fact_family == "forecast_eval" ||
+      fact_family == "observer_belief" || fact_family == "allocation_engine") {
+    return fact_family;
+  }
+  return {};
+}
+
+[[nodiscard]] inline std::string lattice_warning_kind_from_block(
+    const lattice_target_spec_t &spec,
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto raw_kind = kv::optional(block, "KIND", "");
+  if (!kv::trim(raw_kind).empty()) {
+    return kv::lowercase(raw_kind);
+  }
+  const auto default_kind = default_lattice_warning_kind_for_target(spec);
+  if (!default_kind.empty()) {
+    return default_kind;
+  }
+  throw std::runtime_error(
+      "[lattice_target] LATTICE_WARN KIND is required for " + spec.target_id);
+}
+
 inline void validate_artifact_readiness_no_training_knobs(
     const lattice_target_spec_t &spec) {
   if (!is_artifact_readiness_target_class(spec.target_class)) {
@@ -9371,6 +9461,96 @@ default_proof_kind_for_subject_fact_family(const std::string &fact_family) {
   return {};
 }
 
+struct lattice_artifact_scope_defaults_t {
+  std::string protocol_id{};
+  std::string source_range{};
+  std::string train_split{};
+};
+
+struct lattice_leakage_guard_scope_defaults_t {
+  std::string target_class{};
+  std::string target_kind{};
+  std::string component{};
+  std::string source_range{};
+  std::string protect_split{};
+  std::string require_finite_loss{};
+  std::string plan_mode{};
+  std::string max_waves{};
+};
+
+[[nodiscard]] inline std::optional<lattice_artifact_scope_defaults_t>
+lattice_artifact_scope_defaults(const std::string &scope,
+                                const std::string &target_id) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto normalized = kv::lowercase(kv::trim(scope));
+  if (normalized.empty()) {
+    return std::nullopt;
+  }
+  if (normalized == "cwu_02v_validation") {
+    return lattice_artifact_scope_defaults_t{.protocol_id = "cwu_02v",
+                                             .source_range = "anchor_index",
+                                             .train_split =
+                                                 "validation_holdout"};
+  }
+  throw std::runtime_error("[lattice_target] unsupported ARTIFACT_SCOPE " +
+                           scope + " for " + target_id);
+}
+
+[[nodiscard]] inline std::optional<lattice_leakage_guard_scope_defaults_t>
+lattice_leakage_guard_scope_defaults(const std::string &scope,
+                                     const std::string &target_id) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto normalized = kv::lowercase(kv::trim(scope));
+  if (normalized.empty()) {
+    return std::nullopt;
+  }
+  lattice_leakage_guard_scope_defaults_t out{
+      .target_class = "leakage_guard",
+      .target_kind = "channel_mdn_ready",
+      .component = "wikimyei.inference.expected_value.mdn",
+      .source_range = "all",
+      .protect_split = "",
+      .require_finite_loss = "false",
+      .plan_mode = "run|debug",
+      .max_waves = "0"};
+  if (normalized == "channel_mdn_validation") {
+    out.protect_split = "validation_holdout";
+    return out;
+  }
+  if (normalized == "channel_mdn_test") {
+    out.protect_split = "test_holdout";
+    return out;
+  }
+  throw std::runtime_error("[lattice_target] unsupported LEAKAGE_GUARD_SCOPE " +
+                           scope + " for " + target_id);
+}
+
+inline void confirm_artifact_scope_field(const std::string &field,
+                                         const std::string &actual,
+                                         const std::string &expected,
+                                         const std::string &scope,
+                                         const std::string &target_id) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  if (!kv::trim(actual).empty() && actual != expected) {
+    throw std::runtime_error("[lattice_target] ARTIFACT_SCOPE " + scope +
+                             " conflicts with " + field + "=" + actual +
+                             " for " + target_id);
+  }
+}
+
+inline void confirm_leakage_guard_scope_field(const std::string &field,
+                                              const std::string &actual,
+                                              const std::string &expected,
+                                              const std::string &scope,
+                                              const std::string &target_id) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  if (!kv::trim(actual).empty() && actual != expected) {
+    throw std::runtime_error("[lattice_target] LEAKAGE_GUARD_SCOPE " + scope +
+                             " conflicts with " + field + "=" + actual +
+                             " for " + target_id);
+  }
+}
+
 [[nodiscard]] inline std::string
 normalize_lattice_subject_fact_family(const std::string &value,
                                       const std::string &target_id) {
@@ -9418,6 +9598,28 @@ lattice_clause_field_value(const std::vector<lattice_clause_field_t> &fields,
   return fallback;
 }
 
+inline void
+sort_lattice_clause_fields(std::vector<lattice_clause_field_t> &fields) {
+  std::sort(fields.begin(), fields.end(),
+            [](const lattice_clause_field_t &a,
+               const lattice_clause_field_t &b) { return a.key < b.key; });
+}
+
+inline void
+ensure_lattice_clause_field(std::vector<lattice_clause_field_t> &fields,
+                            std::string key, std::string value) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  key = kv::uppercase(key);
+  for (const auto &field : fields) {
+    if (field.key == key) {
+      return;
+    }
+  }
+  fields.push_back(
+      lattice_clause_field_t{.key = std::move(key), .value = std::move(value)});
+  sort_lattice_clause_fields(fields);
+}
+
 [[nodiscard]] inline std::string auto_clause_id(const std::string &prefix,
                                                 const std::string &target_id,
                                                 std::size_t index) {
@@ -9435,7 +9637,7 @@ lattice_clause_field_value(const std::vector<lattice_clause_field_t> &fields,
   out.binding = kv::lowercase(
       kv::optional(block, "BINDING", "loaded_representation_checkpoint"));
   out.require_exact_loaded_checkpoint = kv::parse_bool(
-      kv::optional(block, "REQUIRE_EXACT_LOADED_CHECKPOINT", "false"));
+      kv::optional(block, "REQUIRE_EXACT_LOADED_CHECKPOINT", "true"));
   out.clause_id = lattice_clause_field_value(
       out.fields, "DEPENDENCY_ID",
       auto_clause_id("depends", out.target_id, index));
@@ -9451,6 +9653,12 @@ make_lattice_requirement_clause(
   out.fields = lattice_clause_fields_from_block(block);
   out.target_id = kv::required(block, "TARGET_ID");
   out.kind = kv::lowercase(kv::required(block, "KIND"));
+  if (out.kind == "exposure_coverage") {
+    ensure_lattice_clause_field(out.fields, "SCOPE",
+                                "target_component_family_id");
+    ensure_lattice_clause_field(out.fields, "COORDINATE",
+                                "graph_anchor_coverage");
+  }
   out.clause_id =
       kv::optional(block, "REQUIREMENT_ID",
                    auto_clause_id("requires", out.target_id, index));
@@ -9547,13 +9755,14 @@ make_lattice_forbid_clause_from_split_protection(
 }
 
 [[nodiscard]] inline lattice_warning_clause_t make_lattice_warning_clause(
+    const lattice_target_spec_t &spec,
     const cuwacunu::piaabo::parse::simple_kv::block_t &block,
     std::size_t index) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   lattice_warning_clause_t out{};
   out.fields = lattice_clause_fields_from_block(block);
   out.target_id = kv::required(block, "TARGET_ID");
-  out.kind = kv::lowercase(kv::required(block, "KIND"));
+  out.kind = lattice_warning_kind_from_block(spec, block);
   out.clause_id = kv::optional(block, "WARNING_ID",
                                auto_clause_id("warn", out.target_id, index));
   return out;
@@ -9807,8 +10016,21 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   out.target_id = kv::required(block, "TARGET_ID");
   out.use_profile = kv::optional(block, "USE_PROFILE", "");
   out.guard_id = kv::optional(block, "GUARD", "");
+  const auto leakage_guard_scope_raw =
+      kv::optional(block, "LEAKAGE_GUARD_SCOPE", "");
+  const auto leakage_guard_scope = lattice_leakage_guard_scope_defaults(
+      leakage_guard_scope_raw, out.target_id);
+  const auto target_class_default = leakage_guard_scope.has_value()
+                                        ? leakage_guard_scope->target_class
+                                        : out.target_class;
   out.target_class =
-      kv::lowercase(kv::optional(block, "TARGET_CLASS", out.target_class));
+      kv::lowercase(kv::optional(block, "TARGET_CLASS", target_class_default));
+  if (leakage_guard_scope.has_value()) {
+    confirm_leakage_guard_scope_field("TARGET_CLASS",
+                                      kv::optional(block, "TARGET_CLASS", ""),
+                                      leakage_guard_scope->target_class,
+                                      leakage_guard_scope_raw, out.target_id);
+  }
   validate_lattice_target_class(out.target_class, out.target_id);
   const bool artifact_readiness =
       is_artifact_readiness_target_class(out.target_class);
@@ -9821,7 +10043,15 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
     out.require_finite_loss = false;
     out.max_waves = 0;
   }
-  const auto target_kind_raw = kv::optional(block, "TARGET_KIND", "");
+  const auto target_kind_raw = kv::optional(
+      block, "TARGET_KIND",
+      leakage_guard_scope.has_value() ? leakage_guard_scope->target_kind : "");
+  if (leakage_guard_scope.has_value()) {
+    confirm_leakage_guard_scope_field("TARGET_KIND",
+                                      kv::optional(block, "TARGET_KIND", ""),
+                                      leakage_guard_scope->target_kind,
+                                      leakage_guard_scope_raw, out.target_id);
+  }
   if (kv::trim(target_kind_raw).empty()) {
     if (!artifact_readiness) {
       throw std::runtime_error("[lattice_target] TARGET_KIND is required for " +
@@ -9862,18 +10092,71 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
     validate_artifact_readiness_proof_template(out.subject_fact_family,
                                                out.proof_kind, out.target_id);
   }
-  out.protocol_id = kv::optional(block, "PROTOCOL_ID", "");
-  out.component = optional_alias(
-      block, "COMPONENT", "SUBJECT_COMPONENT",
-      artifact_readiness ? "" : default_component_for_target_kind(out.kind),
-      out.language_warnings, out.target_id);
+  const auto artifact_scope_raw = kv::optional(block, "ARTIFACT_SCOPE", "");
+  const auto artifact_scope =
+      lattice_artifact_scope_defaults(artifact_scope_raw, out.target_id);
+  if (artifact_scope.has_value() && leakage_guard_scope.has_value()) {
+    throw std::runtime_error(
+        "[lattice_target] ARTIFACT_SCOPE and LEAKAGE_GUARD_SCOPE are mutually "
+        "exclusive for " +
+        out.target_id);
+  }
+  if (!artifact_readiness && artifact_scope.has_value()) {
+    throw std::runtime_error("[lattice_target] ARTIFACT_SCOPE requires "
+                             "TARGET_CLASS=artifact_readiness for " +
+                             out.target_id);
+  }
+  const auto protocol_id_default =
+      artifact_scope.has_value() ? artifact_scope->protocol_id : "";
+  const auto source_range_default =
+      artifact_scope.has_value()        ? artifact_scope->source_range
+      : leakage_guard_scope.has_value() ? leakage_guard_scope->source_range
+                                        : out.source_range;
+  const auto train_split_default =
+      artifact_scope.has_value() ? artifact_scope->train_split : "";
+  out.protocol_id = kv::optional(block, "PROTOCOL_ID", protocol_id_default);
+  const auto component_default =
+      artifact_readiness ? ""
+      : leakage_guard_scope.has_value()
+          ? leakage_guard_scope->component
+          : default_component_for_target_kind(out.kind);
+  out.component =
+      optional_alias(block, "COMPONENT", "SUBJECT_COMPONENT", component_default,
+                     out.language_warnings, out.target_id);
   out.checkpoint_source =
       kv::optional(block, "CHECKPOINT_SOURCE", out.checkpoint_source);
   out.evaluated_checkpoint_source =
       kv::optional(block, "EVALUATED_CHECKPOINT_SOURCE", "");
-  out.source_range = kv::optional(block, "SOURCE_RANGE", out.source_range);
-  out.train_split = optional_alias(block, "TRAIN_SPLIT", "OVER_SPLIT", "",
-                                   out.language_warnings, out.target_id);
+  out.source_range = kv::optional(block, "SOURCE_RANGE", source_range_default);
+  out.train_split =
+      optional_alias(block, "TRAIN_SPLIT", "OVER_SPLIT", train_split_default,
+                     out.language_warnings, out.target_id);
+  if (artifact_scope.has_value()) {
+    confirm_artifact_scope_field(
+        "PROTOCOL_ID", kv::optional(block, "PROTOCOL_ID", ""),
+        artifact_scope->protocol_id, artifact_scope_raw, out.target_id);
+    confirm_artifact_scope_field(
+        "SOURCE_RANGE", kv::optional(block, "SOURCE_RANGE", ""),
+        artifact_scope->source_range, artifact_scope_raw, out.target_id);
+    confirm_artifact_scope_field(
+        "TRAIN_SPLIT", kv::optional(block, "TRAIN_SPLIT", ""),
+        artifact_scope->train_split, artifact_scope_raw, out.target_id);
+    confirm_artifact_scope_field(
+        "OVER_SPLIT", kv::optional(block, "OVER_SPLIT", ""),
+        artifact_scope->train_split, artifact_scope_raw, out.target_id);
+  }
+  if (leakage_guard_scope.has_value()) {
+    confirm_leakage_guard_scope_field(
+        "COMPONENT", kv::optional(block, "COMPONENT", ""),
+        leakage_guard_scope->component, leakage_guard_scope_raw, out.target_id);
+    confirm_leakage_guard_scope_field(
+        "SUBJECT_COMPONENT", kv::optional(block, "SUBJECT_COMPONENT", ""),
+        leakage_guard_scope->component, leakage_guard_scope_raw, out.target_id);
+    confirm_leakage_guard_scope_field("SOURCE_RANGE",
+                                      kv::optional(block, "SOURCE_RANGE", ""),
+                                      leakage_guard_scope->source_range,
+                                      leakage_guard_scope_raw, out.target_id);
+  }
   const auto anchor_begin_raw = kv::optional(block, "ANCHOR_INDEX_BEGIN", "");
   if (!kv::trim(anchor_begin_raw).empty()) {
     const auto value = kv::parse_i64(anchor_begin_raw);
@@ -9900,8 +10183,18 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   out.require_checkpoint_exists =
       kv::parse_bool(kv::optional(block, "REQUIRE_CHECKPOINT_EXISTS",
                                   artifact_readiness ? "false" : "true"));
-  out.require_finite_loss = kv::parse_bool(kv::optional(
-      block, "REQUIRE_FINITE_LOSS", artifact_readiness ? "false" : "true"));
+  out.require_finite_loss =
+      kv::parse_bool(kv::optional(block, "REQUIRE_FINITE_LOSS",
+                                  artifact_readiness ? "false"
+                                  : leakage_guard_scope.has_value()
+                                      ? leakage_guard_scope->require_finite_loss
+                                      : "true"));
+  if (leakage_guard_scope.has_value()) {
+    confirm_leakage_guard_scope_field(
+        "REQUIRE_FINITE_LOSS", kv::optional(block, "REQUIRE_FINITE_LOSS", ""),
+        leakage_guard_scope->require_finite_loss, leakage_guard_scope_raw,
+        out.target_id);
+  }
   out.min_optimizer_steps =
       kv::parse_i64(kv::optional(block, "MIN_OPTIMIZER_STEPS", "0"));
   out.min_valid_target_fraction =
@@ -9918,9 +10211,22 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
       kv::optional(block, "MIN_TARGET_SUPERVISION_COVERAGE", "0"));
   out.min_evaluation_metric_coverage = kv::parse_double(
       kv::optional(block, "MIN_EVALUATION_METRIC_COVERAGE", "0"));
-  const auto protect_split =
-      optional_alias(block, "PROTECT_SPLIT", "APPLY_SPLIT_PROTECTION", "",
-                     out.language_warnings, out.target_id);
+  const auto protect_split_default =
+      leakage_guard_scope.has_value() ? leakage_guard_scope->protect_split : "";
+  const auto protect_split = optional_alias(
+      block, "PROTECT_SPLIT", "APPLY_SPLIT_PROTECTION", protect_split_default,
+      out.language_warnings, out.target_id);
+  if (leakage_guard_scope.has_value()) {
+    confirm_leakage_guard_scope_field("PROTECT_SPLIT",
+                                      kv::optional(block, "PROTECT_SPLIT", ""),
+                                      leakage_guard_scope->protect_split,
+                                      leakage_guard_scope_raw, out.target_id);
+    confirm_leakage_guard_scope_field(
+        "APPLY_SPLIT_PROTECTION",
+        kv::optional(block, "APPLY_SPLIT_PROTECTION", ""),
+        leakage_guard_scope->protect_split, leakage_guard_scope_raw,
+        out.target_id);
+  }
   out.forbid_split = kv::optional(block, "FORBID_SPLIT", "");
   if (!kv::trim(protect_split).empty()) {
     if (!out.forbid_split.empty() && out.forbid_split != protect_split) {
@@ -9966,15 +10272,39 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   }
   out.forbid_exposure_requires_mutated_component = kv::parse_bool(kv::optional(
       block, "FORBID_EXPOSURE_REQUIRES_MUTATED_COMPONENT", "true"));
-  out.plan_mode = optional_alias(block, "PLAN_MODE", "WAVE_MODE", out.plan_mode,
-                                 out.language_warnings, out.target_id);
+  const auto plan_mode_default = leakage_guard_scope.has_value()
+                                     ? leakage_guard_scope->plan_mode
+                                     : out.plan_mode;
+  out.plan_mode =
+      optional_alias(block, "PLAN_MODE", "WAVE_MODE", plan_mode_default,
+                     out.language_warnings, out.target_id);
+  if (leakage_guard_scope.has_value()) {
+    confirm_leakage_guard_scope_field(
+        "PLAN_MODE", kv::optional(block, "PLAN_MODE", ""),
+        leakage_guard_scope->plan_mode, leakage_guard_scope_raw, out.target_id);
+    confirm_leakage_guard_scope_field(
+        "WAVE_MODE", kv::optional(block, "WAVE_MODE", ""),
+        leakage_guard_scope->plan_mode, leakage_guard_scope_raw, out.target_id);
+  }
   out.plan_input_mdn_checkpoint =
       kv::optional(block, "PLAN_INPUT_MDN_CHECKPOINT", "");
   out.plan_input_representation_checkpoint =
       kv::optional(block, "PLAN_INPUT_REPRESENTATION_CHECKPOINT", "");
+  const auto max_waves_default = artifact_readiness ? "0"
+                                 : leakage_guard_scope.has_value()
+                                     ? leakage_guard_scope->max_waves
+                                     : "1";
   out.max_waves = optional_i64_alias(block, "MAX_WAVES", "PLAN_MAX_ATTEMPTS",
-                                     artifact_readiness ? "0" : "1",
-                                     out.language_warnings, out.target_id);
+                                     max_waves_default, out.language_warnings,
+                                     out.target_id);
+  if (leakage_guard_scope.has_value()) {
+    confirm_leakage_guard_scope_field(
+        "MAX_WAVES", kv::optional(block, "MAX_WAVES", ""),
+        leakage_guard_scope->max_waves, leakage_guard_scope_raw, out.target_id);
+    confirm_leakage_guard_scope_field(
+        "PLAN_MAX_ATTEMPTS", kv::optional(block, "PLAN_MAX_ATTEMPTS", ""),
+        leakage_guard_scope->max_waves, leakage_guard_scope_raw, out.target_id);
+  }
   if (out.target_id.empty()) {
     throw std::runtime_error("[lattice_target] TARGET_ID is required");
   }
@@ -10342,6 +10672,63 @@ inline void require_lowered_bool_true(const std::string &raw,
   }
 }
 
+[[nodiscard]] inline std::optional<
+    cuwacunu::hero::lattice::exposure::exposure_use_t>
+default_exposure_coverage_use_for_target(const lattice_target_spec_t &spec) {
+  namespace exposure = cuwacunu::hero::lattice::exposure;
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto target_class = kv::lowercase(kv::trim(spec.target_class));
+  if (target_class == "evaluation_readiness") {
+    return exposure::exposure_use_t::evaluation_metric;
+  }
+  if (target_class == "artifact_readiness" || target_class == "leakage_guard") {
+    return std::nullopt;
+  }
+  if (spec.kind == lattice_target_kind_t::vicreg_ready ||
+      spec.kind == lattice_target_kind_t::mtf_representation_ready) {
+    return exposure::exposure_use_t::observed_input;
+  }
+  if (spec.kind == lattice_target_kind_t::channel_mdn_ready) {
+    return exposure::exposure_use_t::target_supervision;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] inline cuwacunu::hero::lattice::exposure::exposure_use_t
+defaulted_lattice_warning_use(
+    const lattice_target_spec_t &spec,
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block,
+    const std::string &warning_kind,
+    std::optional<cuwacunu::hero::lattice::exposure::exposure_use_t> fallback =
+        std::nullopt) {
+  namespace exposure = cuwacunu::hero::lattice::exposure;
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto use_raw = kv::optional(block, "USE", "");
+  if (!kv::trim(use_raw).empty()) {
+    return exposure::parse_exposure_use(use_raw);
+  }
+  const auto target_default = default_exposure_coverage_use_for_target(spec);
+  if (target_default.has_value()) {
+    return *target_default;
+  }
+  if (fallback.has_value()) {
+    return *fallback;
+  }
+  throw std::runtime_error("[lattice_target] LATTICE_WARN " + warning_kind +
+                           " requires USE for " + spec.target_id);
+}
+
+[[nodiscard]] inline std::string
+default_lattice_warning_effect_for_target(const lattice_target_spec_t &spec) {
+  namespace exposure = cuwacunu::hero::lattice::exposure;
+  const auto target_default = default_exposure_coverage_use_for_target(spec);
+  if (target_default.has_value() &&
+      *target_default == exposure::exposure_use_t::evaluation_metric) {
+    return "any";
+  }
+  return "mutated_component";
+}
+
 inline void apply_lattice_depends_clause(
     lattice_target_spec_t &spec,
     const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
@@ -10470,9 +10857,19 @@ inline void apply_lattice_requires_clause(
     return;
   }
   if (kind == "exposure_coverage") {
-    const auto use = cuwacunu::hero::lattice::exposure::parse_exposure_use(
-        kv::required(block, "USE"));
-    const auto split = kv::optional(block, "SPLIT", "");
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+    const auto use_raw = kv::optional(block, "USE", "");
+    const auto default_use = default_exposure_coverage_use_for_target(spec);
+    if (kv::trim(use_raw).empty() && !default_use.has_value()) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_REQUIRES exposure_coverage requires "
+          "USE for " +
+          spec.target_id);
+    }
+    const auto use = kv::trim(use_raw).empty()
+                         ? *default_use
+                         : exposure::parse_exposure_use(use_raw);
+    const auto split = kv::optional(block, "SPLIT", spec.train_split);
     if (!split.empty()) {
       assign_or_confirm_string(spec.train_split, split, "OVER_SPLIT",
                                spec.target_id);
@@ -10483,8 +10880,12 @@ inline void apply_lattice_requires_clause(
     const auto scope = kv::lowercase(kv::optional(
         block, "COMPONENT_SCOPE",
         kv::optional(block, "SCOPE", "target_component_family_id")));
+    const auto default_effect =
+        use == exposure::exposure_use_t::evaluation_metric
+            ? "none"
+            : "mutated_component";
     const auto effect =
-        kv::lowercase(kv::optional(block, "EFFECT", "mutated_component"));
+        kv::lowercase(kv::optional(block, "EFFECT", default_effect));
     const auto coordinate = kv::lowercase(
         kv::optional(block, "COORDINATE", "graph_anchor_coverage"));
     if ((evidence_scope != "output_checkpoint_closure" &&
@@ -10727,6 +11128,22 @@ inline void apply_lattice_plan_clause(
         spec.plan_input_representation_checkpoint,
         kv::required(block, "PLAN_INPUT_REPRESENTATION_CHECKPOINT"),
         "PLAN_INPUT_REPRESENTATION_CHECKPOINT", spec.target_id);
+  }
+  const auto target_class = kv::lowercase(kv::trim(spec.target_class));
+  if (target_class != "evaluation_readiness" &&
+      spec.kind == lattice_target_kind_t::channel_mdn_ready &&
+      spec.plan_input_representation_checkpoint.empty() &&
+      !spec.upstream_target_id.empty()) {
+    assign_or_confirm_string(
+        spec.plan_input_representation_checkpoint,
+        latest_satisfying_reference(spec.upstream_target_id),
+        "PLAN_INPUT_REPRESENTATION_CHECKPOINT", spec.target_id);
+  }
+  if (spec.plan_input_mdn_checkpoint.empty() &&
+      !spec.evaluated_checkpoint_source.empty()) {
+    assign_or_confirm_string(spec.plan_input_mdn_checkpoint,
+                             spec.evaluated_checkpoint_source,
+                             "PLAN_INPUT_MDN_CHECKPOINT", spec.target_id);
   }
 }
 
@@ -11065,8 +11482,13 @@ inline void apply_lattice_warn_clause(
   warning.warning_id = kv::optional(
       block, "WARNING_ID",
       auto_clause_id("warn", spec.target_id, spec.warning_specs.size()));
-  warning.kind = kv::lowercase(kv::required(block, "KIND"));
-  warning.split = kv::optional(block, "SPLIT", "");
+  warning.kind = lattice_warning_kind_from_block(spec, block);
+  const bool has_warning_explicit_anchor_range =
+      has_lattice_key(block, "ANCHOR_INDEX_BEGIN") ||
+      has_lattice_key(block, "ANCHOR_INDEX_END");
+  warning.split =
+      kv::optional(block, "SPLIT",
+                   has_warning_explicit_anchor_range ? "" : spec.train_split);
   warning.scope = kv::lowercase(
       kv::optional(block, "COMPONENT_SCOPE",
                    kv::optional(block, "SCOPE", "target_component_family_id")));
@@ -11077,8 +11499,8 @@ inline void apply_lattice_warn_clause(
         "target_component_family_id or all_components for " +
         spec.target_id);
   }
-  const auto effect =
-      kv::lowercase(kv::optional(block, "EFFECT", "mutated_component"));
+  const auto effect = kv::lowercase(kv::optional(
+      block, "EFFECT", default_lattice_warning_effect_for_target(spec)));
   if (effect == "mutated_component") {
     warning.require_mutated_component = true;
   } else if (effect == "any" || effect == "none") {
@@ -11126,8 +11548,7 @@ inline void apply_lattice_warn_clause(
   }
 
   if (warning.kind == "exposure_load" || warning.kind == "effort_density") {
-    warning.use = cuwacunu::hero::lattice::exposure::parse_exposure_use(
-        kv::required(block, "USE"));
+    warning.use = defaulted_lattice_warning_use(spec, block, warning.kind);
   }
 
   if (warning.kind == "exposure_load") {
@@ -11591,8 +12012,9 @@ inline void apply_lattice_warn_clause(
       }
     }
   } else if (warning.kind == "runtime_health") {
-    warning.use = cuwacunu::hero::lattice::exposure::parse_exposure_use(
-        kv::optional(block, "USE", "target_supervision"));
+    using cuwacunu::hero::lattice::exposure::exposure_use_t;
+    warning.use = defaulted_lattice_warning_use(
+        spec, block, warning.kind, exposure_use_t::target_supervision);
     warning.metric = kv::lowercase(kv::required(block, "METRIC"));
     const std::set<std::string> allowed_metrics{
         "finite_parameter_check",
@@ -11636,8 +12058,9 @@ inline void apply_lattice_warn_clause(
       warning.below = kv::parse_double(below_raw);
     }
   } else if (warning.kind == "mdn_distribution_calibration") {
-    warning.use = cuwacunu::hero::lattice::exposure::parse_exposure_use(
-        kv::optional(block, "USE", "evaluation_metric"));
+    using cuwacunu::hero::lattice::exposure::exposure_use_t;
+    warning.use = defaulted_lattice_warning_use(
+        spec, block, warning.kind, exposure_use_t::evaluation_metric);
     warning.metric = kv::lowercase(kv::required(block, "METRIC"));
     const std::set<std::string> allowed_metrics{
         "mean_nll",
@@ -12403,7 +12826,84 @@ canonical_lattice_target_proof_certificate_text(
               << (artifact.model_state_mutation ? "1" : "0") << "\n"
               << (artifact.raw_potential_tradable_return ? "1" : "0") << "\n"
               << (artifact.replay_executor ? "1" : "0") << "\n"
-              << (artifact.lineage_bound ? "1" : "0") << "\n"
+              << artifact.no_lookahead_certificate_schema << "\n"
+              << (artifact.no_lookahead_provenance_checked ? "1" : "0") << "\n"
+              << (artifact.no_lookahead_provenance_complete ? "1" : "0") << "\n"
+              << (artifact.no_lookahead_provenance_admissible ? "1" : "0")
+              << "\n"
+              << (artifact.influence_anchor_end_exclusive_max_bound ? "1" : "0")
+              << "\n"
+              << artifact.influence_anchor_end_exclusive_max << "\n"
+              << (artifact.label_or_reward_availability_frontier_checked ? "1"
+                                                                         : "0")
+              << "\n"
+              << (artifact.label_or_reward_availability_frontier_complete ? "1"
+                                                                          : "0")
+              << "\n"
+              << (artifact.label_or_reward_availability_frontier_admissible
+                      ? "1"
+                      : "0")
+              << "\n"
+              << (artifact.label_or_reward_availability_end_exclusive_max_bound
+                      ? "1"
+                      : "0")
+              << "\n"
+              << artifact.label_or_reward_availability_end_exclusive_max << "\n"
+              << (artifact.embargo_purged_window_checked ? "1" : "0") << "\n"
+              << (artifact.embargo_purged_window_complete ? "1" : "0") << "\n"
+              << (artifact.embargo_purged_window_admissible ? "1" : "0") << "\n"
+              << artifact.embargo_policy_fingerprint << "\n"
+              << (artifact.embargo_purged_window_anchor_range_bound ? "1" : "0")
+              << "\n"
+              << artifact.embargo_purged_window_anchor_begin << "\n"
+              << artifact.embargo_purged_window_anchor_end_exclusive << "\n"
+              << artifact.no_lookahead_contract_digest << "\n";
+          append_string_vector_text(out, "consumed_artifact_digests",
+                                    artifact.consumed_artifact_digests);
+          append_string_vector_text(out, "consumed_checkpoint_digests",
+                                    artifact.consumed_checkpoint_digests);
+          append_string_vector_text(
+              out, "consumed_generation_vector_digests",
+              artifact.consumed_generation_vector_digests);
+          out << artifact.provenance_closure_digest << "\n";
+          out << artifact.snapshot_bundle_certificate_schema << "\n"
+              << (artifact.snapshot_bundle_publishability_checked ? "1" : "0")
+              << "\n"
+              << (artifact.snapshot_bundle_publishability_complete ? "1" : "0")
+              << "\n"
+              << (artifact.snapshot_bundle_publishability_admissible ? "1"
+                                                                     : "0")
+              << "\n"
+              << artifact.snapshot_bundle_id << "\n"
+              << artifact.snapshot_bundle_kind << "\n"
+              << artifact.snapshot_bundle_generation_vector_digest << "\n"
+              << (artifact.snapshot_bundle_valid_from_anchor_bound ? "1" : "0")
+              << "\n"
+              << artifact.snapshot_bundle_valid_from_anchor << "\n"
+              << artifact.snapshot_bundle_compatibility_closure_digest << "\n";
+          append_string_vector_text(
+              out, "snapshot_bundle_component_generation_ids",
+              artifact.snapshot_bundle_component_generation_ids);
+          append_string_vector_text(
+              out, "snapshot_bundle_component_checkpoint_digests",
+              artifact.snapshot_bundle_component_checkpoint_digests);
+          append_string_vector_text(
+              out, "snapshot_bundle_component_generation_vector_digests",
+              artifact.snapshot_bundle_component_generation_vector_digests);
+          out << artifact.causal_provenance_certificate_schema << "\n"
+              << (artifact.causal_provenance_checked ? "1" : "0") << "\n"
+              << (artifact.causal_provenance_complete ? "1" : "0") << "\n"
+              << (artifact.causal_provenance_admissible ? "1" : "0") << "\n"
+              << artifact.causal_atom_schema << "\n"
+              << artifact.causal_interval_set_schema << "\n"
+              << artifact.causal_label_reward_horizon_policy_fingerprint << "\n"
+              << artifact.causal_fold_policy_fingerprint << "\n"
+              << artifact.causal_purged_embargo_policy_fingerprint << "\n"
+              << artifact.causal_artifact_production_schema << "\n"
+              << artifact.causal_artifact_production_closure_digest << "\n"
+              << artifact.causal_interface_stability_contract_digest << "\n"
+              << artifact.causal_provenance_closure_digest << "\n";
+          out << (artifact.lineage_bound ? "1" : "0") << "\n"
               << (artifact.passed ? "1" : "0") << "\n";
           append_string_vector_text(out, "issues", artifact.issues);
           return out.str();
@@ -12526,6 +13026,133 @@ canonical_lattice_target_proof_certificate_text(
     out << prefix
         << ".replay_executor=" << (artifact.replay_executor ? "true" : "false")
         << "\n";
+    out << prefix << ".no_lookahead_certificate_schema="
+        << artifact.no_lookahead_certificate_schema << "\n";
+    out << prefix << ".no_lookahead_provenance_checked="
+        << (artifact.no_lookahead_provenance_checked ? "true" : "false")
+        << "\n";
+    out << prefix << ".no_lookahead_provenance_complete="
+        << (artifact.no_lookahead_provenance_complete ? "true" : "false")
+        << "\n";
+    out << prefix << ".no_lookahead_provenance_admissible="
+        << (artifact.no_lookahead_provenance_admissible ? "true" : "false")
+        << "\n";
+    out << prefix << ".influence_anchor_end_exclusive_max_bound="
+        << (artifact.influence_anchor_end_exclusive_max_bound ? "true"
+                                                              : "false")
+        << "\n";
+    out << prefix << ".influence_anchor_end_exclusive_max="
+        << artifact.influence_anchor_end_exclusive_max << "\n";
+    out << prefix << ".label_or_reward_availability_frontier_checked="
+        << (artifact.label_or_reward_availability_frontier_checked ? "true"
+                                                                   : "false")
+        << "\n";
+    out << prefix << ".label_or_reward_availability_frontier_complete="
+        << (artifact.label_or_reward_availability_frontier_complete ? "true"
+                                                                    : "false")
+        << "\n";
+    out << prefix << ".label_or_reward_availability_frontier_admissible="
+        << (artifact.label_or_reward_availability_frontier_admissible ? "true"
+                                                                      : "false")
+        << "\n";
+    out << prefix << ".label_or_reward_availability_end_exclusive_max_bound="
+        << (artifact.label_or_reward_availability_end_exclusive_max_bound
+                ? "true"
+                : "false")
+        << "\n";
+    out << prefix << ".label_or_reward_availability_end_exclusive_max="
+        << artifact.label_or_reward_availability_end_exclusive_max << "\n";
+    out << prefix << ".embargo_purged_window_checked="
+        << (artifact.embargo_purged_window_checked ? "true" : "false") << "\n";
+    out << prefix << ".embargo_purged_window_complete="
+        << (artifact.embargo_purged_window_complete ? "true" : "false") << "\n";
+    out << prefix << ".embargo_purged_window_admissible="
+        << (artifact.embargo_purged_window_admissible ? "true" : "false")
+        << "\n";
+    out << prefix
+        << ".embargo_policy_fingerprint=" << artifact.embargo_policy_fingerprint
+        << "\n";
+    out << prefix << ".embargo_purged_window_anchor_range_bound="
+        << (artifact.embargo_purged_window_anchor_range_bound ? "true"
+                                                              : "false")
+        << "\n";
+    out << prefix << ".embargo_purged_window_anchor_begin="
+        << artifact.embargo_purged_window_anchor_begin << "\n";
+    out << prefix << ".embargo_purged_window_anchor_end_exclusive="
+        << artifact.embargo_purged_window_anchor_end_exclusive << "\n";
+    out << prefix << ".no_lookahead_contract_digest="
+        << artifact.no_lookahead_contract_digest << "\n";
+    append_string_vector_text(out, prefix + ".consumed_artifact_digests",
+                              artifact.consumed_artifact_digests);
+    append_string_vector_text(out, prefix + ".consumed_checkpoint_digests",
+                              artifact.consumed_checkpoint_digests);
+    append_string_vector_text(out,
+                              prefix + ".consumed_generation_vector_digests",
+                              artifact.consumed_generation_vector_digests);
+    out << prefix
+        << ".provenance_closure_digest=" << artifact.provenance_closure_digest
+        << "\n";
+    out << prefix << ".snapshot_bundle_certificate_schema="
+        << artifact.snapshot_bundle_certificate_schema << "\n";
+    out << prefix << ".snapshot_bundle_publishability_checked="
+        << (artifact.snapshot_bundle_publishability_checked ? "true" : "false")
+        << "\n";
+    out << prefix << ".snapshot_bundle_publishability_complete="
+        << (artifact.snapshot_bundle_publishability_complete ? "true" : "false")
+        << "\n";
+    out << prefix << ".snapshot_bundle_publishability_admissible="
+        << (artifact.snapshot_bundle_publishability_admissible ? "true"
+                                                               : "false")
+        << "\n";
+    out << prefix << ".snapshot_bundle_id=" << artifact.snapshot_bundle_id
+        << "\n";
+    out << prefix << ".snapshot_bundle_kind=" << artifact.snapshot_bundle_kind
+        << "\n";
+    out << prefix << ".snapshot_bundle_generation_vector_digest="
+        << artifact.snapshot_bundle_generation_vector_digest << "\n";
+    out << prefix << ".snapshot_bundle_valid_from_anchor_bound="
+        << (artifact.snapshot_bundle_valid_from_anchor_bound ? "true" : "false")
+        << "\n";
+    out << prefix << ".snapshot_bundle_valid_from_anchor="
+        << artifact.snapshot_bundle_valid_from_anchor << "\n";
+    out << prefix << ".snapshot_bundle_compatibility_closure_digest="
+        << artifact.snapshot_bundle_compatibility_closure_digest << "\n";
+    append_string_vector_text(
+        out, prefix + ".snapshot_bundle_component_generation_ids",
+        artifact.snapshot_bundle_component_generation_ids);
+    append_string_vector_text(
+        out, prefix + ".snapshot_bundle_component_checkpoint_digests",
+        artifact.snapshot_bundle_component_checkpoint_digests);
+    append_string_vector_text(
+        out, prefix + ".snapshot_bundle_component_generation_vector_digests",
+        artifact.snapshot_bundle_component_generation_vector_digests);
+    out << prefix << ".causal_provenance_certificate_schema="
+        << artifact.causal_provenance_certificate_schema << "\n";
+    out << prefix << ".causal_provenance_checked="
+        << (artifact.causal_provenance_checked ? "true" : "false") << "\n";
+    out << prefix << ".causal_provenance_complete="
+        << (artifact.causal_provenance_complete ? "true" : "false") << "\n";
+    out << prefix << ".causal_provenance_admissible="
+        << (artifact.causal_provenance_admissible ? "true" : "false") << "\n";
+    out << prefix << ".causal_atom_schema=" << artifact.causal_atom_schema
+        << "\n";
+    out << prefix
+        << ".causal_interval_set_schema=" << artifact.causal_interval_set_schema
+        << "\n";
+    out << prefix << ".causal_label_reward_horizon_policy_fingerprint="
+        << artifact.causal_label_reward_horizon_policy_fingerprint << "\n";
+    out << prefix << ".causal_fold_policy_fingerprint="
+        << artifact.causal_fold_policy_fingerprint << "\n";
+    out << prefix << ".causal_purged_embargo_policy_fingerprint="
+        << artifact.causal_purged_embargo_policy_fingerprint << "\n";
+    out << prefix << ".causal_artifact_production_schema="
+        << artifact.causal_artifact_production_schema << "\n";
+    out << prefix << ".causal_artifact_production_closure_digest="
+        << artifact.causal_artifact_production_closure_digest << "\n";
+    out << prefix << ".causal_interface_stability_contract_digest="
+        << artifact.causal_interface_stability_contract_digest << "\n";
+    out << prefix << ".causal_provenance_closure_digest="
+        << artifact.causal_provenance_closure_digest << "\n";
     out << prefix
         << ".lineage_bound=" << (artifact.lineage_bound ? "true" : "false")
         << "\n";
@@ -13737,6 +14364,153 @@ verify_lattice_target_proof_certificate(
     }
     if (artifact.replay_executor) {
       append_certificate_issue(check, prefix + " replay executor present");
+    }
+    if (artifact.no_lookahead_provenance_checked) {
+      if (artifact.no_lookahead_certificate_schema !=
+          "no_lookahead_artifact_provenance.v1") {
+        append_certificate_issue(
+            check, prefix + " no-lookahead certificate schema mismatch");
+      }
+      if (!artifact.no_lookahead_provenance_complete) {
+        append_certificate_issue(
+            check, prefix + " no-lookahead provenance incomplete");
+      }
+      if (!artifact.no_lookahead_provenance_admissible) {
+        append_certificate_issue(
+            check, prefix + " no-lookahead provenance not admissible");
+      }
+      if (!artifact.influence_anchor_end_exclusive_max_bound) {
+        append_certificate_issue(
+            check, prefix + " no-lookahead influence frontier missing");
+      }
+      if (!artifact.label_or_reward_availability_frontier_checked) {
+        append_certificate_issue(
+            check, prefix + " label/reward availability frontier not checked");
+      }
+      if (!artifact.label_or_reward_availability_frontier_complete) {
+        append_certificate_issue(
+            check, prefix + " label/reward availability frontier incomplete");
+      }
+      if (!artifact.label_or_reward_availability_frontier_admissible) {
+        append_certificate_issue(
+            check, prefix + " label/reward availability not admissible");
+      }
+      if (!artifact.label_or_reward_availability_end_exclusive_max_bound) {
+        append_certificate_issue(
+            check, prefix + " label/reward availability frontier missing");
+      }
+      if (!artifact.embargo_purged_window_checked) {
+        append_certificate_issue(check,
+                                 prefix + " embargo/purged window not checked");
+      }
+      if (!artifact.embargo_purged_window_complete) {
+        append_certificate_issue(check,
+                                 prefix + " embargo/purged window incomplete");
+      }
+      if (!artifact.embargo_purged_window_admissible) {
+        append_certificate_issue(
+            check, prefix + " embargo/purged window not admissible");
+      }
+      if (artifact.embargo_policy_fingerprint.empty()) {
+        append_certificate_issue(
+            check, prefix + " embargo policy fingerprint missing");
+      }
+      if (!artifact.embargo_purged_window_anchor_range_bound) {
+        append_certificate_issue(check,
+                                 prefix + " embargo/purged window missing");
+      }
+      if (artifact.no_lookahead_contract_digest.empty()) {
+        append_certificate_issue(
+            check, prefix + " no-lookahead contract digest missing");
+      }
+      if (artifact.consumed_artifact_digests.empty()) {
+        append_certificate_issue(
+            check, prefix + " no-lookahead consumed artifacts missing");
+      }
+      if (artifact.consumed_generation_vector_digests.empty()) {
+        append_certificate_issue(
+            check,
+            prefix + " no-lookahead consumed generation vectors missing");
+      }
+    }
+    if (artifact.snapshot_bundle_publishability_checked) {
+      if (artifact.snapshot_bundle_certificate_schema !=
+          "snapshot_bundle_publishability.v1") {
+        append_certificate_issue(
+            check, prefix + " snapshot bundle certificate schema mismatch");
+      }
+      if (!artifact.snapshot_bundle_publishability_complete) {
+        append_certificate_issue(
+            check, prefix + " snapshot bundle publishability incomplete");
+      }
+      if (!artifact.snapshot_bundle_publishability_admissible) {
+        append_certificate_issue(check,
+                                 prefix + " snapshot bundle not admissible");
+      }
+      if (artifact.snapshot_bundle_id.empty()) {
+        append_certificate_issue(check, prefix + " snapshot bundle id missing");
+      }
+      if (artifact.snapshot_bundle_generation_vector_digest.empty()) {
+        append_certificate_issue(
+            check, prefix + " snapshot bundle generation vector missing");
+      }
+      if (!artifact.snapshot_bundle_valid_from_anchor_bound) {
+        append_certificate_issue(
+            check, prefix + " snapshot bundle valid_from missing");
+      }
+      if (artifact.snapshot_bundle_compatibility_closure_digest.empty()) {
+        append_certificate_issue(
+            check, prefix + " snapshot bundle compatibility closure missing");
+      }
+      if (artifact.snapshot_bundle_component_generation_ids.size() != 3U ||
+          artifact.snapshot_bundle_component_checkpoint_digests.size() != 3U ||
+          artifact.snapshot_bundle_component_generation_vector_digests.size() !=
+              3U) {
+        append_certificate_issue(
+            check, prefix + " snapshot bundle component vector incomplete");
+      }
+    }
+    if (artifact.causal_provenance_checked) {
+      if (artifact.causal_provenance_certificate_schema !=
+          exposure::k_causal_provenance_generalization_schema_v1) {
+        append_certificate_issue(check,
+                                 prefix + " causal provenance schema mismatch");
+      }
+      if (!artifact.causal_provenance_complete) {
+        append_certificate_issue(check,
+                                 prefix + " causal provenance incomplete");
+      }
+      if (!artifact.causal_provenance_admissible) {
+        append_certificate_issue(check,
+                                 prefix + " causal provenance not admissible");
+      }
+      if (!artifact.no_lookahead_provenance_checked ||
+          !artifact.no_lookahead_provenance_complete ||
+          !artifact.no_lookahead_provenance_admissible ||
+          !artifact.label_or_reward_availability_frontier_checked ||
+          !artifact.label_or_reward_availability_frontier_complete ||
+          !artifact.label_or_reward_availability_frontier_admissible ||
+          !artifact.embargo_purged_window_checked ||
+          !artifact.embargo_purged_window_complete ||
+          !artifact.embargo_purged_window_admissible ||
+          !artifact.snapshot_bundle_publishability_checked ||
+          !artifact.snapshot_bundle_publishability_complete ||
+          !artifact.snapshot_bundle_publishability_admissible) {
+        append_certificate_issue(
+            check, prefix + " causal provenance subproof incomplete");
+      }
+      if (artifact.causal_atom_schema.empty() ||
+          artifact.causal_interval_set_schema.empty() ||
+          artifact.causal_label_reward_horizon_policy_fingerprint.empty() ||
+          artifact.causal_fold_policy_fingerprint.empty() ||
+          artifact.causal_purged_embargo_policy_fingerprint.empty() ||
+          artifact.causal_artifact_production_schema.empty() ||
+          artifact.causal_artifact_production_closure_digest.empty() ||
+          artifact.causal_interface_stability_contract_digest.empty() ||
+          artifact.causal_provenance_closure_digest.empty()) {
+        append_certificate_issue(
+            check, prefix + " causal provenance metadata incomplete");
+      }
     }
     if (!artifact.authority_clean) {
       append_certificate_issue(check, prefix + " authority drift present");
@@ -15906,6 +16680,115 @@ merge_profile_into_target_block(
   return merged;
 }
 
+[[nodiscard]] inline std::vector<cuwacunu::piaabo::parse::simple_kv::block_t>
+expand_lattice_requires_set_block(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto target_ids = kv::parse_list(kv::required(block, "TARGET_IDS"));
+  const auto requirement_ids =
+      kv::parse_list(kv::required(block, "REQUIREMENT_IDS"));
+  if (target_ids.empty()) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_REQUIRES_SET TARGET_IDS cannot be empty");
+  }
+  if (target_ids.size() != requirement_ids.size()) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_REQUIRES_SET TARGET_IDS and "
+        "REQUIREMENT_IDS counts must match");
+  }
+  if (block.values.contains("TARGET_ID") ||
+      block.values.contains("REQUIREMENT_ID")) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_REQUIRES_SET uses TARGET_IDS and "
+        "REQUIREMENT_IDS; do not author singular TARGET_ID or REQUIREMENT_ID");
+  }
+
+  std::unordered_map<std::string, std::string> common_values;
+  common_values.reserve(block.values.size());
+  for (const auto &[key, value] : block.values) {
+    if (key == "TARGET_IDS" || key == "REQUIREMENT_IDS") {
+      continue;
+    }
+    common_values.emplace(key, value);
+  }
+
+  std::vector<kv::block_t> out;
+  out.reserve(target_ids.size());
+  for (std::size_t i = 0; i < target_ids.size(); ++i) {
+    kv::block_t expanded{};
+    expanded.name = "LATTICE_REQUIRES";
+    expanded.values = common_values;
+    expanded.values.emplace("TARGET_ID", target_ids[i]);
+    expanded.values.emplace("REQUIREMENT_ID", requirement_ids[i]);
+    out.push_back(std::move(expanded));
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<cuwacunu::piaabo::parse::simple_kv::block_t>
+expand_lattice_warn_set_block(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto warning_ids = kv::parse_list(kv::required(block, "WARNING_IDS"));
+  const auto metrics = kv::parse_list(kv::required(block, "METRICS"));
+  if (warning_ids.empty()) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_WARN_SET WARNING_IDS cannot be empty");
+  }
+  if (warning_ids.size() != metrics.size()) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_WARN_SET WARNING_IDS and METRICS counts "
+        "must match");
+  }
+  if (block.values.contains("WARNING_ID") || block.values.contains("METRIC") ||
+      block.values.contains("ABOVE") || block.values.contains("BELOW")) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_WARN_SET uses WARNING_IDS, METRICS, and "
+        "*_VALUES threshold lists; do not author singular warning row keys");
+  }
+
+  const auto above_raw = kv::optional(block, "ABOVE_VALUES", "");
+  const auto below_raw = kv::optional(block, "BELOW_VALUES", "");
+  const bool has_above = !kv::trim(above_raw).empty();
+  const bool has_below = !kv::trim(below_raw).empty();
+  if (has_above == has_below) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_WARN_SET requires exactly one of "
+        "ABOVE_VALUES or BELOW_VALUES");
+  }
+  const std::string threshold_key = has_above ? "ABOVE" : "BELOW";
+  const auto threshold_values =
+      kv::parse_list(has_above ? above_raw : below_raw);
+  if (warning_ids.size() != threshold_values.size()) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_WARN_SET warning and threshold counts must "
+        "match");
+  }
+
+  std::unordered_map<std::string, std::string> common_values;
+  common_values.reserve(block.values.size());
+  for (const auto &[key, value] : block.values) {
+    if (key == "WARNING_IDS" || key == "METRICS" || key == "ABOVE_VALUES" ||
+        key == "BELOW_VALUES") {
+      continue;
+    }
+    common_values.emplace(key, value);
+  }
+
+  std::vector<kv::block_t> out;
+  out.reserve(warning_ids.size());
+  for (std::size_t i = 0; i < warning_ids.size(); ++i) {
+    kv::block_t expanded{};
+    expanded.name = "LATTICE_WARN";
+    expanded.values = common_values;
+    expanded.values.emplace("WARNING_ID", warning_ids[i]);
+    expanded.values.emplace("METRIC", metrics[i]);
+    expanded.values.emplace(threshold_key, threshold_values[i]);
+    out.push_back(std::move(expanded));
+  }
+  return out;
+}
+
 [[nodiscard]] inline std::vector<lattice_target_compiled_t>
 decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
@@ -15960,12 +16843,24 @@ decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
       append_target_clause(requires_clauses, block);
       continue;
     }
+    if (block.name == "LATTICE_REQUIRES_SET") {
+      for (const auto &expanded : expand_lattice_requires_set_block(block)) {
+        append_target_clause(requires_clauses, expanded);
+      }
+      continue;
+    }
     if (block.name == "LATTICE_FORBIDS") {
       append_target_clause(forbids_clauses, block);
       continue;
     }
     if (block.name == "LATTICE_PLAN") {
       append_target_clause(plan_clauses, block);
+      continue;
+    }
+    if (block.name == "LATTICE_WARN_SET") {
+      for (const auto &expanded : expand_lattice_warn_set_block(block)) {
+        append_target_clause(warning_clauses, expanded);
+      }
       continue;
     }
     if (block.name == "LATTICE_WARN") {
@@ -16031,7 +16926,7 @@ decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
     clause_index = 0;
     for (const auto &clause : warning_clauses[spec.target_id]) {
       compiled.warning_clauses.push_back(
-          make_lattice_warning_clause(clause, clause_index++));
+          make_lattice_warning_clause(spec, clause, clause_index++));
       apply_lattice_warn_clause(spec, clause);
     }
     validate_lattice_target_spec_lowered(spec);

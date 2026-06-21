@@ -1,5 +1,6 @@
 #include "hero/marshal_hero/hero_marshal_tools.h"
 
+#include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/hero_lattice_tools.h"
 
 #include <filesystem>
@@ -10,7 +11,7 @@
 
 namespace {
 
-std::filesystem::path g_global_config_path{"/cuwacunu/src/config/.config"};
+std::filesystem::path g_global_config_path{};
 
 bool call_lattice_tool(const std::string &tool_name,
                        const std::string &arguments_json,
@@ -45,10 +46,13 @@ bool call_lattice_tool(const std::string &tool_name,
 }
 
 void print_help(const char *argv0) {
+  const auto default_global_config_path =
+      cuwacunu::hero::config_paths::default_global_config_path(argv0);
+  const auto default_global_config = default_global_config_path.string();
   std::cout
       << "Usage: " << argv0 << " [options]\n"
       << "  --global-config PATH   global Cuwacunu config; default "
-         "/cuwacunu/src/config/.config\n"
+      << default_global_config << "\n"
       << "  --tool NAME            run one Marshal tool directly\n"
       << "  --args-json JSON       JSON object passed to --tool; default '{}'\n"
       << "  --list-tools           compact human catalog\n"
@@ -109,8 +113,8 @@ void print_help(const char *argv0) {
          "refusal,\n"
       << "      and explicit authority-denial fields.\n"
       << "    Example:\n"
-      << "      " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "      " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.marshal.status --args-json '{}'\n"
       << "\n"
       << "  hero.marshal.prepare.train\n"
@@ -146,8 +150,8 @@ void print_help(const char *argv0) {
       << "    Returns: target-driver packet, dispatchability/refusal reasons,\n"
       << "      optional Runtime dry-run handoff, and next safe actions.\n"
       << "    Example:\n"
-      << "      " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "      " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.marshal.prepare.train --args-json "
          "'{\"target_id\":\"channel_mdn_train_core_ready\","
          "\"mode\":\"plan\"}'\n"
@@ -187,8 +191,8 @@ void print_help(const char *argv0) {
          "by\n"
       << "      Runtime; inspection summaries come from later inspect.\n"
       << "    Example plan:\n"
-      << "      " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "      " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.marshal.rollout --args-json "
          "'{\"mode\":\"plan\",\"runtime_job_dir\":\"/tmp/runtime_job\","
          "\"rollout_id\":\"holdout_rollout_v1\","
@@ -219,8 +223,8 @@ void print_help(const char *argv0) {
       << "      receipt path/digest, authority denials, and next safe "
          "actions.\n"
       << "    Example dry-run:\n"
-      << "      " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "      " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.marshal.paper_online.session_handoff --args-json "
          "'{\"mode\":\"dry_run\",\"handoff_request_path\":\"/cuwacunu/.runtime/"
          "cuwacunu_exec/operator_requests/paper_online_session_handoff.request."
@@ -270,8 +274,8 @@ void print_help(const char *argv0) {
          "panels,\n"
       << "      warnings, blockers, comparison deltas, and next safe actions.\n"
       << "    Example:\n"
-      << "      " << argv0
-      << " --global-config /cuwacunu/src/config/.config --tool "
+      << "      " << argv0 << " --global-config " << default_global_config
+      << " --tool "
          "hero.marshal.inspect.run.latest_chain --args-json '{}'\n"
       << "\n"
       << "Operational notes:\n"
@@ -289,6 +293,8 @@ void print_help(const char *argv0) {
 } // namespace
 
 int main(int argc, char **argv) {
+  g_global_config_path =
+      cuwacunu::hero::config_paths::default_global_config_path(argv[0]);
   bool direct_tool_mode = false;
   bool direct_tool_args_overridden = false;
   bool list_tools = false;

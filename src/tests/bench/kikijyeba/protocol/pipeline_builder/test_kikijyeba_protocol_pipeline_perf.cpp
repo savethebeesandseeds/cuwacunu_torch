@@ -272,6 +272,12 @@ std::filesystem::path make_config(const std::filesystem::path &dir,
              "  VALIDATION_EVERY = 0;\n"
              "  SEED = 17;\n"
              "  FREEZE_REPRESENTATION = false;\n"
+             "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = "
+             "transitive_influence_required;\n"
              "};\n");
   write_text(mdn_jkimyei,
              "TRAINING {\n"
@@ -292,6 +298,12 @@ std::filesystem::path make_config(const std::filesystem::path &dir,
              "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
              "  INPUT_MDN_CHECKPOINT = ;\n"
              "  ALLOW_UNTRAINED_REPRESENTATION = true;\n"
+             "  TRAINING_VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = "
+             "transitive_influence_required;\n"
              "};\n");
 
   write_text(

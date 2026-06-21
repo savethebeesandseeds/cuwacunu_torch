@@ -9,6 +9,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include "ujcamei/source/contract/syntax/parse_utils.h"
 
@@ -21,6 +22,12 @@ using ::cuwacunu::ujcamei::source::contract::source_form_t;
 using ::cuwacunu::ujcamei::source::contract::source_spec_t;
 
 namespace {
+
+struct source_registry_decode_context_t {
+  source_spec_t spec{};
+  std::string default_source_root{};
+  std::vector<std::string> default_kline_intervals{};
+};
 
 [[nodiscard]] std::string trim_ascii_ws_copy(std::string s) {
   std::size_t b = 0;
@@ -65,6 +72,220 @@ namespace {
   return parsed;
 }
 
+[[nodiscard]] cuwacunu::ujcamei::source::registry::types::interval_type_e
+parse_interval_type_strict(const std::string &text, const char *field_name) {
+  const std::string value = trim_ascii_ws_copy(text);
+  if (value.empty()) {
+    throw std::runtime_error(std::string("missing value for ") + field_name);
+  }
+  try {
+    return cuwacunu::ujcamei::source::registry::types::string_to_enum<
+        cuwacunu::ujcamei::source::registry::types::interval_type_e>(value);
+  } catch (...) {
+    throw std::runtime_error(std::string("invalid interval for ") + field_name +
+                             ": " + value);
+  }
+}
+
+void collect_node_texts_by_hash(const ASTNode *node, std::uint64_t wanted_hash,
+                                std::vector<std::string> &out) {
+  if (!node) {
+    return;
+  }
+  if (node->hash == wanted_hash) {
+    out.push_back(detail::trim_spaces_tabs(detail::flatten_node_text(node)));
+    return;
+  }
+  if (const auto *root = dynamic_cast<const RootNode *>(node)) {
+    for (const auto &child : root->children) {
+      collect_node_texts_by_hash(child.get(), wanted_hash, out);
+    }
+    return;
+  }
+  if (const auto *mid = dynamic_cast<const IntermediaryNode *>(node)) {
+    for (const auto &child : mid->children) {
+      collect_node_texts_by_hash(child.get(), wanted_hash, out);
+    }
+  }
+}
+
+void collect_intermediary_nodes_by_hash(
+    const ASTNode *node, std::uint64_t wanted_hash,
+    std::vector<const IntermediaryNode *> &out) {
+  if (!node) {
+    return;
+  }
+  if (node->hash == wanted_hash) {
+    if (const auto *matched = dynamic_cast<const IntermediaryNode *>(node)) {
+      out.push_back(matched);
+    }
+    return;
+  }
+  if (const auto *root = dynamic_cast<const RootNode *>(node)) {
+    for (const auto &child : root->children) {
+      collect_intermediary_nodes_by_hash(child.get(), wanted_hash, out);
+    }
+    return;
+  }
+  if (const auto *mid = dynamic_cast<const IntermediaryNode *>(node)) {
+    for (const auto &child : mid->children) {
+      collect_intermediary_nodes_by_hash(child.get(), wanted_hash, out);
+    }
+  }
+}
+
+[[nodiscard]] std::string
+required_assignment_value(const IntermediaryNode *block,
+                          std::uint64_t assignment_hash,
+                          std::uint64_t value_hash, const char *field_name) {
+  const auto *assignment = dynamic_cast<const IntermediaryNode *>(
+      detail::find_direct_child_by_hash(block, assignment_hash));
+  const ASTNode *value_node =
+      detail::find_direct_child_by_hash(assignment, value_hash);
+  std::string value =
+      detail::trim_spaces_tabs(detail::flatten_node_text(value_node));
+  if (value.empty()) {
+    throw std::runtime_error(std::string("missing value for ") + field_name);
+  }
+  return value;
+}
+
+[[nodiscard]] std::string
+optional_assignment_value(const IntermediaryNode *block,
+                          std::uint64_t assignment_hash,
+                          std::uint64_t value_hash) {
+  const auto *assignment = dynamic_cast<const IntermediaryNode *>(
+      detail::find_direct_child_by_hash(block, assignment_hash));
+  if (assignment == nullptr) {
+    return {};
+  }
+  const ASTNode *value_node =
+      detail::find_direct_child_by_hash(assignment, value_hash);
+  return detail::trim_spaces_tabs(detail::flatten_node_text(value_node));
+}
+
+[[nodiscard]] std::string make_kline_source_path(std::string root,
+                                                 const std::string &instrument,
+                                                 const std::string &interval) {
+  root = trim_ascii_ws_copy(std::move(root));
+  while (root.size() > 1 && root.back() == '/') {
+    root.pop_back();
+  }
+  return root + "/" + instrument + "/" + interval + "/" + instrument + "-" +
+         interval + "-all-years.csv";
+}
+
+[[nodiscard]] const IntermediaryNode *
+registry_source_defaults_block(const ASTNode *root_node) {
+  std::vector<const IntermediaryNode *> blocks;
+  collect_intermediary_nodes_by_hash(
+      root_node, SOURCE_PIPELINE_HASH_source_defaults_block, blocks);
+  if (blocks.empty()) {
+    return nullptr;
+  }
+  if (blocks.size() != 1) {
+    throw std::runtime_error("SOURCE_DEFAULTS must be declared at most once");
+  }
+  return blocks.front();
+}
+
+[[nodiscard]] std::string
+registry_default_source_root(const IntermediaryNode *defaults_block) {
+  if (defaults_block == nullptr) {
+    return {};
+  }
+  return required_assignment_value(
+      defaults_block, SOURCE_PIPELINE_HASH_default_source_root_assignment,
+      SOURCE_PIPELINE_HASH_source_root_path, "SOURCE_DEFAULTS.SOURCE_ROOT");
+}
+
+[[nodiscard]] std::vector<std::string>
+registry_default_kline_intervals(const IntermediaryNode *defaults_block) {
+  if (defaults_block == nullptr) {
+    return {};
+  }
+  const auto *intervals_assignment =
+      dynamic_cast<const IntermediaryNode *>(detail::find_direct_child_by_hash(
+          defaults_block,
+          SOURCE_PIPELINE_HASH_default_kline_intervals_assignment));
+  if (intervals_assignment == nullptr) {
+    return {};
+  }
+  std::vector<std::string> intervals;
+  collect_node_texts_by_hash(intervals_assignment,
+                             SOURCE_PIPELINE_HASH_interval, intervals);
+  if (intervals.empty()) {
+    throw std::runtime_error("SOURCE_DEFAULTS.KLINE_INTERVALS must not be "
+                             "empty when declared");
+  }
+  return intervals;
+}
+
+void append_kline_source_set(
+    const IntermediaryNode *node, source_spec_t &out,
+    const std::string &default_source_root,
+    const std::vector<std::string> &default_kline_intervals) {
+  source_form_t base{};
+  base.instrument = required_assignment_value(
+      node, SOURCE_PIPELINE_HASH_kline_source_instrument_assignment,
+      SOURCE_PIPELINE_HASH_instrument, "KLINE_SOURCE_SET.INSTRUMENT");
+  base.record_type = "kline";
+  base.market_type = required_assignment_value(
+      node, SOURCE_PIPELINE_HASH_kline_source_market_type_assignment,
+      SOURCE_PIPELINE_HASH_market_type, "KLINE_SOURCE_SET.MARKET_TYPE");
+  base.venue = required_assignment_value(
+      node, SOURCE_PIPELINE_HASH_kline_source_venue_assignment,
+      SOURCE_PIPELINE_HASH_venue, "KLINE_SOURCE_SET.VENUE");
+  base.base_asset = required_assignment_value(
+      node, SOURCE_PIPELINE_HASH_kline_source_base_asset_assignment,
+      SOURCE_PIPELINE_HASH_base_asset, "KLINE_SOURCE_SET.BASE_ASSET");
+  base.quote_asset = required_assignment_value(
+      node, SOURCE_PIPELINE_HASH_kline_source_quote_asset_assignment,
+      SOURCE_PIPELINE_HASH_quote_asset, "KLINE_SOURCE_SET.QUOTE_ASSET");
+  base.source_kind = required_assignment_value(
+      node, SOURCE_PIPELINE_HASH_kline_source_kind_assignment,
+      SOURCE_PIPELINE_HASH_source_kind, "KLINE_SOURCE_SET.SOURCE_KIND");
+  std::string source_root = optional_assignment_value(
+      node, SOURCE_PIPELINE_HASH_kline_source_root_assignment,
+      SOURCE_PIPELINE_HASH_source_root_path);
+  if (source_root.empty()) {
+    source_root = default_source_root;
+  }
+  if (source_root.empty()) {
+    throw std::runtime_error("KLINE_SOURCE_SET.SOURCE_ROOT is required when "
+                             "SOURCE_DEFAULTS.SOURCE_ROOT is absent");
+  }
+
+  std::string signature_error{};
+  if (!instrument_signature_validate(
+          base.instrument_signature(), /*allow_any=*/false,
+          "KLINE_SOURCE_SET " + base.instrument, &signature_error)) {
+    throw std::runtime_error(signature_error);
+  }
+
+  const auto *intervals_assignment =
+      dynamic_cast<const IntermediaryNode *>(detail::find_direct_child_by_hash(
+          node, SOURCE_PIPELINE_HASH_kline_intervals_assignment));
+  std::vector<std::string> intervals;
+  collect_node_texts_by_hash(intervals_assignment,
+                             SOURCE_PIPELINE_HASH_interval, intervals);
+  if (intervals.empty()) {
+    intervals = default_kline_intervals;
+  }
+  if (intervals.empty()) {
+    throw std::runtime_error("KLINE_SOURCE_SET.INTERVALS is required when "
+                             "SOURCE_DEFAULTS.KLINE_INTERVALS is absent");
+  }
+
+  for (const auto &interval : intervals) {
+    source_form_t row = base;
+    row.interval =
+        parse_interval_type_strict(interval, "KLINE_SOURCE_SET.INTERVALS");
+    row.source = make_kline_source_path(source_root, row.instrument, interval);
+    out.source_forms.push_back(std::move(row));
+  }
+}
+
 } // namespace
 
 source_registry_decoder_t::source_registry_decoder_t(std::string grammar_text)
@@ -89,11 +310,16 @@ source_spec_t source_registry_decoder_t::decode(std::string instruction) {
   log_dbg("Parsed AST:\n%s\n", oss.str().c_str());
 #endif
 
-  source_spec_t current;
+  source_registry_decode_context_t current;
+  const IntermediaryNode *defaults_block =
+      registry_source_defaults_block(actualAST.get());
+  current.default_source_root = registry_default_source_root(defaults_block);
+  current.default_kline_intervals =
+      registry_default_kline_intervals(defaults_block);
   VisitorContext context(static_cast<void *>(&current));
   actualAST.get()->accept(*this, context);
 
-  return current;
+  return current.spec;
 }
 
 ProductionGrammar source_registry_decoder_t::parseGrammarDefinition() {
@@ -127,17 +353,24 @@ void source_registry_decoder_t::visit(const IntermediaryNode *node,
           node->alt.str(true).c_str());
 #endif
 
-  auto *out = static_cast<source_spec_t *>(context.user_data);
-  if (!out)
+  auto *decode_context =
+      static_cast<source_registry_decode_context_t *>(context.user_data);
+  if (!decode_context)
     return;
+  auto *out = &decode_context->spec;
 
   if (node->hash == SOURCE_PIPELINE_HASH_instrument_table) {
-    out->source_forms.clear();
     return;
   }
 
   if (node->hash == SOURCE_PIPELINE_HASH_data_analytics_policy_block) {
     out->data_analytics_policy.declared = true;
+    return;
+  }
+
+  if (node->hash == SOURCE_PIPELINE_HASH_kline_source_set_block) {
+    append_kline_source_set(node, *out, decode_context->default_source_root,
+                            decode_context->default_kline_intervals);
     return;
   }
 
@@ -283,12 +516,7 @@ void source_registry_decoder_t::visit(const IntermediaryNode *node,
       throw std::runtime_error(signature_error);
     }
 
-    try {
-      f.interval = cuwacunu::ujcamei::source::registry::types::string_to_enum<
-          cuwacunu::ujcamei::source::registry::types::interval_type_e>(
-          interval_s);
-    } catch (...) {
-    }
+    f.interval = parse_interval_type_strict(interval_s, "source row interval");
 
     out->source_forms.push_back(std::move(f));
     return;

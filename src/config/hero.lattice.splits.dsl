@@ -59,7 +59,7 @@ LATTICE_SPLIT {
   SPLIT_ID = train_core;
   ROLE = train;
   ANCHOR_INDEX_BEGIN = 0;
-  ANCHOR_INDEX_END = 1600;
+  ANCHOR_INDEX_END = 1170;
 };
 
 LATTICE_SPLIT {
@@ -74,6 +74,16 @@ LATTICE_SPLIT {
   ROLE = validation;
   ANCHOR_INDEX_BEGIN = 1800;
   ANCHOR_INDEX_END = 2050;
+  ALLOW_USES = evaluation_metric;
+  PROTECT_FROM_USES = observed_input|target_supervision|selection_signal;
+  PROTECT_REQUIRES_MUTATED_COMPONENT = true;
+};
+
+LATTICE_SPLIT {
+  SPLIT_ID = certified_replay_expansion_eval;
+  ROLE = validation;
+  ANCHOR_INDEX_BEGIN = 1200;
+  ANCHOR_INDEX_END = 2247;
   ALLOW_USES = evaluation_metric;
   PROTECT_FROM_USES = observed_input|target_supervision|selection_signal;
   PROTECT_REQUIRES_MUTATED_COMPONENT = true;

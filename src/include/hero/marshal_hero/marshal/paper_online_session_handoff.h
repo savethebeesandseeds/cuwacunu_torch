@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+#include "hero/config_path_defaults.h"
 #include "hero/marshal_hero/marshal/digest.h"
 #include "hero/marshal_hero/marshal/rollout_marshal.h"
 
@@ -30,8 +31,10 @@ inline constexpr const char
 struct marshal_paper_online_session_handoff_request_t {
   std::string schema_version{
       k_marshal_paper_online_session_handoff_request_schema_v1};
-  std::filesystem::path config_path{"/cuwacunu/src/config/.config"};
-  std::filesystem::path runtime_root{"/cuwacunu/.runtime/cuwacunu_exec"};
+  std::filesystem::path config_path{
+      cuwacunu::hero::config_paths::default_global_config_path()};
+  std::filesystem::path runtime_root{
+      cuwacunu::hero::config_paths::default_runtime_root_path()};
   std::filesystem::path readiness_job_dir{};
   std::string readiness_target_id{"paper_online_readiness_contract_ready"};
   std::string readiness_proof_certificate_digest{};

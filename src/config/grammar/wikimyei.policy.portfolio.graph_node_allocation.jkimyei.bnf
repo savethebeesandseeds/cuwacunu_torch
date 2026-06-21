@@ -1,6 +1,6 @@
 <instruction> ::= "TRAINING" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
 <assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key>         ::= "VERSION" | "TRAINING_ID" | "TASK" | "COMPONENT_ASSEMBLY_ID" | "ACTION_DISTRIBUTION" | "OPTIMIZER" | "LEARNING_RATE" | "MAX_STEPS" | "BATCH_SIZE" | "GRAD_CLIP_NORM" | "CHECKPOINT_EVERY" | "REPORT_EVERY" | "VALIDATION_EVERY" | "SEED" | "FREEZE_REPRESENTATION" | "INPUT_REPRESENTATION_CHECKPOINT" | "INPUT_MDN_CHECKPOINT" | "ALLOW_UNTRAINED_REPRESENTATION" | "TRAINING_SCHEDULE_MODE" | "REQUIRE_CAUSAL_SCHEDULE" | "PPO_EXECUTION_ALLOWED" | "CHECKPOINT_KIND" ;
+<key>         ::= "TRAINING_ID" | "TASK" | "LEARNING_RATE" | "MAX_STEPS" | "BATCH_SIZE" | "GRAD_CLIP_NORM" | "PPO_GAMMA" | "PPO_GAE_LAMBDA" | "PPO_CLIP_EPSILON" | "PPO_TARGET_KL" | "PPO_ENTROPY_COEFF" | "PPO_VALUE_LOSS_COEFF" | "PPO_EPOCHS_PER_ROLLOUT" | "CHECKPOINT_EVERY" | "REPORT_EVERY" | "SEED" ;
 <value>       ::= {<value_char>} ;
 <value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "+" | "/" ;
 <line_end>    ::= [<whitespace>] <break_block> ;

@@ -1,6 +1,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -41,6 +42,8 @@ std::string read_text(const std::string &path) {
 std::unordered_map<std::string, std::string>
 read_config_paths(const std::string &path) {
   std::unordered_map<std::string, std::string> out;
+  const auto config_dir =
+      std::filesystem::path(path).lexically_normal().parent_path();
   std::ifstream in(path);
   if (!in) {
     throw std::runtime_error("failed to open " + path);
@@ -62,6 +65,10 @@ read_config_paths(const std::string &path) {
     auto key = kv::trim(line.substr(0, eq));
     auto value = kv::trim(line.substr(eq + 1));
     if (!key.empty() && !value.empty()) {
+      std::filesystem::path value_path(value);
+      if (value_path.is_relative()) {
+        value = (config_dir / value_path).lexically_normal().string();
+      }
       out.emplace(std::move(key), std::move(value));
     }
   }
@@ -295,10 +302,40 @@ void test_channel_specs_decode_and_validate() {
       paths.at("wikimyei_inference_expected_value_mdn_jkimyei_bnf_path"));
   const auto graph_node_allocation_jkimyei_bnf = read_text(paths.at(
       "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path"));
+  const auto bnf_has_canonical_training_policy_key =
+      [](const std::string &bnf) {
+        return bnf.find("TRAINING_VISIBILITY_POLICY") != std::string::npos ||
+               bnf.find("GENERATION_LANE_POLICY") != std::string::npos ||
+               bnf.find("VALID_FROM_POLICY") != std::string::npos ||
+               bnf.find("ARTIFACT_PROVENANCE_POLICY") != std::string::npos;
+      };
+  const auto bnf_has_fixed_training_default_key = [](const std::string &bnf) {
+    return bnf.find("OPTIMIZER") != std::string::npos ||
+           bnf.find("VALIDATION_EVERY") != std::string::npos;
+  };
+  const auto bnf_has_runtime_model_input_key = [](const std::string &bnf) {
+    return bnf.find("INPUT_REPRESENTATION_CHECKPOINT") != std::string::npos ||
+           bnf.find("INPUT_MDN_CHECKPOINT") != std::string::npos ||
+           bnf.find("ALLOW_UNTRAINED_REPRESENTATION") != std::string::npos;
+  };
+  const auto bnf_has_bundle_owned_component_key = [](const std::string &bnf) {
+    return bnf.find("COMPONENT_ASSEMBLY_ID") != std::string::npos;
+  };
+  const auto bnf_has_task_derived_version_key = [](const std::string &bnf) {
+    return bnf.find("VERSION") != std::string::npos;
+  };
+  const auto bnf_has_task_derived_policy_training_key =
+      [](const std::string &bnf) {
+        return bnf.find("TRAINING_SCHEDULE_MODE") != std::string::npos ||
+               bnf.find("REQUIRE_CAUSAL_SCHEDULE") != std::string::npos ||
+               bnf.find("PPO_EXECUTION_ALLOWED") != std::string::npos ||
+               bnf.find("CHECKPOINT_KIND") != std::string::npos;
+      };
   if (protocol_bnf.find("PROTOCOL") == std::string::npos ||
       protocol_bnf.find("REPRESENTATION_CONTRACT") == std::string::npos ||
       protocol_bnf.find("OBSERVER") == std::string::npos ||
       protocol_bnf.find("ALLOCATION_POLICY") == std::string::npos ||
+      protocol_bnf.find("NO_LOOKAHEAD_CONTRACT") == std::string::npos ||
       vicreg_dsl_bnf.find("VICREG") == std::string::npos ||
       vicreg_net_bnf.find("VICREG_NET") == std::string::npos ||
       vicreg_net_bnf.find("VICREG_INVARIANCE_WEIGHT") == std::string::npos ||
@@ -306,12 +343,10 @@ void test_channel_specs_decode_and_validate() {
       vicreg_net_bnf.find("JITTER_STD") == std::string::npos ||
       vicreg_net_bnf.find("FEATURE_DROPOUT_PROB") == std::string::npos ||
       vicreg_net_bnf.find("HISTORY_DROPOUT_PROB") == std::string::npos ||
-      vicreg_jkimyei_bnf.find("FREEZE_REPRESENTATION") == std::string::npos ||
       mtf_dsl_bnf.find("MTF_JEPA_MAE_VICREG") == std::string::npos ||
       mtf_net_bnf.find("MTF_JEPA_MAE_VICREG_NET") == std::string::npos ||
       mtf_net_bnf.find("TARGET_EMA_TAU") == std::string::npos ||
       mtf_net_bnf.find("LAMBDA_GLOBAL_VICREG") == std::string::npos ||
-      mtf_jkimyei_bnf.find("FREEZE_REPRESENTATION") == std::string::npos ||
       channel_mdn_dsl_bnf.find("MDN") == std::string::npos ||
       channel_mdn_net_bnf.find("MDN_NET") == std::string::npos ||
       channel_mdn_net_bnf.find("GLOBAL_CONTEXT_DIM") == std::string::npos ||
@@ -341,8 +376,6 @@ void test_channel_specs_decode_and_validate() {
           std::string::npos ||
       graph_node_allocation_net_bnf.find("GRAPH_NODE_ALLOCATION_NET") ==
           std::string::npos ||
-      graph_node_allocation_net_bnf.find("ACTION_DISTRIBUTION") ==
-          std::string::npos ||
       graph_node_allocation_net_bnf.find("POLICY_INPUT_FEATURE_MANIFEST") ==
           std::string::npos ||
       graph_node_allocation_net_bnf.find("NODE_ENCODER_LAYERS") ==
@@ -363,14 +396,74 @@ void test_channel_specs_decode_and_validate() {
       replay_environment_bnf.find("REQUIRE_NO_FUTURE_LEAKAGE") ==
           std::string::npos ||
       replay_environment_bnf.find("LIVE_CAPITAL_ALLOWED") ==
-          std::string::npos ||
-      channel_mdn_jkimyei_bnf.find("INPUT_MDN_CHECKPOINT") ==
-          std::string::npos ||
-      graph_node_allocation_jkimyei_bnf.find("TRAINING_SCHEDULE_MODE") ==
-          std::string::npos ||
-      graph_node_allocation_jkimyei_bnf.find("PPO_EXECUTION_ALLOWED") ==
           std::string::npos) {
     throw std::runtime_error("channel config BNF surface mismatch");
+  }
+  if (bnf_has_canonical_training_policy_key(vicreg_jkimyei_bnf) ||
+      bnf_has_canonical_training_policy_key(mtf_jkimyei_bnf) ||
+      bnf_has_canonical_training_policy_key(channel_mdn_jkimyei_bnf) ||
+      bnf_has_canonical_training_policy_key(
+          graph_node_allocation_jkimyei_bnf)) {
+    throw std::runtime_error(
+        "canonical training policy keys leaked into jkimyei BNF surface");
+  }
+  if (graph_node_allocation_jkimyei_bnf.find("ACTION_DISTRIBUTION") !=
+      std::string::npos) {
+    throw std::runtime_error(
+        "policy action distribution leaked into jkimyei BNF surface");
+  }
+  if (graph_node_allocation_net_bnf.find("ACTION_ADAPTER") !=
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("ACTION_DISTRIBUTION") !=
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("PPO_EXECUTION_ALLOWED") !=
+          std::string::npos) {
+    throw std::runtime_error(
+        "policy action/gate identity leaked into allocation net BNF surface");
+  }
+  if (bnf_has_task_derived_policy_training_key(vicreg_jkimyei_bnf) ||
+      bnf_has_task_derived_policy_training_key(mtf_jkimyei_bnf) ||
+      bnf_has_task_derived_policy_training_key(channel_mdn_jkimyei_bnf) ||
+      bnf_has_task_derived_policy_training_key(
+          graph_node_allocation_jkimyei_bnf)) {
+    throw std::runtime_error(
+        "policy task-derived keys leaked into jkimyei BNF surface");
+  }
+  if (bnf_has_fixed_training_default_key(vicreg_jkimyei_bnf) ||
+      bnf_has_fixed_training_default_key(mtf_jkimyei_bnf) ||
+      bnf_has_fixed_training_default_key(channel_mdn_jkimyei_bnf) ||
+      bnf_has_fixed_training_default_key(graph_node_allocation_jkimyei_bnf)) {
+    throw std::runtime_error(
+        "fixed training defaults leaked into jkimyei BNF surface");
+  }
+  if (bnf_has_runtime_model_input_key(vicreg_jkimyei_bnf) ||
+      bnf_has_runtime_model_input_key(mtf_jkimyei_bnf) ||
+      bnf_has_runtime_model_input_key(channel_mdn_jkimyei_bnf) ||
+      bnf_has_runtime_model_input_key(graph_node_allocation_jkimyei_bnf)) {
+    throw std::runtime_error(
+        "runtime model-state inputs leaked into jkimyei BNF surface");
+  }
+  if (vicreg_jkimyei_bnf.find("FREEZE_REPRESENTATION") != std::string::npos ||
+      mtf_jkimyei_bnf.find("FREEZE_REPRESENTATION") != std::string::npos ||
+      channel_mdn_jkimyei_bnf.find("FREEZE_REPRESENTATION") !=
+          std::string::npos ||
+      graph_node_allocation_jkimyei_bnf.find("FREEZE_REPRESENTATION") !=
+          std::string::npos) {
+    throw std::runtime_error(
+        "fixed freeze policy leaked into jkimyei BNF surface");
+  }
+  if (bnf_has_bundle_owned_component_key(vicreg_jkimyei_bnf) ||
+      bnf_has_bundle_owned_component_key(mtf_jkimyei_bnf) ||
+      bnf_has_bundle_owned_component_key(channel_mdn_jkimyei_bnf) ||
+      bnf_has_bundle_owned_component_key(graph_node_allocation_jkimyei_bnf)) {
+    throw std::runtime_error(
+        "component assembly id leaked into jkimyei BNF surface");
+  }
+  if (bnf_has_task_derived_version_key(vicreg_jkimyei_bnf) ||
+      bnf_has_task_derived_version_key(mtf_jkimyei_bnf) ||
+      bnf_has_task_derived_version_key(channel_mdn_jkimyei_bnf) ||
+      bnf_has_task_derived_version_key(graph_node_allocation_jkimyei_bnf)) {
+    throw std::runtime_error("version token leaked into jkimyei BNF surface");
   }
   const auto representation_dsl_text =
       read_text(paths.at("wikimyei_representation_vicreg_dsl_path"));
@@ -417,6 +510,22 @@ void test_channel_specs_decode_and_validate() {
   const auto allocation_net_spec =
       graph_allocation::decode_graph_node_allocation_net_spec_from_dsl(
           graph_node_allocation_net_text);
+  if (graph_node_allocation_net_text.find("ACTION_ADAPTER") !=
+          std::string::npos ||
+      graph_node_allocation_net_text.find("ACTION_DISTRIBUTION") !=
+          std::string::npos ||
+      graph_node_allocation_net_text.find("PPO_EXECUTION_ALLOWED") !=
+          std::string::npos) {
+    throw std::runtime_error(
+        "policy action/gate identity leaked into allocation net config");
+  }
+  if (allocation_net_spec.action_adapter != "target_node_weights_simplex.v1" ||
+      allocation_net_spec.action_distribution !=
+          "masked_dirichlet_simplex.v1" ||
+      !allocation_net_spec.ppo_execution_allowed) {
+    throw std::runtime_error(
+        "allocation net should derive policy action/gate defaults");
+  }
   const auto allocation_feature_manifest =
       graph_allocation::decode_graph_node_allocation_feature_manifest_from_dsl(
           graph_node_allocation_features_text);
@@ -425,16 +534,24 @@ void test_channel_specs_decode_and_validate() {
           replay_environment_dsl_text);
   const auto representation_training =
       training::decode_training_run_spec_from_dsl(
-          read_text(paths.at("wikimyei_representation_vicreg_jkimyei_path")));
-  const auto mtf_training =
-      training::decode_training_run_spec_from_dsl(read_text(paths.at(
-          "wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path")));
-  const auto mdn_training =
-      training::decode_training_run_spec_from_dsl(read_text(
-          paths.at("wikimyei_inference_expected_value_mdn_jkimyei_path")));
-  const auto allocation_training =
-      training::decode_training_run_spec_from_dsl(read_text(paths.at(
-          "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path")));
+          read_text(paths.at("wikimyei_representation_vicreg_jkimyei_path")),
+          protocol::config_bundle_detail::
+              training_contract_defaults_for_component(
+                  protocol_variant, representation_spec.component_assembly_id));
+  const auto mtf_training = training::decode_training_run_spec_from_dsl(
+      read_text(
+          paths.at("wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path")),
+      protocol::config_bundle_detail::training_contract_defaults_for_component(
+          protocol_variant, mtf_spec.component_assembly_id));
+  const auto mdn_training = training::decode_training_run_spec_from_dsl(
+      read_text(paths.at("wikimyei_inference_expected_value_mdn_jkimyei_path")),
+      protocol::config_bundle_detail::training_contract_defaults_for_component(
+          protocol_variant, mdn_spec.component_assembly_id));
+  const auto allocation_training = training::decode_training_run_spec_from_dsl(
+      read_text(paths.at(
+          "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path")),
+      protocol::config_bundle_detail::training_contract_defaults_for_component(
+          protocol_variant, allocation_spec.component_assembly_id));
 
   if (representation_spec.component_assembly_id != "vicreg_v1") {
     throw std::runtime_error("VICReg component id mismatch");
@@ -601,18 +718,32 @@ void test_channel_specs_decode_and_validate() {
   if (representation_training.task !=
           training::training_task_t::vicreg_representation ||
       representation_training.component_assembly_id !=
-          representation_spec.component_assembly_id) {
+          representation_spec.component_assembly_id ||
+      representation_training.no_lookahead_contract_digest !=
+          protocol_variant.no_lookahead_contract.contract_digest ||
+      representation_training.component_role != "representation" ||
+      representation_training.serving_order_index != 0 ||
+      representation_training.freeze_representation) {
     throw std::runtime_error("VICReg training spec mismatch");
   }
   if (mtf_training.task !=
           training::training_task_t::mtf_jepa_mae_vicreg_representation ||
-      mtf_training.component_assembly_id != mtf_spec.component_assembly_id) {
+      mtf_training.component_assembly_id != mtf_spec.component_assembly_id ||
+      mtf_training.no_lookahead_contract_digest !=
+          protocol_variant.no_lookahead_contract.contract_digest ||
+      mtf_training.component_role != "representation" ||
+      mtf_training.serving_order_index != 0 ||
+      mtf_training.freeze_representation) {
     throw std::runtime_error("MTF-JEPA-MAE-VICReg training spec mismatch");
   }
   if (mdn_training.task !=
           training::training_task_t::mdn_expected_value_inference ||
       mdn_training.component_assembly_id != mdn_spec.component_assembly_id ||
-      !mdn_training.freeze_representation) {
+      !mdn_training.freeze_representation ||
+      mdn_training.no_lookahead_contract_digest !=
+          protocol_variant.no_lookahead_contract.contract_digest ||
+      mdn_training.component_role != "mdn" ||
+      mdn_training.serving_order_index != 1) {
     throw std::runtime_error("MDN training spec mismatch");
   }
   if (allocation_training.task !=
@@ -625,7 +756,13 @@ void test_channel_specs_decode_and_validate() {
           "causal_walk_forward_training.v1" ||
       !allocation_training.require_causal_schedule ||
       !allocation_training.ppo_execution_allowed ||
-      allocation_training.checkpoint_kind != "ppo_v0_policy_adapter") {
+      allocation_training.checkpoint_kind != "ppo_v0_policy_adapter" ||
+      allocation_training.no_lookahead_contract_digest !=
+          protocol_variant.no_lookahead_contract.contract_digest ||
+      allocation_training.component_role != "policy" ||
+      allocation_training.serving_order_index != 2 ||
+      allocation_training.artifact_provenance_policy !=
+          training::k_artifact_provenance_policy_transitive_v1) {
     throw std::runtime_error(
         "graph-node allocation policy training spec mismatch");
   }

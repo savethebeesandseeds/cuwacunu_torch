@@ -4,11 +4,10 @@
 #include <string>
 #include <string_view>
 
+#include "hero/config_path_defaults.h"
 #include "hero/runtime_hero/hero_runtime_tools.h"
 
 namespace {
-
-constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
   std::size_t begin = 0;
@@ -25,6 +24,13 @@ constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 }
 
 void print_help(const char *argv0) {
+  const auto default_global_config_path =
+      cuwacunu::hero::config_paths::default_global_config_path(argv0);
+  const auto default_global_config = default_global_config_path.string();
+  const auto default_policy_path =
+      cuwacunu::hero::config_paths::default_config_sibling_path(
+          default_global_config_path, "hero.runtime.dsl")
+          .string();
   std::cout
       << "Usage: " << argv0
       << " [--global-config <path>] [--config <hero_runtime_dsl>]"
@@ -33,7 +39,9 @@ void print_help(const char *argv0) {
          " [--list-tools] [--list-tools-json]\n"
       << "  default mode: JSON-RPC over stdio\n"
       << "  default policy path: [HERO].runtime_hero_dsl_path in "
-         "--global-config, then /cuwacunu/src/config/hero.runtime.dsl\n"
+         "--global-config, then "
+      << default_policy_path << "\n"
+      << "  default global config: " << default_global_config << "\n"
       << "  default profile: --profile, then [HERO].runtime_hero_profile, "
          "then runtime_profile in the policy file\n"
       << "  internal: --runtime-replay-delegate --args-json <json> runs the "
@@ -67,8 +75,7 @@ void print_help(const char *argv0) {
       << "  Boundary:\n"
       << "    Runtime Hero executes allowed waves/replay, can run bounded "
          "policy-training\n"
-      << "    contract paths for noop_policy_training.v1 and "
-         "ppo_policy_adapter.v1,\n"
+      << "    contract paths for ppo_policy_adapter.v1,\n"
       << "    and reads job evidence. Readiness-grade policy training must "
          "bind\n"
       << "    causal_walk_forward_training.v1 schedule identity.\n"
@@ -80,7 +87,8 @@ void print_help(const char *argv0) {
 } // namespace
 
 int main(int argc, char **argv) {
-  std::filesystem::path global_config_path = kDefaultGlobalConfigPath;
+  std::filesystem::path global_config_path =
+      cuwacunu::hero::config_paths::default_global_config_path(argv[0]);
   std::filesystem::path policy_path;
   std::string profile_override;
   bool policy_overridden = false;

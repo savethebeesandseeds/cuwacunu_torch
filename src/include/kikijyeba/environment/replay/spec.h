@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -50,6 +51,9 @@ struct replay_environment_spec_t {
   bool allocation_authority{false};
   bool execution_authority{false};
   bool live_capital_allowed{false};
+  double initial_equity_numeraire{1.0};
+  double max_node_weight{1.0};
+  double max_turnover_l1{1.0};
   std::int64_t default_max_parallel_jobs{1};
 };
 
@@ -198,6 +202,22 @@ validate_replay_environment_spec(const replay_environment_spec_t &spec) {
         "[replay_environment_spec] replay V1 is audit-only and cannot execute "
         "or authorize live capital");
   }
+  if (!std::isfinite(spec.initial_equity_numeraire) ||
+      spec.initial_equity_numeraire <= 0.0) {
+    throw std::runtime_error(
+        "[replay_environment_spec] INITIAL_EQUITY_NUMERAIRE must be positive "
+        "finite");
+  }
+  if (!std::isfinite(spec.max_node_weight) || spec.max_node_weight < 0.0 ||
+      spec.max_node_weight > 1.0) {
+    throw std::runtime_error(
+        "[replay_environment_spec] MAX_NODE_WEIGHT must be in [0,1]");
+  }
+  if (!std::isfinite(spec.max_turnover_l1) || spec.max_turnover_l1 < 0.0) {
+    throw std::runtime_error(
+        "[replay_environment_spec] MAX_TURNOVER_L1 must be nonnegative "
+        "finite");
+  }
   if (spec.default_max_parallel_jobs <= 0) {
     throw std::runtime_error(
         "[replay_environment_spec] DEFAULT_MAX_PARALLEL_JOBS must be "
@@ -255,6 +275,12 @@ decode_replay_environment_spec_from_dsl(const std::string &dsl_text) {
       kv::parse_bool(kv::required(block, "EXECUTION_AUTHORITY"));
   spec.live_capital_allowed =
       kv::parse_bool(kv::required(block, "LIVE_CAPITAL_ALLOWED"));
+  spec.initial_equity_numeraire =
+      kv::parse_double(kv::required(block, "INITIAL_EQUITY_NUMERAIRE"));
+  spec.max_node_weight =
+      kv::parse_double(kv::required(block, "MAX_NODE_WEIGHT"));
+  spec.max_turnover_l1 =
+      kv::parse_double(kv::required(block, "MAX_TURNOVER_L1"));
   spec.default_max_parallel_jobs =
       kv::parse_i64(kv::required(block, "DEFAULT_MAX_PARALLEL_JOBS"));
   validate_replay_environment_spec(spec);
