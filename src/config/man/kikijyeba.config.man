@@ -4,29 +4,30 @@
 
 The Kikijyeba section binds protocol, topology, and environment DSL files.
 Runtime wave catalogs and Lattice target/split catalogs are Hero-owned config
-surfaces under `[HERO]`.
+surfaces under `[HERO]`. Conventional grammar paths are derived from the paired
+data paths under `src/config/grammar`; explicit `*_bnf_path` keys are accepted
+only as nonstandard grammar overrides.
 
 ## Protocol And Topology
 
-- `kikijyeba_protocol_dsl_bnf_path`
-  - Grammar for `kikijyeba.protocol.*.dsl`.
 - `kikijyeba_protocol_dsl_path`
   - Active graph-first protocol variant.
+  - Its default grammar is `grammar/kikijyeba.protocol.dsl.bnf`; active
+    protocol variant suffixes such as `cwu_02v` are not part of the grammar
+    filename.
   - The protocol DSL binds active graph, nodelift, representation, inference,
     observer, allocation-policy, and representation-contract identity. Policy
     parameter files remain under `[WIKIMYEI]`; rollout comparison policy sets
     remain Marshal/Runtime request identity, not protocol identity.
-- `kikijyeba_topology_graph_dsl_bnf_path`
-  - Grammar for `kikijyeba.topology.graph.dsl`.
 - `kikijyeba_topology_graph_dsl_path`
   - Active market graph/topology contract.
+  - Its default grammar is `grammar/kikijyeba.topology.graph.dsl.bnf`.
 
 ## Replay Environment
 
-- `kikijyeba_environment_replay_dsl_bnf_path`
-  - Grammar for `kikijyeba.environment.replay.dsl`.
 - `kikijyeba_environment_replay_dsl_path`
   - Contract for `kikijyeba.environment.replay.v1`.
+  - Its default grammar is `grammar/kikijyeba.environment.replay.dsl.bnf`.
   - V1 is historical replay only. It uses an RL-compatible `reset/step` API,
     episode-parallel and step-sequential execution, Ujcamei/component-stream
     cursor ranges, time-t observations, post-action realization reveal,

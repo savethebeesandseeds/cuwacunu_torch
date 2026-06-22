@@ -12,6 +12,11 @@ Graph-first protocol optional path defaults first look beside the active
 `.config`; when a partial override config omits a default file, they fall back
 through the canonical default config root rather than carrying per-file absolute
 paths.
+Conventional grammar paths are derived from paired authored data paths and
+`src/config/grammar`. For example, `foo_dsl_path = foo.dsl` derives
+`grammar/foo.dsl.bnf`; `kikijyeba.protocol.<variant>.dsl` derives the shared
+`grammar/kikijyeba.protocol.dsl.bnf`. Author `*_bnf_path` only when a file needs
+a nonstandard grammar override.
 Hero policy DSLs use the same local-bundle convention for their own config
 bundle pointers: `config_root = .`, `managed_roots = .`, and
 `default_config_path = .config` resolve beside the owning `hero.*.dsl` policy.
@@ -65,7 +70,8 @@ invalid assets fall back to the bundled waajacamaya resources or text wordmark.
 `hero.runtime.wave.dsl` is a Runtime-owned wave catalog. The active block is
 selected by `[HERO].runtime_wave_id`, and each selected block names the active
 protocol with `PROTOCOL`, the protocol-level focal runtime component with
-`TARGET`, and the shared source cursor with `SOURCE_CURSOR_ID`.
+`TARGET`, and either a source cursor with `SOURCE_CURSOR_ID` or a named Ujcamei
+source split with `SOURCE_SPLIT`.
 Use `wave` for component execution profiles: representation and MDN train/run
 jobs, plus graph-node allocation policy train profiles, that move across a
 source range and mutate only their selected `TARGET` in train mode. Policy is a
@@ -89,9 +95,10 @@ architecture identity fields.
 `CONTEXT_MODE=channel_context_strict` keeps the strict baseline;
 `channel_context_plus_global` is reserved for the explicit
 post-representation global branch and requires `GLOBAL_CONTEXT_DIM>0` in the
-MDN net file. Channel-bearing config surfaces have their own BNF paths in
-`.config`; keep those BNF files in sync with the VICReg/MDN DSL, net,
-and Jkimyei keys. The active runtime uses channel-preserving VICReg and strict
+MDN net file. Channel-bearing config surfaces derive their grammar paths from
+the paired data paths in `.config`; author an explicit `*_bnf_path` only for a
+nonstandard grammar override. Keep those BNF files in sync with the VICReg/MDN
+DSL, net, and Jkimyei keys. The active runtime uses channel-preserving VICReg and strict
 channel-context MDN targets.
 
 `wikimyei.observer.belief.dsl`,
@@ -114,13 +121,14 @@ binds `kikijyeba.environment.policy_input.v1`,
 `masked_dirichlet_simplex.v1`,
 `kikijyeba.environment.action.target_node_weights.v1`, and
 `kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_drawdown.v1`;
-its `.net` binds the V1 feature manifest, shared node/global/risk encoder shape,
+its `.net` binds the V1 feature manifest, shared node/global/risk encoders,
 mask-aware pooling, separate policy/value heads, `node_weight_logits` output
 head, Dirichlet distribution parameterization, and the logistic-normal candidate
 parameterization. The net decoder derives the V1 action adapter,
-action-distribution identity, and PPO execution gate from the policy surface
-instead of reauthoring them in the net file. The `.features.dsl` freezes actor-visible
-node/global/risk feature names and evidence-only identity fields. V1 policy
+action-distribution identity, PPO execution gate, and input feature dimensions
+instead of reauthoring them in the net file. The `.features.dsl` freezes
+actor-visible node/global/risk feature names and evidence-only identity fields;
+feature dimensions are derived from those name lists. V1 policy
 input exposes compressed `AllocationBelief` distributional summaries, portfolio
 weights, execution/cost state, masks, an accounting-numeraire node flag, and a
 compact cross-node risk block;
@@ -133,12 +141,14 @@ requirement, the PPO execution gate, and `ppo_v0_policy_adapter` checkpoint kind
 from that task while the profile owns the stable PPO hyperparameters,
 minibatch/gradient/cadence knobs, and seed. Live capital remains forbidden.
 `src/config/kikijyeba.protocol.cwu_02v.dsl` owns the canonical
-`NO_LOOKAHEAD_CONTRACT` block. Config-bundle loading derives the
-representation, MDN, and policy no-lookahead/order ids, digests, component
-assembly ids from the owning component DSLs, and component roles and
-serving-order indexes from the protocol-owned contract; the training-spec
-decoder also derives each training version token and freeze policy from `TASK`
-and supplies the canonical v1 visibility, lane, valid-from, and
+`NO_LOOKAHEAD_CONTRACT` block. That block authors the semantic `CONTRACT_ID`;
+config-bundle loading derives the no-lookahead contract digest from a canonical
+serialization of the block, then derives the representation, MDN, and policy
+no-lookahead/order ids, digests, component assembly ids from the owning
+component DSLs, and component roles and serving-order indexes from the
+protocol-owned contract. The training-spec decoder also derives each training
+version token and freeze policy from `TASK` and supplies the canonical v1
+visibility, lane, valid-from, and
 artifact-provenance policies for every root `.jkimyei` profile.
 Runtime
 supports the guarded
@@ -297,13 +307,17 @@ that historical replay calls today and that a later paper-online environment
 should reuse with live market data.
 `MODE=run` executes the target dependency closure without optimizer steps.
 `MODE=train` mutates only `TARGET`; upstream dependencies run frozen.
-Wave source ranges are selected through protocol-neutral `SOURCE_CURSOR_ID`
-entries in `src/config/ujcamei.source.cursor.dsl`. Cursors may use
-`SOURCE_RANGE=all`, `SOURCE_RANGE=anchor_index`, or `SOURCE_RANGE=source_key` for
-stable integral graph-anchor source keys such as kline millisecond close times.
-Runtime resolves source-key cursors into anchor-index intervals before execution
-and records both coordinates in manifests, states, reports, and component stream
-`.lls` payloads.
+Wave source ranges are selected either through protocol-neutral
+`SOURCE_CURSOR_ID` entries in `src/config/ujcamei.source.cursor.dsl` or through
+`SOURCE_SPLIT` bindings resolved from `src/config/ujcamei.source.splits.dsl`.
+Cursor entries remain for full-domain and explicitly ad hoc windows. Named
+train/validation/test split intent is owned by the Ujcamei source split catalog;
+fraction splits materialize against the active ordered accepted-anchor domain at
+runtime. Cursors may use `SOURCE_RANGE=all`, `SOURCE_RANGE=anchor_index`, or
+`SOURCE_RANGE=source_key` for stable integral graph-anchor source keys such as
+kline millisecond close times. Runtime resolves source-key and fraction split
+selectors into anchor-index intervals before execution and records the effective
+coordinates in manifests, states, reports, and component stream `.lls` payloads.
 
 MDN training is graph-slot centered and expects a frozen representation encoder.
 `INPUT_REPRESENTATION_CHECKPOINT` and `INPUT_MDN_CHECKPOINT` are runtime
@@ -338,8 +352,8 @@ Protocol variants live under `kikijyeba.protocol.*.dsl` and are selected by
 available as the VICReg baseline and declares `PROTOCOL_STATUS = legacy`,
 `SUCCESSOR_PROTOCOL = cwu_02v`, and a warning recommending the newer protocol
 for new training/evaluation runs. Wave files remain launch profiles for
-target/mode/cursor/source-order choices; they should not be the authority for
-which representation architecture is docked into a protocol.
+target/mode/cursor-or-split/source-order choices; they should not be the
+authority for which representation architecture is docked into a protocol.
 
 Protocol variants also bind the active observer, deterministic allocation
 policy, and graph-node allocation policy component:
@@ -387,23 +401,30 @@ Reusable wave profiles now live inside the single canonical wave catalog:
 - `src/config/ujcamei.source.cursor.dsl`
 - checked-in wave ids include `train_core_vicreg`,
   `train_core_mtf_jepa_mae_vicreg`, `train_core_channel_mdn`,
-  `cwu_02v_channel_validation_eval_mdn_1800_2050`,
+  `cwu_02v_validation_holdout_eval_mdn`,
+  `cwu_02v_certified_replay_eval_mdn`,
   `cwu_01v_validation_eval_channel_mdn`,
   `cwu_02v_validation_eval_channel_mdn`, and `policy_training_ppo_v0`
 
-Train-core training waves use the bounded `train_core.0_1600` source cursor so
-their Runtime evidence matches the Lattice `train_core` split instead of
-full-corpus pretraining evidence.
+`cwu_02v` train-core training waves use `SOURCE_SPLIT = train_core`, so their
+Runtime source range is materialized from the Ujcamei `train_core` split intent
+instead of a duplicated Ujcamei cursor range. The baseline `cwu_01v` VICReg wave
+still uses the explicit `cwu_01v_train_core_window` ad hoc cursor window.
 
 The canonical `src/config/.config` points `[HERO].runtime_wave_dsl_path` at this
 same file and selects the active block with `[HERO].runtime_wave_id`. The
-checked-in `WAVE_SELECTION.ACTIVE_WAVE_ID` is only a fallback for direct file
-decoding. Cursor ranges live in `ujcamei.source.cursor.dsl`; cursor ids
-intentionally avoid protocol names because source availability is independent of
-the active protocol. Runtime execution may still adjust the effective
-launch range through Runtime handoff wave fields, or the equivalent
-`cuwacunu_exec --source-range ...` flags, without mutating the wave or cursor
-catalog. Effective ranges are not protocol identity.
+canonical multi-wave catalog does not carry a checked-in active-wave fallback,
+and `WAVE_SELECTION.ACTIVE_WAVE_ID` is retired. Single-block fixtures may omit
+`runtime_wave_id`; multi-wave configs must select the active wave in caller
+config. Cursor ranges for full-domain and ad hoc windows live in
+`ujcamei.source.cursor.dsl`; named split ranges live in
+`ujcamei.source.splits.dsl`, while Lattice split proof/protection policy lives in
+`hero.lattice.split_policy.dsl`. Cursor ids intentionally avoid protocol names
+because source availability is independent of the active protocol. Runtime
+execution may still adjust the effective launch range through Runtime handoff wave
+fields, or the equivalent `cuwacunu_exec --source-range ...` flags, without
+mutating the wave, cursor, or split catalogs. Effective ranges are not protocol
+identity.
 
 The learned-policy activation request is derived by Runtime from the active
 `policy_training_ppo_v0` wave. There is no checked-in policy-training
@@ -418,11 +439,13 @@ the graph/accounting pair, policy input/action/reward surface values and
 policy-source identity digests from
 `src/config/wikimyei.policy.portfolio.graph_node_allocation.dsl`, policy
 net/feature source identities from the configured graph-node allocation net and
-feature manifest, `policy_jkimyei_digest`, `training_config_digest`, and
+feature manifest, feature dimensions from the manifest feature-name lists,
+`policy_jkimyei_digest`, `training_config_digest`, and
 policy-training `max_steps` from the configured graph-node allocation
-`.jkimyei`, policy id/kind, training-schedule mode, causal schedule digest,
-snapshot-family digest, and selector policy digests from the selected
-policy-training Runtime wave,
+`.jkimyei`, policy id/kind and training-schedule mode from protocol
+`POLICY_COMPONENT` plus the configured graph-node allocation `.jkimyei` task,
+causal schedule digest, snapshot-family digest, and selector policy digests from
+Runtime policy-training defaults and active protocol identity,
 representation/MDN bundle component ids from the active protocol DSL, and
 `linear_transaction_cost_rate` plus policy-training `max_parallel_jobs` from the
 configured Environment rollout profile. Runtime derives
@@ -435,8 +458,9 @@ non-policy wave, Runtime uses the unique `JOB_KIND=policy_training`
 ambiguous. Policy-training waves bind `TRAIN_SPLIT`, `VALIDATION_SPLIT`, and
 `TEST_SPLIT`; Runtime derives the split-policy fingerprint plus the
 training/validation/test range digests from those names and
-`[HERO].lattice_splits_dsl_path`. Runtime derives the policy-execution target
-id for the
+`[UJCAMEI].ujcamei_source_splits_dsl_path` bound to
+`[HERO].lattice_split_policy_dsl_path`. Runtime derives the policy-execution
+target id for the
 `policy_training_artifact_ready` artifact-readiness target, derives the
 PPO advantage-normalization policy from the Runtime PPO update semantics,
 derives the Runtime-owned purged-embargo policy fingerprint, derives the
@@ -562,7 +586,7 @@ instead of accepting a declared clean checkpoint frontier.
 Policy-training facts also carry the policy `.jkimyei` no-lookahead/order
 contract refs. Lattice rejects readiness-grade policy evidence when those refs
 are missing, drifted from the canonical cwu_02v contract, or inconsistent with
-the contract digest carried by the no-lookahead evidence.
+the derived contract digest carried by the no-lookahead evidence.
 `hero.marshal.inspect.facts` is the read-only path for Lattice
 artifact-readiness targets and fact-family summaries. It can relay current
 Lattice inspect panels
@@ -582,11 +606,30 @@ The lattice target DSL is now profile/guard aware. `LATTICE_PROFILE` captures
 reusable target defaults, including artifact-readiness class/scope/component
 defaults, `LATTICE_GUARD` remains available for low-level
 forbidden exposure policy, and `LATTICE_TARGET` binds those pieces to a concrete
-split or source range. Validation/test holdout protection should usually live in
-`hero.lattice.splits.dsl` through `PROTECT_FROM_USES`; targets can opt into
-that default with `PROTECT_SPLIT`. The preferred target spellings are
-`OVER_SPLIT`, `WAVE_MODE`, and `PLAN_MAX_ATTEMPTS`; compatibility aliases still
-load so older flat targets remain valid. Readiness targets derive
+split or source range. `LATTICE_TARGET_FAMILY` is the compact authoring form for
+deterministic target expansions; `FAMILY_KIND=protocol_train_core_readiness`
+materializes the protocol-scoped representation and MDN train-core readiness
+aliases from `PROTOCOL_IDS`, representation profiles, the MDN profile, and
+`OVER_SPLIT`, while `FAMILY_KIND=protocol_channel_mdn_leakage_guard_chain`
+materializes the validation/test no-leakage guard chain from `PROTOCOL_IDS`,
+and `FAMILY_KIND=protocol_channel_mdn_evaluation_readiness` materializes the
+validation/certified-replay evaluation targets from `PROTOCOL_IDS` plus
+`EVALUATION_SPLITS`. `FAMILY_KIND=profile_artifact_readiness_targets`
+materializes artifact-readiness target/fact-family pairs from one shared
+`USE_PROFILE` or from paired `USE_PROFILE_IDS`.
+Validation/test holdout protection should usually live in
+`hero.lattice.split_policy.dsl` through `PROTECT_FROM_USES`; split-bound training
+readiness targets derive default `validation_holdout` protection, and
+evaluation-readiness targets derive protection from their evaluation split.
+Use `PROTECT_SPLIT` only for an intentional non-default protected split. The
+preferred target spellings are
+`OVER_SPLIT`, `WAVE_MODE`, and `PLAN_MAX_ATTEMPTS`; older synonym spellings
+still load with validation so older flat targets remain readable.
+`OVER_SPLIT`/`TRAIN_SPLIT` resolves to
+`SOURCE_RANGE=anchor_index` when the source range is omitted; fraction split
+intent materializes from the active accepted-anchor count during evaluation.
+Explicit `SOURCE_RANGE` remains for full-range targets and manually bounded
+anchor-index targets. Readiness targets derive
 `SUBJECT_COMPONENT` from `TARGET_KIND` and reject mismatches, so only artifact
 or non-standard proof surfaces need to author a component explicitly.
 Channel-MDN leakage guards can use
@@ -622,9 +665,9 @@ Artifact-readiness targets use `TARGET_CLASS=artifact_readiness`,
 `TARGET_KIND`. `ARTIFACT_SCOPE=cwu_02v_validation` is the compact authoring
 form for the current artifact-proof scope and may be inherited through a
 `LATTICE_PROFILE`; it lowers to
-`PROTOCOL_ID=cwu_02v`, `SOURCE_RANGE=anchor_index`, and
-`OVER_SPLIT=validation_holdout`. The default target catalog declares the first cwu_02v
-validation-scope artifact proofs as `target_transform_contract_ready`,
+`PROTOCOL_ID=cwu_02v`, resolved `SOURCE_RANGE=anchor_index`, and
+`OVER_SPLIT=validation_holdout`. The default target catalog declares the first
+cwu_02v validation-scope artifact proofs as `target_transform_contract_ready`,
 `forecast_baseline_artifact_ready`, `forecast_eval_artifact_ready`,
 `observer_belief_artifact_ready`, and `allocation_artifact_ready`. Policy gates
 are still disabled:
@@ -706,12 +749,18 @@ copy then remove when rename is not available across filesystems.
 `hero.lattice.targets.dsl` sits one level above waves and is pointed to by
 `[HERO].lattice_targets_dsl_path`. It declares read-only readiness targets over
 contract-scoped runtime evidence and may recommend the next wave, but it does
-not execute anything. `hero.lattice.splits.dsl` is pointed to by
-`[HERO].lattice_splits_dsl_path` and defines named graph-anchor cursor ranges such as
-`train_core`, `validation_holdout`, and `test_holdout`. Targets can refer to
-those names with `TRAIN_SPLIT` / `OVER_SPLIT`, and validation/test splits can
-declare default `PROTECT_FROM_USES` so targets can simply use `PROTECT_SPLIT`.
-V1 split ranges are graph-anchor index intervals; purge/embargo fields are
+not execute anything. `ujcamei.source.splits.dsl` is pointed to by
+`[UJCAMEI].ujcamei_source_splits_dsl_path` and defines named graph-anchor split
+intent such as `train_core`, `validation_holdout`, and `test_holdout`.
+`hero.lattice.split_policy.dsl` is pointed to by
+`[HERO].lattice_split_policy_dsl_path` and binds Lattice proof/protection
+semantics to those Ujcamei-owned split ids. Targets can refer to those names with
+`TRAIN_SPLIT` / `OVER_SPLIT`, and validation/test splits can declare default
+`PROTECT_FROM_USES`; split-bound training/evaluation readiness targets derive the
+standard protected split, while `PROTECT_SPLIT` remains available for non-default
+protection.
+V1 split selectors are absolute graph-anchor index intervals or rational
+fraction ranges over the active accepted-anchor domain. Purge/embargo fields are
 enforced for split protection: `auto_from_Hx` expands the protected footprint
 left by the observed context window, and `auto_from_Hf` expands it right by the
 future target window. The evaluator derives those windows from runtime exposure
@@ -1031,7 +1080,7 @@ vocabulary instead of a private hardcoded shape table.
 `derived_query_rule_vocabulary_digest` bind that declared rule vocabulary so
 clients can compare explain/evaluate/plan surfaces without recomputing the
 canonical text. `derived_query_projection_semantics_vocabulary` defines the
-allowed projection-scope, quantifier, empty-policy, and compatibility-alias
+allowed projection-scope, quantifier, empty-policy, and public-alias
 values used by rule vocabulary and live result rows.
 `evaluate_target` and `plan_target` also expose `derived_query_results`, a
 read-only projection of those relation truth values from the existing proof
@@ -1067,7 +1116,7 @@ Live result rows include `rule_projection_scope` and
 `rule_projection_quantifier` for the declared relation shape, plus
 `result_projection_scope` and `result_projection_quantifier` for the emitted
 compact projection. `projection_scope` and `projection_quantifier` remain
-compatibility aliases for the result fields, so compact booleans such as
+public aliases for the result fields, so compact booleans such as
 dependency, coverage, warning, and plan-deficit projections state whether they
 summarize all rows or any witness. Compact rows also expose
 `rule_empty_projection_policy`, `result_empty_projection_policy`,
@@ -1204,8 +1253,8 @@ present.
 Hero JSON also includes
 `dimension_vocabulary` and relation
 vocabulary metadata from the same C++ source used by the comparator; comparison
-uses `triggered_warning_count` while `warning_count` remains compatibility
-metadata. Warning results carry a structured `measurement_available`
+uses `triggered_warning_count` while `warning_count` remains a public output
+alias. Warning results carry a structured `measurement_available`
 bit; unavailable-warning counts come from that bit rather than diagnostic message
 wording.
 Warning results also carry `threshold_direction`, so clients can distinguish
@@ -1214,7 +1263,7 @@ They also carry `threshold_triggered` and `threshold_relation`, so trigger
 counts and projections do not depend on parsing status strings. Hero JSON
 includes `warning_threshold_relation_vocabulary` for the allowed relation
 values. It also includes `warning_summary`, an aggregate projection with total,
-triggered, unavailable, clear measured, compatibility `warning_count`, and
+triggered, unavailable, clear measured, public `warning_count` alias, and
 per-relation counts.
 Deficits carry deterministic priority metadata, and `plan_basis` exposes the
 primary plan-relevant deficit key/message/priority/class derived from those
@@ -1227,10 +1276,13 @@ hints; the resulting runtime report remains the proof of the concrete
 checkpoint path that was loaded. `LATTICE_PLAN` may keep only the advisory
 `PLAN_ID` when the target/profile already declares the component, mode, split,
 and attempt budget. Channel-MDN training plan clauses derive
-`PLAN_INPUT_REPRESENTATION_CHECKPOINT` from `UPSTREAM_TARGET_ID`, and evaluation
-plans derive `PLAN_INPUT_MDN_CHECKPOINT` from `EVALUATED_CHECKPOINT_SOURCE`
-unless the clause explicitly overrides those hints. `PLAN_MAX_ATTEMPTS` /
-`MAX_WAVES` only guard whether another suggestion is advertised.
+`PLAN_INPUT_REPRESENTATION_CHECKPOINT` from `UPSTREAM_TARGET_ID`. Evaluation
+plans derive `PLAN_INPUT_MDN_CHECKPOINT` from `EVALUATED_CHECKPOINT_SOURCE` and
+derive the representation input by walking the evaluated target graph back to
+the representation readiness target. A plan may intentionally keep a differing
+checkpoint-input hint only when it also declares `PLAN_INPUT_OVERRIDE_REASON`.
+`PLAN_MAX_ATTEMPTS` / `MAX_WAVES` only guard whether another suggestion is
+advertised.
 `deficit_vector_planning_summary` self-checks the combined planning boundary:
 12 ordered deficit priority classes, 5 plan-advice policy rows, 4 advisory
 planning surfaces, zero evidence/contract-identity authority, zero Lattice

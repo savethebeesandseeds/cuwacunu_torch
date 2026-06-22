@@ -636,9 +636,40 @@ void write_malformed_source_receipt_job(const std::filesystem::path &dir) {
                                             "mean_loss=0.10\n");
 }
 
+void test_checkpoint_artifact_hash_is_retired() {
+  const auto root = make_tmp_dir("checkpoint_hash_retired");
+  const auto job_dir = root / "mdn_job";
+  write_text(job_dir / "job.manifest",
+             "job_id=mdn_job\n"
+             "job_kind=channel_inference_mdn\n"
+             "target_component_family_id="
+             "wikimyei.inference.expected_value.mdn\n");
+  write_text(job_dir / "job.state", "status=completed\n");
+
+  write_text(job_dir / "runtime.checkpoint_io.fact",
+             "checkpoint_artifact_hash=legacy_hash\n"
+             "checkpoint_digest_verified=true\n");
+  const auto legacy_hash_fact =
+      exposure::make_exposure_fact_from_job_dir(job_dir);
+  check(legacy_hash_fact.checkpoint_digest_reported.empty(),
+        "checkpoint_artifact_hash should not populate exposure digest");
+
+  write_text(job_dir / "runtime.checkpoint_io.fact",
+             "checkpoint_artifact_digest=canonical_digest\n"
+             "checkpoint_digest_verified=true\n");
+  const auto canonical_digest_fact =
+      exposure::make_exposure_fact_from_job_dir(job_dir);
+  check(canonical_digest_fact.checkpoint_digest_reported == "canonical_digest",
+        "checkpoint_artifact_digest should populate exposure digest");
+
+  std::filesystem::remove_all(root);
+}
+
 } // namespace
 
 int main() {
+  test_checkpoint_artifact_hash_is_retired();
+
   const auto root = make_tmp_dir("main");
   const auto rep_dir = root / "rep";
   const auto channel_mdn_dir = root / "channel_mdn";

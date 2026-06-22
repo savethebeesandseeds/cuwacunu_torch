@@ -1,6 +1,7 @@
 #include "hero/mcp_schema_compat.h"
 #include "tests/bench/kikijyeba/test_support/lattice_forecast_artifact_fixture.h"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cctype>
@@ -10,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -243,6 +245,23 @@ parse_json_object_fields(const std::string &json) {
   return parse_json_string_at(json, &value_pos);
 }
 
+[[nodiscard]] std::vector<std::string>
+json_string_field_values(const std::string &json, const std::string &field) {
+  std::vector<std::string> out;
+  const std::string key = "\"" + field + "\"";
+  std::size_t pos = 0;
+  while ((pos = json.find(key, pos)) != std::string::npos) {
+    std::size_t value_pos = json.find(':', pos + key.size());
+    if (value_pos == std::string::npos) {
+      break;
+    }
+    ++value_pos;
+    out.push_back(parse_json_string_at(json, &value_pos));
+    pos = value_pos;
+  }
+  return out;
+}
+
 [[nodiscard]] std::vector<tool_schema_t>
 extract_tool_schemas(const std::string &catalog_json) {
   std::vector<tool_schema_t> out;
@@ -273,15 +292,14 @@ extract_tool_schemas(const std::string &catalog_json) {
 void require_contains(const std::string &output, const std::string &needle,
                       const std::string &message);
 
-void append_ambiguous_forecast_eval_prefix_fixture(
-    const fs::path &runtime_root, const std::string &required_prefix) {
-  if (required_prefix.empty()) {
-    throw std::runtime_error("ambiguous prefix fixture requires a prefix");
-  }
+void append_forecast_eval_prefix_candidate_fixture(
+    const fs::path &runtime_root, int candidate_index) {
   auto options = lattice_fixture::validation_holdout_forecast_artifact_options(
       /*forecast_baseline_digest_mismatch=*/false);
-  options.job_id = "artifact_job_prefix_collision";
-  options.wave_id = "artifact_wave_prefix_collision";
+  options.job_id =
+      "artifact_job_prefix_collision_" + std::to_string(candidate_index);
+  options.wave_id =
+      "artifact_wave_prefix_collision_" + std::to_string(candidate_index);
 
   const fs::path job_dir = runtime_root / options.job_id;
   fs::create_directories(job_dir);
@@ -337,20 +355,8 @@ void append_ambiguous_forecast_eval_prefix_fixture(
   forecast.baseline_fact_digests = {"baseline_2"};
   forecast.selection_signal_fact_digests = {"selection_2"};
 
-  bool matched = false;
-  for (int attempt = 0; attempt < 4096; ++attempt) {
-    forecast.forecast_artifact_digest =
-        "forecast_artifact_prefix_collision_" + std::to_string(attempt);
-    if (exposure::forecast_eval_fact_digest(forecast).starts_with(
-            required_prefix)) {
-      matched = true;
-      break;
-    }
-  }
-  if (!matched) {
-    throw std::runtime_error(
-        "failed to synthesize ambiguous forecast_eval digest prefix");
-  }
+  forecast.forecast_artifact_digest =
+      "forecast_artifact_prefix_collision_" + std::to_string(candidate_index);
   exposure::write_forecast_eval_fact_sidecar(
       job_dir / "lattice.forecast_eval.fact", forecast);
 }
@@ -387,10 +393,13 @@ void check_catalog(const std::string &label, const fs::path &binary,
   int environment_certify_tool_count = 0;
   bool saw_environment_certify_policy_acceptance = false;
   bool saw_environment_certify_paper_online_readiness = false;
+  bool saw_environment_certify_paper_online_session_admission = false;
+  bool saw_environment_paper_online_session = false;
   bool saw_environment_rollout = false;
   bool saw_marshal_status = false;
   int marshal_prepare_tool_count = 0;
   bool saw_marshal_rollout = false;
+  bool saw_marshal_paper_online_session_handoff = false;
   int marshal_inspect_tool_count = 0;
   int marshal_inspect_run_tool_count = 0;
   bool saw_marshal_inspect_target = false;
@@ -1352,6 +1361,10 @@ void check_catalog(const std::string &label, const fs::path &binary,
       if (tool.name == "hero.environment.certify.paper_online_readiness") {
         saw_environment_certify_paper_online_readiness = true;
       }
+      if (tool.name ==
+          "hero.environment.certify.paper_online_session_admission") {
+        saw_environment_certify_paper_online_session_admission = true;
+      }
       for (const auto retired_field :
            {"\"config_path\"", "\"job_id\"", "\"job_dir\"", "\"args_path\"",
             "\"args_digest\"", "\"confirm_issue\"", "\"primary_metric_value\"",
@@ -1364,22 +1377,53 @@ void check_catalog(const std::string &label, const fs::path &binary,
         }
       }
       std::vector<std::string> retained_fields{"\"mode\"",
-                                               "\"certification_evidence\"",
                                                "\"expected_preview_digest\""};
       if (tool.name == "hero.environment.certify.policy_acceptance") {
+        retained_fields.push_back("\"certification_evidence\"");
         retained_fields.push_back("\"policy_training_job_dir\"");
         retained_fields.push_back("\"tsodao_settings_protection_job_dir\"");
         retained_fields.push_back("\"acceptance_id\"");
       } else if (tool.name ==
                  "hero.environment.certify.paper_online_readiness") {
+        retained_fields.push_back("\"certification_evidence\"");
         retained_fields.push_back("\"policy_acceptance_job_dir\"");
         retained_fields.push_back("\"readiness_id\"");
+      } else if (tool.name ==
+                 "hero.environment.certify.paper_online_session_admission") {
+        retained_fields.push_back("\"admission_request\"");
+        retained_fields.push_back("\"admission_request_path\"");
+      } else {
+        throw std::runtime_error("unexpected Environment certify tool: " +
+                                 tool.name);
       }
       for (const auto &retained_field : retained_fields) {
         if (tool.input_schema.find(retained_field) == std::string::npos) {
           throw std::runtime_error(
               "Environment certify schema is missing direct field: " +
               retained_field);
+        }
+      }
+    }
+    if (tool.name == "hero.environment.paper_online.session") {
+      saw_environment_paper_online_session = true;
+      for (const auto retired_field :
+           {"\"subject\"", "\"args_path\"", "\"args_digest\"",
+            "\"admission_request\"", "\"expected_preview_digest\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Environment paper_online.session schema still exposes retired "
+              "or admission-only field: " +
+              std::string(retired_field));
+        }
+      }
+      for (const auto retained_field :
+           {"\"mode\"", "\"session_request\"", "\"session_request_path\"",
+            "\"include_machine_payload\""}) {
+        if (tool.input_schema.find(retained_field) == std::string::npos) {
+          throw std::runtime_error(
+              "Environment paper_online.session schema is missing direct "
+              "field: " +
+              std::string(retained_field));
         }
       }
     }
@@ -1521,6 +1565,30 @@ void check_catalog(const std::string &label, const fs::path &binary,
           throw std::runtime_error(
               "Marshal rollout schema is missing retained request field: " +
               std::string(retained_field));
+        }
+      }
+    }
+    if (tool.name == "hero.marshal.paper_online.session_handoff") {
+      saw_marshal_paper_online_session_handoff = true;
+      for (const auto retained_field :
+           {"\"mode\"", "\"handoff_request\"", "\"handoff_request_path\"",
+            "\"include_machine_payload\""}) {
+        if (tool.input_schema.find(retained_field) == std::string::npos) {
+          throw std::runtime_error(
+              "Marshal paper_online.session_handoff schema is missing "
+              "retained request field: " +
+              std::string(retained_field));
+        }
+      }
+      for (const auto retired_field :
+           {"\"config_path\"", "\"runtime_root\"", "\"target_id\"",
+            "\"admission_request\"", "\"session_request\"",
+            "\"expected_preview_digest\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Marshal paper_online.session_handoff schema still exposes "
+              "wrong request field: " +
+              std::string(retired_field));
         }
       }
     }
@@ -1907,17 +1975,19 @@ void check_catalog(const std::string &label, const fs::path &binary,
         "hero.runtime.reset");
   }
   if (label == "Environment" &&
-      (tools.size() != 6U || !saw_environment_status ||
+      (tools.size() != 8U || !saw_environment_status ||
        !saw_environment_inspect_schema || !saw_environment_inspect_job ||
        environment_inspect_tool_count != 2 ||
-       environment_certify_tool_count != 2 ||
+       environment_certify_tool_count != 3 ||
        !saw_environment_certify_policy_acceptance ||
        !saw_environment_certify_paper_online_readiness ||
-       !saw_environment_rollout)) {
+       !saw_environment_certify_paper_online_session_admission ||
+       !saw_environment_paper_online_session || !saw_environment_rollout)) {
     throw std::runtime_error(
         "Environment catalog must expose exactly hero.environment.status, "
         "hero.environment.inspect.schema, hero.environment.inspect.job, "
-        "hero.environment.certify.*, and hero.environment.rollout");
+        "hero.environment.certify.*, hero.environment.paper_online.session, "
+        "and hero.environment.rollout");
   }
   if (require_lattice_checkpoint_closure &&
       (!saw_lattice_status || lattice_inspect_tool_count != 37 ||
@@ -1928,8 +1998,9 @@ void check_catalog(const std::string &label, const fs::path &binary,
                              "evaluate subtools, and compare");
   }
   if (label == "Marshal" &&
-      (tools.size() != 23U || !saw_marshal_status ||
+      (tools.size() != 24U || !saw_marshal_status ||
        marshal_prepare_tool_count != 2 || !saw_marshal_rollout ||
+       !saw_marshal_paper_online_session_handoff ||
        marshal_inspect_tool_count != 19 ||
        marshal_inspect_run_tool_count != 4 || !saw_marshal_inspect_target ||
        !saw_marshal_inspect_protocol ||
@@ -1939,8 +2010,9 @@ void check_catalog(const std::string &label, const fs::path &binary,
        marshal_inspect_facts_tool_count != 6)) {
     throw std::runtime_error(
         "Marshal catalog must expose exactly hero.marshal.status, "
-        "two hero.marshal.prepare.* tools, hero.marshal.rollout, and "
-        "nineteen hero.marshal.inspect.* tools");
+        "two hero.marshal.prepare.* tools, hero.marshal.rollout, "
+        "hero.marshal.paper_online.session_handoff, and nineteen "
+        "hero.marshal.inspect.* tools");
   }
 }
 
@@ -2120,9 +2192,61 @@ void check_config_collapsed_surface(const fs::path &binary) {
   }
 }
 
+[[nodiscard]] fs::path write_runtime_schema_compat_global_config() {
+  const fs::path source_config = "/cuwacunu/src/config/.config";
+  const fs::path compat_config =
+      source_config.parent_path() / ".hero_mcp_schema_compat_runtime.config";
+
+  std::ifstream in(source_config);
+  if (!in) {
+    throw std::runtime_error("failed to read global config fixture: " +
+                             source_config.string());
+  }
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  std::string text = buffer.str();
+
+  const std::string from = "runtime_wave_id = policy_training_ppo_v0";
+  const std::string to = "runtime_wave_id = cwu_02v_validation_eval_channel_mdn";
+  const auto pos = text.find(from);
+  if (pos == std::string::npos) {
+    throw std::runtime_error(
+        "schema compatibility fixture could not find runtime_wave_id");
+  }
+  text.replace(pos, from.size(), to);
+
+  fs::create_directories(compat_config.parent_path());
+  {
+    std::error_code ec;
+    fs::remove(compat_config, ec);
+  }
+  std::ofstream out(compat_config);
+  if (!out) {
+    throw std::runtime_error("failed to write runtime schema compatibility "
+                             "global config: " +
+                             compat_config.string());
+  }
+  out << text;
+  return compat_config;
+}
+
+struct scoped_file_cleanup_t {
+  fs::path path{};
+
+  ~scoped_file_cleanup_t() {
+    if (path.empty()) {
+      return;
+    }
+    std::error_code ec;
+    fs::remove(path, ec);
+  }
+};
+
 void check_runtime_collapsed_surface(const fs::path &binary) {
+  const fs::path compat_config = write_runtime_schema_compat_global_config();
+  const scoped_file_cleanup_t cleanup{compat_config};
   const std::string base =
-      binary.string() + " --global-config /cuwacunu/src/config/.config ";
+      binary.string() + " --global-config " + compat_config.string() + " ";
 
   const std::string schema_output = read_command_stdout(
       base + "--tool hero.runtime.inspect.schema --args-json '{}'");
@@ -3275,12 +3399,16 @@ void write_mtf_source_analytics_warning_fixture(const fs::path &runtime_root) {
   fs::remove_all(runtime_root);
   const auto job_dir = runtime_root / "mtf_source_analytics_warn_job";
 
-  const auto split_policy = split::load_lattice_split_policy_from_file(
-      "/cuwacunu/src/config/hero.lattice.splits.dsl");
+  const auto split_policy = split::load_lattice_split_policy_from_files(
+      "/cuwacunu/src/config/hero.lattice.split_policy.dsl",
+      "/cuwacunu/src/config/ujcamei.source.splits.dsl");
   const auto *train_core = split_policy.find_split("train_core");
   if (train_core == nullptr) {
     throw std::runtime_error("missing train_core split");
   }
+  const auto accepted_anchor_count = 1000;
+  const auto materialized_train_core =
+      split::materialize_lattice_split(*train_core, accepted_anchor_count);
   const auto split_policy_fingerprint =
       split::lattice_split_policy_fingerprint(split_policy);
 
@@ -3296,10 +3424,12 @@ void write_mtf_source_analytics_warning_fixture(const fs::path &runtime_root) {
               "wikimyei.representation.encoding.mtf_jepa_mae_vicreg\n"
               "graph_order_fingerprint=graph_1\n"
               "source_range_policy=anchor_index\n"
-           << "resolved_anchor_index_begin=" << train_core->anchor_range.begin
-           << "\nresolved_anchor_index_end=" << train_core->anchor_range.end
-           << "\naccepted_anchor_count=" << train_core->anchor_range.length()
-           << "\nsource_cursor_token=cursor_1\n"
+           << "resolved_anchor_index_begin="
+           << materialized_train_core.anchor_range.begin
+           << "\nresolved_anchor_index_end="
+           << materialized_train_core.anchor_range.end
+           << "\naccepted_anchor_count=" << accepted_anchor_count
+           << "\nsource_cursor_token=cursor_1|accepted=1000\n"
               "protocol_contract_fingerprint=contract_1\n"
               "mtf_jepa_mae_vicreg_assembly_fingerprint=mtf_1\n";
   write_text(job_dir / "job.manifest", manifest.str());
@@ -4191,7 +4321,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                         "protocol_id=cwu_02v\n"
                         "protocol_contract_fingerprint=contract_1\n"
                         "graph_order_fingerprint=graph_1\n"
-                        "source_cursor_token=cursor_1\n"
+                        "source_cursor_token=cursor_1|accepted=1000\n"
                         "mtf_jepa_mae_vicreg_assembly_fingerprint=mtf_1\n"));
   require_contains(source_analytics_eval, "\"status\":\"satisfied\"",
                    "source analytics warning fixture should satisfy the "
@@ -4790,8 +4920,41 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "/tmp/hero_mcp_schema_compat/lattice_ambiguous_prefix";
   lattice_fixture::write_scanned_forecast_artifact_fixture(
       ambiguous_runtime_root, /*forecast_baseline_digest_mismatch=*/false);
-  append_ambiguous_forecast_eval_prefix_fixture(
-      ambiguous_runtime_root, selected_fact_digest.substr(0, 1));
+  for (int candidate_index = 0; candidate_index < 32; ++candidate_index) {
+    append_forecast_eval_prefix_candidate_fixture(ambiguous_runtime_root,
+                                                 candidate_index);
+  }
+  const std::string ambiguous_all_preview = read_command_stdout(
+      base +
+      lattice_inspect_call_shell(
+          "{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+              ambiguous_runtime_root.string() + "\"}",
+          "family=forecast_eval\n"
+          "limit=64\n"));
+  std::vector<std::string> unique_digests;
+  for (const auto &digest :
+       json_string_field_values(ambiguous_all_preview, "fact_digest")) {
+    if (!digest.empty() &&
+        std::find(unique_digests.begin(), unique_digests.end(), digest) ==
+            unique_digests.end()) {
+      unique_digests.push_back(digest);
+    }
+  }
+  std::array<int, 256> prefix_counts{};
+  for (const auto &digest : unique_digests) {
+    ++prefix_counts[static_cast<unsigned char>(digest.front())];
+  }
+  std::string ambiguous_prefix;
+  for (std::size_t i = 0; i < prefix_counts.size(); ++i) {
+    if (prefix_counts[i] > 1) {
+      ambiguous_prefix.push_back(static_cast<char>(i));
+      break;
+    }
+  }
+  if (ambiguous_prefix.empty()) {
+    throw std::runtime_error(
+        "failed to synthesize ambiguous canonical forecast_eval digest prefix");
+  }
   const auto ambiguous_prefix_preview = run_command_capture(
       base +
       lattice_inspect_call_shell(
@@ -4799,7 +4962,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
               ambiguous_runtime_root.string() + "\"}",
           "family=forecast_eval\n"
           "fact_digest_prefix=" +
-              selected_fact_digest.substr(0, 1) + "\n"));
+              ambiguous_prefix + "\n"));
   if (ambiguous_prefix_preview.status == 0 ||
       ambiguous_prefix_preview.output.find("E_LATTICE_FACT_REF_AMBIGUOUS") ==
           std::string::npos) {
@@ -4816,7 +4979,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                                "\n"
                                "protocol_contract_fingerprint=contract_1\n"
                                "graph_order_fingerprint=graph_1\n"
-                               "source_cursor_token=cursor_1\n"
+                               "source_cursor_token=cursor_1|accepted=1000\n"
                                "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(
       scanned_baseline_evaluation, "\"status\":\"satisfied\"",
@@ -4900,7 +5063,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                                "\n"
                                "protocol_contract_fingerprint=contract_1\n"
                                "graph_order_fingerprint=graph_1\n"
-                               "source_cursor_token=cursor_1\n"
+                               "source_cursor_token=cursor_1|accepted=1000\n"
                                "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(
       scanned_observer_evaluation, "\"status\":\"satisfied\"",
@@ -4972,7 +5135,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                                "\n"
                                "protocol_contract_fingerprint=contract_1\n"
                                "graph_order_fingerprint=graph_1\n"
-                               "source_cursor_token=cursor_1\n"
+                               "source_cursor_token=cursor_1|accepted=1000\n"
                                "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(
       scanned_allocation_evaluation, "\"status\":\"satisfied\"",
@@ -5059,7 +5222,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                                "\n"
                                "protocol_contract_fingerprint=contract_1\n"
                                "graph_order_fingerprint=graph_1\n"
-                               "source_cursor_token=cursor_1\n"
+                               "source_cursor_token=cursor_1|accepted=1000\n"
                                "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(scanned_artifact_evaluation, "\"status\":\"satisfied\"",
                    "scanned artifact evaluation should satisfy target");
@@ -5247,7 +5410,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                                 "\n"
                                 "protocol_contract_fingerprint=contract_1\n"
                                 "graph_order_fingerprint=graph_1\n"
-                                "source_cursor_token=cursor_1\n"
+                                "source_cursor_token=cursor_1|accepted=1000\n"
                                 "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(scanned_artifact_bulk, "\"evaluated_target_count\":1",
                    "bulk scanned artifact evaluation should evaluate one "
@@ -5276,7 +5439,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                                "\n"
                                "protocol_contract_fingerprint=contract_1\n"
                                "graph_order_fingerprint=graph_1\n"
-                               "source_cursor_token=cursor_1\n"
+                               "source_cursor_token=cursor_1|accepted=1000\n"
                                "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(scanned_bad_baseline, "\"status\":\"blocked\"",
                    "scanned bad-baseline artifact should block target");

@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "hero/config_derivation.h"
 #include "hero/runtime_hero/runtime/wave_settings.h"
 #include "jkimyei/api/training_spec.h"
 #include "kikijyeba/environment/replay/spec.h"
@@ -109,6 +110,10 @@ struct channel_graph_first_protocol_contract_t {
   std::string runtime_wave_id{};
   std::string ujcamei_source_cursor_dsl_bnf_path{};
   std::string ujcamei_source_cursor_dsl_path{};
+  std::string ujcamei_source_splits_dsl_bnf_path{};
+  std::string ujcamei_source_splits_dsl_path{};
+  std::string lattice_split_policy_dsl_bnf_path{};
+  std::string lattice_split_policy_dsl_path{};
   std::string kikijyeba_protocol_dsl_bnf_path{};
   std::string kikijyeba_protocol_dsl_path{};
   std::string kikijyeba_environment_replay_dsl_bnf_path{};
@@ -1551,6 +1556,13 @@ required_config_value(const std::unordered_map<std::string, std::string> &cfg,
                       const std::string &key, const std::string &config_path) {
   const auto it = cfg.find(key);
   if (it == cfg.end() || kv::trim(it->second).empty()) {
+    const auto derived =
+        cuwacunu::hero::config_derivation::resolved_grammar_path_for_key(
+            cfg, key, std::filesystem::path(config_path),
+            true /* values_are_already_resolved */);
+    if (derived.has_value() && !derived->empty()) {
+      return derived->string();
+    }
     throw std::runtime_error("[graph_first_config] missing required key '" +
                              key + "' in " + config_path);
   }
@@ -1571,19 +1583,38 @@ optional_config_value(const std::unordered_map<std::string, std::string> &cfg,
     const std::unordered_map<std::string, std::string> &cfg,
     const std::string &key, const std::string &config_path,
     const std::string &fallback_relative_path) {
+  const auto it = cfg.find(key);
+  if (it != cfg.end() && !kv::trim(it->second).empty()) {
+    return it->second;
+  }
+  const auto derived =
+      cuwacunu::hero::config_derivation::resolved_grammar_path_for_key(
+          cfg, key, std::filesystem::path(config_path),
+          true /* values_are_already_resolved */);
+  if (derived.has_value() && !derived->empty()) {
+    return derived->string();
+  }
   const std::string active_bundle_fallback =
       resolve_config_relative_path(config_path, fallback_relative_path);
   std::error_code ec;
   if (!active_bundle_fallback.empty() &&
       std::filesystem::exists(active_bundle_fallback, ec)) {
-    return optional_config_value(cfg, key, active_bundle_fallback);
+    return active_bundle_fallback;
   }
   const std::string default_config_path =
       cuwacunu::ujcamei::source::contract::default_source_config_path();
-  return optional_config_value(
-      cfg, key,
-      resolve_config_relative_path(default_config_path,
-                                   fallback_relative_path));
+  return resolve_config_relative_path(default_config_path,
+                                      fallback_relative_path);
+}
+
+[[nodiscard]] inline std::string optional_config_file_text(
+    const std::unordered_map<std::string, std::string> &cfg,
+    const std::string &key) {
+  const std::string path = optional_config_value(cfg, key, "");
+  if (kv::trim(path).empty()) {
+    return {};
+  }
+  return read_text_file_or_throw(path);
 }
 
 } // namespace graph_first_config_detail
@@ -1630,7 +1661,9 @@ load_wave_settings_from_config(std::string config_path = {}) {
       runtime_wave_protocol_bindings(protocol),
       graph_first_config_detail::read_text_file_or_throw(
           graph_first_config_detail::required_config_value(
-              cfg, "ujcamei_source_cursor_dsl_path", config_path)));
+              cfg, "ujcamei_source_cursor_dsl_path", config_path)),
+      graph_first_config_detail::optional_config_file_text(
+          cfg, "ujcamei_source_splits_dsl_path"));
 }
 
 [[nodiscard]] inline channel_graph_first_protocol_contract_t
@@ -1829,6 +1862,18 @@ load_channel_graph_first_protocol_contract_from_config(
   out.ujcamei_source_cursor_dsl_path =
       graph_first_config_detail::required_config_value(
           cfg, "ujcamei_source_cursor_dsl_path", config_path);
+  out.ujcamei_source_splits_dsl_bnf_path =
+      graph_first_config_detail::required_config_value(
+          cfg, "ujcamei_source_splits_dsl_bnf_path", config_path);
+  out.ujcamei_source_splits_dsl_path =
+      graph_first_config_detail::required_config_value(
+          cfg, "ujcamei_source_splits_dsl_path", config_path);
+  out.lattice_split_policy_dsl_bnf_path =
+      graph_first_config_detail::required_config_value(
+          cfg, "lattice_split_policy_dsl_bnf_path", config_path);
+  out.lattice_split_policy_dsl_path =
+      graph_first_config_detail::required_config_value(
+          cfg, "lattice_split_policy_dsl_path", config_path);
   out.kikijyeba_protocol_dsl_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg, "kikijyeba_protocol_dsl_bnf_path", config_path);
@@ -1881,6 +1926,10 @@ load_channel_graph_first_protocol_contract_from_config(
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.ujcamei_source_cursor_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
+      out.ujcamei_source_splits_dsl_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
+      out.lattice_split_policy_dsl_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
       out.kikijyeba_protocol_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.kikijyeba_environment_replay_dsl_bnf_path);
@@ -1895,7 +1944,9 @@ load_channel_graph_first_protocol_contract_from_config(
           out.runtime_wave_id,
           runtime_wave_protocol_bindings(out.protocol_variant),
           graph_first_config_detail::read_text_file_or_throw(
-              out.ujcamei_source_cursor_dsl_path));
+              out.ujcamei_source_cursor_dsl_path),
+          graph_first_config_detail::read_text_file_or_throw(
+              out.ujcamei_source_splits_dsl_path));
   out.replay_environment =
       cuwacunu::kikijyeba::environment::decode_replay_environment_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(

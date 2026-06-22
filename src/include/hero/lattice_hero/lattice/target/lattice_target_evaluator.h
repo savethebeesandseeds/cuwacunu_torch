@@ -14,10 +14,12 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "hero/config_derivation.h"
 #include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/lattice/split/split_policy.h"
 #include "hero/lattice_hero/lattice/target/lattice_target.h"
@@ -61,8 +63,10 @@ struct lattice_target_evaluator_options_t {
 };
 
 struct lattice_target_config_paths_t {
-  std::filesystem::path splits_dsl_bnf_path{};
-  std::filesystem::path splits_dsl_path{};
+  std::filesystem::path source_splits_dsl_bnf_path{};
+  std::filesystem::path source_splits_dsl_path{};
+  std::filesystem::path split_policy_dsl_bnf_path{};
+  std::filesystem::path split_policy_dsl_path{};
   std::filesystem::path targets_dsl_bnf_path{};
   std::filesystem::path targets_dsl_path{};
 };
@@ -266,6 +270,59 @@ report_leaf_for_target_kind(lattice_target_kind_t kind) {
       *split_policy);
 }
 
+[[nodiscard]] inline std::optional<std::int64_t>
+accepted_anchor_count_from_source_cursor_token(const std::string &token) {
+  constexpr std::string_view prefix{"accepted="};
+  std::size_t offset = 0;
+  while (offset <= token.size()) {
+    const auto next = token.find('|', offset);
+    const auto atom = token.substr(
+        offset, next == std::string::npos ? std::string::npos : next - offset);
+    if (atom.rfind(prefix, 0) == 0) {
+      const auto raw = atom.substr(prefix.size());
+      if (raw.empty()) {
+        return std::nullopt;
+      }
+      std::int64_t value = 0;
+      for (const char ch : raw) {
+        if (ch < '0' || ch > '9') {
+          return std::nullopt;
+        }
+        const auto digit = static_cast<std::int64_t>(ch - '0');
+        if (value > (std::numeric_limits<std::int64_t>::max() - digit) / 10) {
+          return std::nullopt;
+        }
+        value = value * 10 + digit;
+      }
+      if (value <= 0) {
+        return std::nullopt;
+      }
+      return value;
+    }
+    if (next == std::string::npos) {
+      break;
+    }
+    offset = next + 1;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] inline cuwacunu::hero::lattice::split::lattice_split_t
+materialized_split_for_reference(
+    const cuwacunu::hero::lattice::split::lattice_split_t &split,
+    const std::optional<std::int64_t> &accepted_anchor_count) {
+  if (split.anchor_range_materialized) {
+    return split;
+  }
+  if (!accepted_anchor_count.has_value()) {
+    throw std::runtime_error(
+        "[lattice_target] fractional split reference requires active "
+        "source_cursor_token with accepted anchor count");
+  }
+  return cuwacunu::hero::lattice::split::materialize_lattice_split(
+      split, *accepted_anchor_count);
+}
+
 [[nodiscard]] inline lattice_suggested_wave_t
 make_suggested_wave(const lattice_target_spec_t &spec) {
   lattice_suggested_wave_t out{};
@@ -283,7 +340,8 @@ make_suggested_wave(const lattice_target_spec_t &spec) {
 [[nodiscard]] inline lattice_target_spec_t resolve_split_references(
     lattice_target_spec_t spec,
     const std::optional<cuwacunu::hero::lattice::split::lattice_split_policy_t>
-        &split_policy) {
+        &split_policy,
+    const std::optional<std::int64_t> &accepted_anchor_count = std::nullopt) {
   const bool has_warning_split =
       std::any_of(spec.warning_specs.begin(), spec.warning_specs.end(),
                   [](const lattice_warning_spec_t &warning) {
@@ -304,10 +362,13 @@ make_suggested_wave(const lattice_target_spec_t &spec) {
       throw std::runtime_error("[lattice_target] unknown TRAIN_SPLIT: " +
                                spec.train_split);
     }
+    const auto materialized =
+        materialized_split_for_reference(*split, accepted_anchor_count);
     spec.source_range = "anchor_index";
     spec.anchor_index_begin =
-        static_cast<std::size_t>(split->anchor_range.begin);
-    spec.anchor_index_end = static_cast<std::size_t>(split->anchor_range.end);
+        static_cast<std::size_t>(materialized.anchor_range.begin);
+    spec.anchor_index_end =
+        static_cast<std::size_t>(materialized.anchor_range.end);
   }
   if (!spec.forbid_split.empty()) {
     const auto *split = split_policy->find_split(spec.forbid_split);
@@ -315,6 +376,8 @@ make_suggested_wave(const lattice_target_spec_t &spec) {
       throw std::runtime_error("[lattice_target] unknown FORBID_SPLIT: " +
                                spec.forbid_split);
     }
+    const auto materialized =
+        materialized_split_for_reference(*split, accepted_anchor_count);
     if (spec.forbid_exposure_uses_from_split_policy) {
       if (split->protect_from_uses.empty()) {
         throw std::runtime_error(
@@ -328,9 +391,9 @@ make_suggested_wave(const lattice_target_spec_t &spec) {
       spec.forbid_exposure_uses_from_split_policy = false;
     }
     spec.forbid_exposure_anchor_index_begin =
-        static_cast<std::size_t>(split->anchor_range.begin);
+        static_cast<std::size_t>(materialized.anchor_range.begin);
     spec.forbid_exposure_anchor_index_end =
-        static_cast<std::size_t>(split->anchor_range.end);
+        static_cast<std::size_t>(materialized.anchor_range.end);
   }
   for (auto &warning : spec.warning_specs) {
     if (warning.split.empty()) {
@@ -347,10 +410,12 @@ make_suggested_wave(const lattice_target_spec_t &spec) {
           "[lattice_target] LATTICE_WARN must use either SPLIT or explicit "
           "ANCHOR_INDEX_BEGIN/END, not both");
     }
+    const auto materialized =
+        materialized_split_for_reference(*split, accepted_anchor_count);
     warning.anchor_index_begin =
-        static_cast<std::size_t>(split->anchor_range.begin);
+        static_cast<std::size_t>(materialized.anchor_range.begin);
     warning.anchor_index_end =
-        static_cast<std::size_t>(split->anchor_range.end);
+        static_cast<std::size_t>(materialized.anchor_range.end);
   }
   return spec;
 }
@@ -681,8 +746,7 @@ make_evidence_from_candidate(const job_candidate_t &candidate,
   out.checkpoint_digest_reported =
       first_non_empty({map_get(checkpoint_io, "checkpoint_digest_reported"),
                        map_get(report, "checkpoint_digest_reported"),
-                       map_get(checkpoint_io, "checkpoint_artifact_digest"),
-                       map_get(checkpoint_io, "checkpoint_artifact_hash")});
+                       map_get(checkpoint_io, "checkpoint_artifact_digest")});
   out.checkpoint_file_exists =
       !out.checkpoint_path.empty() && fs::exists(out.checkpoint_path);
   out.checkpoint_bytes =
@@ -6636,8 +6700,10 @@ private:
 
     lattice_target_spec_t spec{};
     try {
-      spec =
-          detail::resolve_split_references(input_spec, options_.split_policy);
+      spec = detail::resolve_split_references(
+          input_spec, options_.split_policy,
+          detail::accepted_anchor_count_from_source_cursor_token(
+              options_.active_identity.source_cursor_token));
     } catch (const std::exception &ex) {
       lattice_target_evaluation_t result{};
       result.target_id = input_spec.target_id;
@@ -6937,6 +7003,10 @@ private:
           .representation_checkpoint_path =
               source_eval.evidence.representation_checkpoint_path,
       };
+      result.suggested_wave.input_mdn_checkpoint =
+          evaluated_checkpoint_binding->mdn_checkpoint_path.string();
+      result.suggested_wave.input_representation_checkpoint =
+          evaluated_checkpoint_binding->representation_checkpoint_path.string();
       dependency_proofs.push_back(std::move(source_proof));
     }
 
@@ -7023,6 +7093,12 @@ private:
         detail::active_split_policy_fingerprint(options_.split_policy);
     bind_proof_obligation(result, spec);
     result.suggested_wave = detail::make_suggested_wave(spec);
+    if (evaluated_checkpoint_binding.has_value()) {
+      result.suggested_wave.input_mdn_checkpoint =
+          evaluated_checkpoint_binding->mdn_checkpoint_path.string();
+      result.suggested_wave.input_representation_checkpoint =
+          evaluated_checkpoint_binding->representation_checkpoint_path.string();
+    }
     result.evidence = detail::make_evidence_from_candidate(
         candidate, spec, matching_job_count, matching_train_attempt_count);
     result.proof_certificate.dependencies = std::move(dependency_proofs);
@@ -9959,7 +10035,18 @@ private:
       auto rep_facts = detail::filter_facts_for_active_identity(
           rep_closure.facts, options_.active_identity, spec,
           expected_component_fingerprint, expected_split_policy_fingerprint);
-      const bool expect_mtf_representation = spec.protocol_id == "cwu_02v";
+      const auto mtf_rep_ready_fact = std::find_if(
+          rep_facts.begin(), rep_facts.end(),
+          [&](const exposure::lattice_exposure_fact_t &fact) {
+            return fact.target_component_family_id ==
+                       "wikimyei.representation.encoding.mtf_jepa_mae_vicreg" &&
+                   fact.component_assembly_fingerprint ==
+                       options_.active_identity
+                           .mtf_jepa_mae_vicreg_assembly_fingerprint;
+          });
+      const bool expect_mtf_representation =
+          spec.protocol_id == "cwu_02v" ||
+          mtf_rep_ready_fact != rep_facts.end();
       const std::string expected_representation_component =
           expect_mtf_representation
               ? std::string{"wikimyei.representation.encoding.mtf_jepa_mae_"
@@ -9971,13 +10058,16 @@ private:
                     .mtf_jepa_mae_vicreg_assembly_fingerprint
               : options_.active_identity.vicreg_assembly_fingerprint;
       const auto rep_ready_fact =
-          std::find_if(rep_facts.begin(), rep_facts.end(),
-                       [&](const exposure::lattice_exposure_fact_t &fact) {
-                         return fact.target_component_family_id ==
-                                    expected_representation_component &&
-                                fact.component_assembly_fingerprint ==
-                                    expected_representation_fingerprint;
-                       });
+          expect_mtf_representation
+              ? mtf_rep_ready_fact
+              : std::find_if(
+                    rep_facts.begin(), rep_facts.end(),
+                    [&](const exposure::lattice_exposure_fact_t &fact) {
+                      return fact.target_component_family_id ==
+                                 expected_representation_component &&
+                             fact.component_assembly_fingerprint ==
+                                 expected_representation_fingerprint;
+                    });
       if (rep_ready_fact == rep_facts.end()) {
         result.status = lattice_target_status_t::exposure_failed;
         result.reasons.push_back(
@@ -10557,30 +10647,51 @@ resolve_lattice_target_config_paths(
         cuwacunu::hero::config_paths::default_global_config_path()) {
   const auto cfg = lattice_target_eval_detail::parse_assignment_text(
       lattice_target_eval_detail::read_text_file_or_throw(config_path));
-  const auto splits_bnf =
-      lattice_target_eval_detail::map_get(cfg, "lattice_splits_dsl_bnf_path");
-  const auto splits_dsl =
-      lattice_target_eval_detail::map_get(cfg, "lattice_splits_dsl_path");
-  const auto bnf =
-      lattice_target_eval_detail::map_get(cfg, "lattice_targets_dsl_bnf_path");
+  const auto source_splits_dsl = lattice_target_eval_detail::map_get(
+      cfg, "ujcamei_source_splits_dsl_path");
+  const auto split_policy_dsl =
+      lattice_target_eval_detail::map_get(cfg, "lattice_split_policy_dsl_path");
   const auto dsl =
       lattice_target_eval_detail::map_get(cfg, "lattice_targets_dsl_path");
-  if (bnf.empty() || dsl.empty()) {
+  const auto targets_bnf =
+      cuwacunu::hero::config_derivation::resolved_grammar_path_for_key(
+          cfg, "lattice_targets_dsl_bnf_path", config_path,
+          false /* values_are_already_resolved */);
+  const auto source_splits_bnf =
+      source_splits_dsl.empty()
+          ? std::optional<std::filesystem::path>{}
+          : cuwacunu::hero::config_derivation::resolved_grammar_path_for_key(
+                cfg, "ujcamei_source_splits_dsl_bnf_path", config_path,
+                false /* values_are_already_resolved */);
+  const auto split_policy_bnf =
+      split_policy_dsl.empty()
+          ? std::optional<std::filesystem::path>{}
+          : cuwacunu::hero::config_derivation::resolved_grammar_path_for_key(
+                cfg, "lattice_split_policy_dsl_bnf_path", config_path,
+                false /* values_are_already_resolved */);
+  if (dsl.empty() || !targets_bnf.has_value() || targets_bnf->empty()) {
     throw std::runtime_error(
         "[lattice_target] missing lattice_targets_dsl_* path in " +
         config_path.string());
   }
   return lattice_target_config_paths_t{
-      .splits_dsl_bnf_path = splits_bnf.empty()
-                                 ? std::filesystem::path{}
-                                 : lattice_target_eval_detail::resolve_against(
-                                       config_path, splits_bnf),
-      .splits_dsl_path = splits_dsl.empty()
-                             ? std::filesystem::path{}
-                             : lattice_target_eval_detail::resolve_against(
-                                   config_path, splits_dsl),
-      .targets_dsl_bnf_path =
-          lattice_target_eval_detail::resolve_against(config_path, bnf),
+      .source_splits_dsl_bnf_path = source_splits_bnf.has_value()
+                                        ? *source_splits_bnf
+                                        : std::filesystem::path{},
+      .source_splits_dsl_path =
+          source_splits_dsl.empty()
+              ? std::filesystem::path{}
+              : lattice_target_eval_detail::resolve_against(config_path,
+                                                            source_splits_dsl),
+      .split_policy_dsl_bnf_path = split_policy_bnf.has_value()
+                                       ? *split_policy_bnf
+                                       : std::filesystem::path{},
+      .split_policy_dsl_path =
+          split_policy_dsl.empty()
+              ? std::filesystem::path{}
+              : lattice_target_eval_detail::resolve_against(config_path,
+                                                            split_policy_dsl),
+      .targets_dsl_bnf_path = *targets_bnf,
       .targets_dsl_path =
           lattice_target_eval_detail::resolve_against(config_path, dsl),
   };
@@ -10592,15 +10703,26 @@ load_lattice_split_policy_from_config_if_available(
     const std::filesystem::path &config_path =
         cuwacunu::hero::config_paths::default_global_config_path()) {
   const auto paths = resolve_lattice_target_config_paths(config_path);
-  if (paths.splits_dsl_path.empty()) {
+  if (paths.source_splits_dsl_path.empty() &&
+      paths.split_policy_dsl_path.empty()) {
     return std::nullopt;
   }
-  if (!paths.splits_dsl_bnf_path.empty()) {
-    (void)lattice_target_eval_detail::read_text_file_or_throw(
-        paths.splits_dsl_bnf_path);
+  if (paths.source_splits_dsl_path.empty() ||
+      paths.split_policy_dsl_path.empty()) {
+    throw std::runtime_error(
+        "[lattice_target] split policy loading requires both "
+        "ujcamei_source_splits_dsl_path and lattice_split_policy_dsl_path");
   }
-  return cuwacunu::hero::lattice::split::load_lattice_split_policy_from_file(
-      paths.splits_dsl_path);
+  if (!paths.source_splits_dsl_bnf_path.empty()) {
+    (void)lattice_target_eval_detail::read_text_file_or_throw(
+        paths.source_splits_dsl_bnf_path);
+  }
+  if (!paths.split_policy_dsl_bnf_path.empty()) {
+    (void)lattice_target_eval_detail::read_text_file_or_throw(
+        paths.split_policy_dsl_bnf_path);
+  }
+  return cuwacunu::hero::lattice::split::load_lattice_split_policy_from_files(
+      paths.split_policy_dsl_path, paths.source_splits_dsl_path);
 }
 
 [[nodiscard]] inline std::vector<lattice_target_spec_t>

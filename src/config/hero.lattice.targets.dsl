@@ -10,9 +10,7 @@
 LATTICE_PROFILE {
   PROFILE_ID = vicreg_training_readiness;
   TARGET_KIND = vicreg_ready;
-  SOURCE_RANGE = anchor_index;
   MIN_OPTIMIZER_STEPS = 1;
-  PROTECT_SPLIT = validation_holdout;
   WAVE_MODE = train|debug;
   PLAN_MAX_ATTEMPTS = 3;
 };
@@ -20,9 +18,7 @@ LATTICE_PROFILE {
 LATTICE_PROFILE {
   PROFILE_ID = mtf_representation_training_readiness;
   TARGET_KIND = mtf_representation_ready;
-  SOURCE_RANGE = anchor_index;
   MIN_OPTIMIZER_STEPS = 1;
-  PROTECT_SPLIT = validation_holdout;
   WAVE_MODE = train|debug;
   PLAN_MAX_ATTEMPTS = 3;
 };
@@ -30,10 +26,8 @@ LATTICE_PROFILE {
 LATTICE_PROFILE {
   PROFILE_ID = channel_mdn_training_readiness;
   TARGET_KIND = channel_mdn_ready;
-  SOURCE_RANGE = anchor_index;
   MIN_OPTIMIZER_STEPS = 1;
   MIN_VALID_TARGET_FRACTION = 0.05;
-  PROTECT_SPLIT = validation_holdout;
   WAVE_MODE = train|debug;
   PLAN_MAX_ATTEMPTS = 3;
 };
@@ -83,54 +77,26 @@ LATTICE_TARGET {
 };
 
 /*
-  Protocol-scoped readiness aliases.
+  Protocol-scoped train-core readiness targets.
 
-  These are the explicit protocol variant targets. The older unscoped target
-  IDs above remain for compatibility while current training continues on
-  cwu_01v.
+  The unscoped train-core targets above remain public operator targets used by
+  Marshal reports, MCP examples, and readiness summaries. Protocol-scoped
+  variants are materialized from a compact family when a proof needs to bind a
+  target to a concrete protocol.
 */
-LATTICE_TARGET {
-  TARGET_ID = cwu_01v_representation_train_core_ready;
-  USE_PROFILE = vicreg_training_readiness;
-  PROTOCOL_ID = cwu_01v;
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = protocol_train_core_readiness;
+  FAMILY_KIND = protocol_train_core_readiness;
+  PROTOCOL_IDS = cwu_01v, cwu_02v;
+  REPRESENTATION_PROFILE_IDS = vicreg_training_readiness, mtf_representation_training_readiness;
+  MDN_PROFILE_ID = channel_mdn_training_readiness;
   OVER_SPLIT = train_core;
 };
 
-LATTICE_TARGET {
-  TARGET_ID = cwu_02v_representation_train_core_ready;
-  USE_PROFILE = mtf_representation_training_readiness;
-  PROTOCOL_ID = cwu_02v;
-  OVER_SPLIT = train_core;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = cwu_01v_mdn_train_core_ready;
-  USE_PROFILE = channel_mdn_training_readiness;
-  PROTOCOL_ID = cwu_01v;
-  OVER_SPLIT = train_core;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = cwu_02v_mdn_train_core_ready;
-  USE_PROFILE = channel_mdn_training_readiness;
-  PROTOCOL_ID = cwu_02v;
-  OVER_SPLIT = train_core;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = cwu_02v_mdn_train_core_no_validation_leakage;
-  TARGET_KIND = channel_mdn_ready;
-  LEAKAGE_GUARD_SCOPE = channel_mdn_validation;
-  PROTOCOL_ID = cwu_02v;
-  CHECKPOINT_SOURCE = latest_satisfying:cwu_02v_mdn_train_core_ready;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = cwu_02v_mdn_train_core_no_test_leakage;
-  TARGET_KIND = channel_mdn_ready;
-  LEAKAGE_GUARD_SCOPE = channel_mdn_test;
-  PROTOCOL_ID = cwu_02v;
-  CHECKPOINT_SOURCE = latest_satisfying:cwu_02v_mdn_train_core_no_validation_leakage;
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = cwu_02v_channel_mdn_leakage_guard_chain;
+  FAMILY_KIND = protocol_channel_mdn_leakage_guard_chain;
+  PROTOCOL_IDS = cwu_02v;
 };
 
 LATTICE_TARGET {
@@ -147,36 +113,11 @@ LATTICE_TARGET {
   CHECKPOINT_SOURCE = latest_satisfying:channel_mdn_train_core_no_validation_leakage;
 };
 
-LATTICE_TARGET {
-  TARGET_ID = channel_mdn_validation_eval_ready;
-  TARGET_CLASS = evaluation_readiness;
-  TARGET_KIND = channel_mdn_ready;
-  PROTOCOL_ID = cwu_02v;
-  SOURCE_RANGE = anchor_index;
-  OVER_SPLIT = validation_holdout;
-  UPSTREAM_TARGET_ID = cwu_02v_mdn_train_core_no_test_leakage;
-  REQUIRE_CHECKPOINT_EXISTS = false;
-  MIN_VALID_TARGET_FRACTION = 0.05;
-  EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage;
-  PROTECT_SPLIT = validation_holdout;
-  WAVE_MODE = run|debug;
-  PLAN_MAX_ATTEMPTS = 1;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = channel_mdn_certified_replay_expansion_eval_ready;
-  TARGET_CLASS = evaluation_readiness;
-  TARGET_KIND = channel_mdn_ready;
-  PROTOCOL_ID = cwu_02v;
-  SOURCE_RANGE = anchor_index;
-  OVER_SPLIT = certified_replay_expansion_eval;
-  UPSTREAM_TARGET_ID = cwu_02v_mdn_train_core_no_test_leakage;
-  REQUIRE_CHECKPOINT_EXISTS = false;
-  MIN_VALID_TARGET_FRACTION = 0.05;
-  EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage;
-  PROTECT_SPLIT = certified_replay_expansion_eval;
-  WAVE_MODE = run|debug;
-  PLAN_MAX_ATTEMPTS = 1;
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = cwu_02v_channel_mdn_evaluation_readiness;
+  FAMILY_KIND = protocol_channel_mdn_evaluation_readiness;
+  PROTOCOL_IDS = cwu_02v;
+  EVALUATION_SPLITS = validation_holdout, certified_replay_expansion_eval;
 };
 
 /*
@@ -221,16 +162,13 @@ LATTICE_PROFILE {
   SUBJECT_COMPONENT = kikijyeba.paper_online.readiness;
 };
 
-LATTICE_TARGET {
-  TARGET_ID = target_transform_contract_ready;
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = cwu_02v_validation_mdn_artifact_readiness_targets;
+  FAMILY_KIND = profile_artifact_readiness_targets;
+  PROTOCOL_IDS = cwu_02v;
   USE_PROFILE = cwu_02v_validation_mdn_artifact_readiness;
-  SUBJECT_FACT_FAMILY = target_transform;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = forecast_baseline_artifact_ready;
-  USE_PROFILE = cwu_02v_validation_mdn_artifact_readiness;
-  SUBJECT_FACT_FAMILY = forecast_baseline;
+  TARGET_IDS = target_transform_contract_ready, forecast_baseline_artifact_ready, forecast_eval_artifact_ready, observer_belief_artifact_ready, allocation_artifact_ready, replay_environment_artifact_ready;
+  SUBJECT_FACT_FAMILIES = target_transform, forecast_baseline, forecast_eval, observer_belief, allocation_engine, replay_environment;
 };
 
 LATTICE_WARN_SET {
@@ -238,12 +176,6 @@ LATTICE_WARN_SET {
   WARNING_IDS = forecast_baseline_valid_support_low_visibility_only, forecast_baseline_kind_coverage_low_visibility_only, forecast_baseline_metric_coverage_low_visibility_only;
   METRICS = valid_count, baseline_kind_count, computed_metric_fact_count;
   BELOW_VALUES = 50, 4, 1;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = forecast_eval_artifact_ready;
-  USE_PROFILE = cwu_02v_validation_mdn_artifact_readiness;
-  SUBJECT_FACT_FAMILY = forecast_eval;
 };
 
 LATTICE_WARN_SET {
@@ -275,12 +207,6 @@ LATTICE_POLICY_GATE {
   ENABLED = false;
 };
 
-LATTICE_TARGET {
-  TARGET_ID = observer_belief_artifact_ready;
-  USE_PROFILE = cwu_02v_validation_mdn_artifact_readiness;
-  SUBJECT_FACT_FAMILY = observer_belief;
-};
-
 LATTICE_WARN_SET {
   TARGET_ID = observer_belief_artifact_ready;
   WARNING_IDS = observer_belief_confidence_low_visibility_only, observer_belief_data_quality_low_visibility_only, observer_belief_liquidity_low_visibility_only;
@@ -288,40 +214,13 @@ LATTICE_WARN_SET {
   BELOW_VALUES = 0.70, 0.70, 0.70;
 };
 
-LATTICE_TARGET {
-  TARGET_ID = allocation_artifact_ready;
-  USE_PROFILE = cwu_02v_validation_mdn_artifact_readiness;
-  SUBJECT_FACT_FAMILY = allocation_engine;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = replay_environment_artifact_ready;
-  USE_PROFILE = cwu_02v_validation_mdn_artifact_readiness;
-  SUBJECT_FACT_FAMILY = replay_environment;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = policy_training_artifact_ready;
-  USE_PROFILE = cwu_02v_validation_policy_training_artifact_readiness;
-  SUBJECT_FACT_FAMILY = policy_training;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = tsodao_settings_protection_ready;
-  USE_PROFILE = cwu_02v_validation_tsodao_settings_artifact_readiness;
-  SUBJECT_FACT_FAMILY = tsodao_settings_protection;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = policy_acceptance_contract_ready;
-  USE_PROFILE = cwu_02v_validation_tsodao_policy_artifact_readiness;
-  SUBJECT_FACT_FAMILY = policy_acceptance;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = paper_online_readiness_contract_ready;
-  USE_PROFILE = cwu_02v_validation_paper_online_artifact_readiness;
-  SUBJECT_FACT_FAMILY = paper_online_readiness;
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = cwu_02v_validation_specialized_artifact_readiness_targets;
+  FAMILY_KIND = profile_artifact_readiness_targets;
+  PROTOCOL_IDS = cwu_02v;
+  USE_PROFILE_IDS = cwu_02v_validation_policy_training_artifact_readiness, cwu_02v_validation_tsodao_settings_artifact_readiness, cwu_02v_validation_tsodao_policy_artifact_readiness, cwu_02v_validation_paper_online_artifact_readiness;
+  TARGET_IDS = policy_training_artifact_ready, tsodao_settings_protection_ready, policy_acceptance_contract_ready, paper_online_readiness_contract_ready;
+  SUBJECT_FACT_FAMILIES = policy_training, tsodao_settings_protection, policy_acceptance, paper_online_readiness;
 };
 
 LATTICE_WARN {
@@ -473,7 +372,6 @@ LATTICE_DEPENDS {
 LATTICE_PLAN {
   TARGET_ID = cwu_02v_mdn_train_core_ready;
   PLAN_ID = train_cwu_02v_channel_mdn_train_core;
-  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:cwu_02v_representation_train_core_ready;
 };
 
 LATTICE_WARN {
@@ -585,15 +483,11 @@ LATTICE_REQUIRES_SET {
 LATTICE_PLAN {
   TARGET_ID = channel_mdn_validation_eval_ready;
   PLAN_ID = run_channel_mdn_validation_eval;
-  PLAN_INPUT_MDN_CHECKPOINT = latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage;
-  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:cwu_02v_representation_train_core_ready;
 };
 
 LATTICE_PLAN {
   TARGET_ID = channel_mdn_certified_replay_expansion_eval_ready;
   PLAN_ID = run_channel_mdn_certified_replay_expansion_eval;
-  PLAN_INPUT_MDN_CHECKPOINT = latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage;
-  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:cwu_02v_representation_train_core_ready;
 };
 
 LATTICE_WARN {

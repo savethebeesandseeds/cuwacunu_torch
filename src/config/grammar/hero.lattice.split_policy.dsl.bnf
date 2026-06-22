@@ -1,0 +1,12 @@
+<instruction> ::= <policy_block> {<protection_block>} ;
+<policy_block> ::= "LATTICE_SPLIT_POLICY" [<whitespace>] "{" <line_end> {<policy_assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<protection_block> ::= "LATTICE_SPLIT_PROTECTION" [<whitespace>] "{" <line_end> {<protection_assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<policy_assignment> ::= [<whitespace>] <policy_key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<protection_assignment> ::= [<whitespace>] <protection_key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<policy_key> ::= "POLICY_ID" | "SOURCE_SPLIT_CATALOG_ID" | "PURGE_LEFT_CONTEXT" | "PURGE_RIGHT_FUTURE" ;
+<protection_key> ::= "SPLIT_ID" | "ALLOW_USES" | "PROTECT_FROM_USES" | "PROTECT_REQUIRES_MUTATED_COMPONENT" ;
+<value> ::= <value_char> {<value_char>} ;
+<value_char> ::= <letter> | <digit> | "_" | "." | "-" | "|" | "," | "+" ;
+<line_end> ::= [<whitespace>] <break_block> ;
+<break_block> ::= {<newline>} ;
+<whitespace> ::= {<empty>} ;

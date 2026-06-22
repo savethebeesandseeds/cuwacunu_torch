@@ -1,5 +1,6 @@
 #include "hero/config_hero/hero_config_tools.h"
 
+#include "hero/config_derivation.h"
 #include "hero/config_hero/hero_config.h"
 #include "hero/mcp_schema_compat.h"
 #include "hero/mcp_stdio_transport.h"
@@ -21,6 +22,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -1289,6 +1291,8 @@ build_preview_json(const hero_config_store_t::save_preview_t &preview,
 struct global_config_reference_t {
   std::string key;
   fs::path path;
+  bool derived = false;
+  std::string derived_from_key;
   bool exists = false;
   bool is_regular_file = false;
   bool is_directory = false;
@@ -1316,6 +1320,8 @@ collect_global_config_map(const hero_config_store_t &store,
     return map;
   }
   map.readable = true;
+  std::unordered_map<std::string, std::string> raw_path_values;
+  std::unordered_map<std::string, std::string> qualified_path_keys;
   std::string section;
   std::string line;
   while (std::getline(in, line)) {
@@ -1347,6 +1353,8 @@ collect_global_config_map(const hero_config_store_t &store,
     global_config_reference_t entry;
     entry.key = section.empty() ? key : section + "." + key;
     entry.path = path;
+    raw_path_values[key] = value;
+    qualified_path_keys[key] = entry.key;
     std::error_code ec;
     entry.exists = fs::exists(path, ec) && !ec;
     if (entry.exists) {
@@ -1366,6 +1374,57 @@ collect_global_config_map(const hero_config_store_t &store,
       }
     } else {
       map.missing.push_back(entry.key + "=" + path.string());
+    }
+    map.entries.push_back(std::move(entry));
+  }
+  for (const auto &raw_path_entry : raw_path_values) {
+    const std::string &data_key = raw_path_entry.first;
+    const auto bnf_key =
+        cuwacunu::hero::config_derivation::paired_grammar_path_key(data_key);
+    if (!bnf_key.has_value() || raw_path_values.count(*bnf_key) != 0) {
+      continue;
+    }
+    const auto derived_path =
+        cuwacunu::hero::config_derivation::resolved_grammar_path_for_key(
+            raw_path_values, *bnf_key, fs::path(store.global_config_path()),
+            false /* values_are_already_resolved */);
+    if (!derived_path.has_value() || derived_path->empty()) {
+      continue;
+    }
+    std::error_code exists_ec;
+    if (!fs::exists(*derived_path, exists_ec) || exists_ec) {
+      continue;
+    }
+
+    global_config_reference_t entry;
+    const auto qualified = qualified_path_keys.find(data_key);
+    if (qualified != qualified_path_keys.end()) {
+      const std::size_t dot = qualified->second.find('.');
+      entry.key = dot == std::string::npos
+                      ? *bnf_key
+                      : qualified->second.substr(0, dot + 1) + *bnf_key;
+      entry.derived_from_key = qualified->second;
+    } else {
+      entry.key = *bnf_key;
+      entry.derived_from_key = data_key;
+    }
+    entry.path = normalize_path(*derived_path);
+    entry.derived = true;
+    std::error_code type_ec;
+    entry.exists = true;
+    entry.is_regular_file =
+        fs::is_regular_file(entry.path, type_ec) && !type_ec;
+    entry.is_directory = fs::is_directory(entry.path, type_ec) && !type_ec;
+    if (entry.is_regular_file) {
+      std::error_code size_ec;
+      entry.size = fs::file_size(entry.path, size_ec);
+      entry.size_known = !size_ec;
+      if (include_sha256) {
+        std::string sha_error;
+        if (!sha256_hex_file(entry.path, &entry.sha256, &sha_error)) {
+          entry.sha256_error = sha_error;
+        }
+      }
     }
     map.entries.push_back(std::move(entry));
   }
@@ -1393,7 +1452,11 @@ build_global_config_map_json(const hero_config_store_t &store,
     }
     const auto &entry = map.entries[i];
     out << "{\"key\":" << json_quote(entry.key)
-        << ",\"path\":" << json_quote(entry.path.string())
+        << ",\"derived\":" << bool_json(entry.derived);
+    if (!entry.derived_from_key.empty()) {
+      out << ",\"derived_from_key\":" << json_quote(entry.derived_from_key);
+    }
+    out << ",\"path\":" << json_quote(entry.path.string())
         << ",\"relative_path\":"
         << json_optional_string(relative_to_config_root(store, entry.path))
         << ",\"exists\":" << bool_json(entry.exists)

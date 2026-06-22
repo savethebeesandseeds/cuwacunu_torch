@@ -1228,16 +1228,13 @@ lattice_derived_query_projection_semantics_vocabulary() {
        "compact result summarizes whether any plan-relevant deficit exists",
        false, true},
       {"projection_scope", "projection_scope",
-       "compatibility alias for result_projection_scope on live result "
-       "rows",
-       true, true},
+       "public alias for result_projection_scope on live result rows", true,
+       true},
       {"projection_quantifier", "projection_quantifier",
-       "compatibility alias for result_projection_quantifier on live result "
-       "rows",
+       "public alias for result_projection_quantifier on live result rows",
        true, true},
       {"empty_projection_policy", "empty_projection_policy",
-       "compatibility alias for result_empty_projection_policy on live "
-       "result rows",
+       "public alias for result_empty_projection_policy on live result rows",
        true, true}};
 }
 
@@ -9368,6 +9365,92 @@ latest_satisfying_reference(const std::string &target_id) {
   return "latest_satisfying:" + trimmed;
 }
 
+[[nodiscard]] inline bool
+lattice_target_kind_is_representation(lattice_target_kind_t kind) {
+  return kind == lattice_target_kind_t::vicreg_ready ||
+         kind == lattice_target_kind_t::mtf_representation_ready;
+}
+
+[[nodiscard]] inline std::string derive_representation_plan_input_from_target(
+    const std::string &target_id,
+    const std::unordered_map<std::string, const lattice_target_spec_t *>
+        &target_by_id,
+    std::set<std::string> *visited) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto trimmed = kv::trim(target_id);
+  if (trimmed.empty() || visited == nullptr ||
+      !visited->insert(trimmed).second) {
+    return {};
+  }
+  const auto it = target_by_id.find(trimmed);
+  if (it == target_by_id.end() || it->second == nullptr) {
+    return {};
+  }
+  const auto &spec = *it->second;
+  if (lattice_target_kind_is_representation(spec.kind)) {
+    return latest_satisfying_reference(trimmed);
+  }
+  if (!spec.upstream_target_id.empty()) {
+    const auto derived = derive_representation_plan_input_from_target(
+        spec.upstream_target_id, target_by_id, visited);
+    if (!derived.empty()) {
+      return derived;
+    }
+  }
+  const auto checkpoint_source_target_id =
+      latest_satisfying_reference_target_id(spec.checkpoint_source);
+  if (!checkpoint_source_target_id.empty()) {
+    const auto derived = derive_representation_plan_input_from_target(
+        checkpoint_source_target_id, target_by_id, visited);
+    if (!derived.empty()) {
+      return derived;
+    }
+  }
+  const auto evaluated_source_target_id =
+      latest_satisfying_reference_target_id(spec.evaluated_checkpoint_source);
+  if (!evaluated_source_target_id.empty()) {
+    const auto derived = derive_representation_plan_input_from_target(
+        evaluated_source_target_id, target_by_id, visited);
+    if (!derived.empty()) {
+      return derived;
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] inline std::string derive_representation_plan_input(
+    const lattice_target_spec_t &spec,
+    const std::unordered_map<std::string, const lattice_target_spec_t *>
+        &target_by_id) {
+  if (spec.kind != lattice_target_kind_t::channel_mdn_ready) {
+    return {};
+  }
+  std::set<std::string> visited;
+  if (!spec.upstream_target_id.empty()) {
+    const auto derived = derive_representation_plan_input_from_target(
+        spec.upstream_target_id, target_by_id, &visited);
+    if (!derived.empty()) {
+      return derived;
+    }
+  }
+  const auto evaluated_source_target_id =
+      latest_satisfying_reference_target_id(spec.evaluated_checkpoint_source);
+  if (!evaluated_source_target_id.empty()) {
+    const auto derived = derive_representation_plan_input_from_target(
+        evaluated_source_target_id, target_by_id, &visited);
+    if (!derived.empty()) {
+      return derived;
+    }
+  }
+  const auto checkpoint_source_target_id =
+      latest_satisfying_reference_target_id(spec.checkpoint_source);
+  if (!checkpoint_source_target_id.empty()) {
+    return derive_representation_plan_input_from_target(
+        checkpoint_source_target_id, target_by_id, &visited);
+  }
+  return {};
+}
+
 [[nodiscard]] inline std::string
 default_lattice_warning_kind_for_target(const lattice_target_spec_t &spec) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
@@ -10108,12 +10191,19 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   }
   const auto protocol_id_default =
       artifact_scope.has_value() ? artifact_scope->protocol_id : "";
-  const auto source_range_default =
+  const auto train_split_default =
+      artifact_scope.has_value() ? artifact_scope->train_split : "";
+  const auto train_split =
+      optional_alias(block, "TRAIN_SPLIT", "OVER_SPLIT", train_split_default,
+                     out.language_warnings, out.target_id);
+  auto source_range_default =
       artifact_scope.has_value()        ? artifact_scope->source_range
       : leakage_guard_scope.has_value() ? leakage_guard_scope->source_range
                                         : out.source_range;
-  const auto train_split_default =
-      artifact_scope.has_value() ? artifact_scope->train_split : "";
+  if (!has_lattice_key(block, "SOURCE_RANGE") &&
+      !kv::trim(train_split).empty()) {
+    source_range_default = "anchor_index";
+  }
   out.protocol_id = kv::optional(block, "PROTOCOL_ID", protocol_id_default);
   const auto component_default =
       artifact_readiness ? ""
@@ -10128,9 +10218,7 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   out.evaluated_checkpoint_source =
       kv::optional(block, "EVALUATED_CHECKPOINT_SOURCE", "");
   out.source_range = kv::optional(block, "SOURCE_RANGE", source_range_default);
-  out.train_split =
-      optional_alias(block, "TRAIN_SPLIT", "OVER_SPLIT", train_split_default,
-                     out.language_warnings, out.target_id);
+  out.train_split = train_split;
   if (artifact_scope.has_value()) {
     confirm_artifact_scope_field(
         "PROTOCOL_ID", kv::optional(block, "PROTOCOL_ID", ""),
@@ -10211,8 +10299,20 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
       kv::optional(block, "MIN_TARGET_SUPERVISION_COVERAGE", "0"));
   out.min_evaluation_metric_coverage = kv::parse_double(
       kv::optional(block, "MIN_EVALUATION_METRIC_COVERAGE", "0"));
-  const auto protect_split_default =
+  auto protect_split_default =
       leakage_guard_scope.has_value() ? leakage_guard_scope->protect_split : "";
+  const bool has_explicit_protect_split =
+      has_lattice_key(block, "PROTECT_SPLIT") ||
+      has_lattice_key(block, "APPLY_SPLIT_PROTECTION");
+  if (protect_split_default.empty() && !has_explicit_protect_split &&
+      !has_lattice_key(block, "FORBID_SPLIT") &&
+      !kv::trim(train_split).empty()) {
+    if (out.target_class == "evaluation_readiness") {
+      protect_split_default = train_split;
+    } else if (out.target_class == "readiness") {
+      protect_split_default = "validation_holdout";
+    }
+  }
   const auto protect_split = optional_alias(
       block, "PROTECT_SPLIT", "APPLY_SPLIT_PROTECTION", protect_split_default,
       out.language_warnings, out.target_id);
@@ -16726,6 +16826,298 @@ expand_lattice_requires_set_block(
 }
 
 [[nodiscard]] inline std::vector<cuwacunu::piaabo::parse::simple_kv::block_t>
+expand_lattice_target_family_block(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto family_id = kv::required(block, "FAMILY_ID");
+  const auto family_kind = kv::lowercase(kv::required(block, "FAMILY_KIND"));
+  const auto confirm_allowed_keys =
+      [&block, &family_id](const std::set<std::string> &allowed_keys) {
+        for (const auto &[key, _] : block.values) {
+          if (allowed_keys.find(key) == allowed_keys.end()) {
+            throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                                     family_id + " has unsupported key " + key);
+          }
+        }
+      };
+  const auto normalized_protocol_ids = [&block, &family_id]() {
+    namespace kv = cuwacunu::piaabo::parse::simple_kv;
+    const auto protocol_ids =
+        kv::parse_list(kv::required(block, "PROTOCOL_IDS"));
+    if (protocol_ids.empty()) {
+      throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                               family_id + " PROTOCOL_IDS cannot be empty");
+    }
+    std::set<std::string> seen_protocol_ids;
+    std::vector<std::string> out;
+    out.reserve(protocol_ids.size());
+    for (const auto &raw_protocol_id : protocol_ids) {
+      const auto protocol_id = kv::trim(raw_protocol_id);
+      if (protocol_id.empty()) {
+        throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                                 family_id +
+                                 " PROTOCOL_IDS contains an empty protocol id");
+      }
+      if (!seen_protocol_ids.insert(protocol_id).second) {
+        throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                                 family_id + " repeats PROTOCOL_ID " +
+                                 protocol_id);
+      }
+      out.push_back(protocol_id);
+    }
+    return out;
+  }();
+  std::set<std::string> generated_target_ids;
+  std::vector<kv::block_t> out;
+  out.reserve(normalized_protocol_ids.size() * 2);
+  const auto append_target =
+      [&](const std::string &target_id,
+          const std::unordered_map<std::string, std::string> &values) {
+        if (!generated_target_ids.insert(target_id).second) {
+          throw std::runtime_error(
+              "[lattice_target] LATTICE_TARGET_FAMILY " + family_id +
+              " generated duplicate TARGET_ID " + target_id);
+        }
+        kv::block_t expanded{};
+        expanded.name = "LATTICE_TARGET";
+        expanded.values.emplace("TARGET_ID", target_id);
+        for (const auto &[key, value] : values) {
+          expanded.values.emplace(key, value);
+        }
+        out.push_back(std::move(expanded));
+      };
+
+  if (family_kind == "protocol_train_core_readiness") {
+    confirm_allowed_keys({"FAMILY_ID", "FAMILY_KIND", "PROTOCOL_IDS",
+                          "REPRESENTATION_PROFILE_IDS", "MDN_PROFILE_ID",
+                          "OVER_SPLIT"});
+    const auto representation_profile_ids =
+        kv::parse_list(kv::required(block, "REPRESENTATION_PROFILE_IDS"));
+    const auto mdn_profile_id = kv::trim(kv::required(block, "MDN_PROFILE_ID"));
+    const auto over_split = kv::trim(kv::required(block, "OVER_SPLIT"));
+    if (normalized_protocol_ids.size() != representation_profile_ids.size()) {
+      throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                               family_id +
+                               " PROTOCOL_IDS and REPRESENTATION_PROFILE_IDS "
+                               "counts must match");
+    }
+    if (mdn_profile_id.empty()) {
+      throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                               family_id + " MDN_PROFILE_ID cannot be empty");
+    }
+    if (over_split.empty()) {
+      throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                               family_id + " OVER_SPLIT cannot be empty");
+    }
+    std::vector<std::string> normalized_representation_profile_ids;
+    normalized_representation_profile_ids.reserve(
+        representation_profile_ids.size());
+    for (const auto &raw_profile_id : representation_profile_ids) {
+      const auto profile_id = kv::trim(raw_profile_id);
+      if (profile_id.empty()) {
+        throw std::runtime_error(
+            "[lattice_target] LATTICE_TARGET_FAMILY " + family_id +
+            " REPRESENTATION_PROFILE_IDS contains an empty profile id");
+      }
+      normalized_representation_profile_ids.push_back(profile_id);
+    }
+    for (std::size_t i = 0; i < normalized_protocol_ids.size(); ++i) {
+      append_target(normalized_protocol_ids[i] +
+                        "_representation_train_core_ready",
+                    {{"USE_PROFILE", normalized_representation_profile_ids[i]},
+                     {"PROTOCOL_ID", normalized_protocol_ids[i]},
+                     {"OVER_SPLIT", over_split}});
+    }
+    for (const auto &protocol_id : normalized_protocol_ids) {
+      append_target(protocol_id + "_mdn_train_core_ready",
+                    {{"USE_PROFILE", mdn_profile_id},
+                     {"PROTOCOL_ID", protocol_id},
+                     {"OVER_SPLIT", over_split}});
+    }
+    return out;
+  }
+
+  if (family_kind == "protocol_channel_mdn_leakage_guard_chain") {
+    confirm_allowed_keys({"FAMILY_ID", "FAMILY_KIND", "PROTOCOL_IDS"});
+    for (const auto &protocol_id : normalized_protocol_ids) {
+      append_target(
+          protocol_id + "_mdn_train_core_no_validation_leakage",
+          {{"TARGET_KIND", "channel_mdn_ready"},
+           {"LEAKAGE_GUARD_SCOPE", "channel_mdn_validation"},
+           {"PROTOCOL_ID", protocol_id},
+           {"CHECKPOINT_SOURCE", latest_satisfying_reference(
+                                     protocol_id + "_mdn_train_core_ready")}});
+      append_target(protocol_id + "_mdn_train_core_no_test_leakage",
+                    {{"TARGET_KIND", "channel_mdn_ready"},
+                     {"LEAKAGE_GUARD_SCOPE", "channel_mdn_test"},
+                     {"PROTOCOL_ID", protocol_id},
+                     {"CHECKPOINT_SOURCE",
+                      latest_satisfying_reference(
+                          protocol_id + "_mdn_train_core_no_validation_"
+                                        "leakage")}});
+    }
+    return out;
+  }
+
+  if (family_kind == "protocol_channel_mdn_evaluation_readiness") {
+    confirm_allowed_keys(
+        {"FAMILY_ID", "FAMILY_KIND", "PROTOCOL_IDS", "EVALUATION_SPLITS"});
+    if (normalized_protocol_ids.size() != 1) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_TARGET_FAMILY " + family_id +
+          " protocol_channel_mdn_evaluation_readiness requires exactly one "
+          "PROTOCOL_ID");
+    }
+    const auto &protocol_id = normalized_protocol_ids.front();
+    const auto checkpoint_target_id =
+        protocol_id + "_mdn_train_core_no_test_leakage";
+    const auto evaluation_splits =
+        kv::parse_list(kv::required(block, "EVALUATION_SPLITS"));
+    if (evaluation_splits.empty()) {
+      throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                               family_id +
+                               " EVALUATION_SPLITS cannot be empty");
+    }
+    std::set<std::string> seen_splits;
+    const auto target_id_for_split = [&family_id](const std::string &split) {
+      if (split == "validation_holdout") {
+        return std::string("channel_mdn_validation_eval_ready");
+      }
+      if (split == "certified_replay_expansion_eval") {
+        return std::string("channel_mdn_certified_replay_expansion_eval_ready");
+      }
+      throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                               family_id + " unsupported EVALUATION_SPLIT " +
+                               split);
+    };
+    for (const auto &raw_split : evaluation_splits) {
+      const auto split = kv::trim(raw_split);
+      if (split.empty()) {
+        throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                                 family_id +
+                                 " EVALUATION_SPLITS contains an empty split");
+      }
+      if (!seen_splits.insert(split).second) {
+        throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                                 family_id + " repeats EVALUATION_SPLIT " +
+                                 split);
+      }
+      append_target(target_id_for_split(split),
+                    {{"TARGET_CLASS", "evaluation_readiness"},
+                     {"TARGET_KIND", "channel_mdn_ready"},
+                     {"PROTOCOL_ID", protocol_id},
+                     {"OVER_SPLIT", split},
+                     {"UPSTREAM_TARGET_ID", checkpoint_target_id},
+                     {"REQUIRE_CHECKPOINT_EXISTS", "false"},
+                     {"MIN_VALID_TARGET_FRACTION", "0.05"},
+                     {"EVALUATED_CHECKPOINT_SOURCE",
+                      latest_satisfying_reference(checkpoint_target_id)},
+                     {"WAVE_MODE", "run|debug"},
+                     {"PLAN_MAX_ATTEMPTS", "1"}});
+    }
+    return out;
+  }
+
+  if (family_kind == "profile_artifact_readiness_targets") {
+    confirm_allowed_keys({"FAMILY_ID", "FAMILY_KIND", "PROTOCOL_IDS",
+                          "USE_PROFILE", "USE_PROFILE_IDS", "TARGET_IDS",
+                          "SUBJECT_FACT_FAMILIES"});
+    if (normalized_protocol_ids.size() != 1) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_TARGET_FAMILY " + family_id +
+          " profile_artifact_readiness_targets requires exactly one "
+          "PROTOCOL_ID");
+    }
+    const bool has_shared_profile =
+        block.values.find("USE_PROFILE") != block.values.end();
+    const bool has_profile_ids =
+        block.values.find("USE_PROFILE_IDS") != block.values.end();
+    if (has_shared_profile == has_profile_ids) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_TARGET_FAMILY " + family_id +
+          " profile_artifact_readiness_targets requires exactly one of "
+          "USE_PROFILE or USE_PROFILE_IDS");
+    }
+    const auto target_ids = kv::parse_list(kv::required(block, "TARGET_IDS"));
+    const auto subject_fact_families =
+        kv::parse_list(kv::required(block, "SUBJECT_FACT_FAMILIES"));
+    if (target_ids.empty()) {
+      throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                               family_id + " TARGET_IDS cannot be empty");
+    }
+    std::vector<std::string> profile_ids;
+    profile_ids.reserve(target_ids.size());
+    if (has_shared_profile) {
+      const auto use_profile = kv::trim(kv::required(block, "USE_PROFILE"));
+      if (use_profile.empty()) {
+        throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                                 family_id + " USE_PROFILE cannot be empty");
+      }
+      profile_ids.assign(target_ids.size(), use_profile);
+    } else {
+      profile_ids = kv::parse_list(kv::required(block, "USE_PROFILE_IDS"));
+      if (profile_ids.size() != target_ids.size()) {
+        throw std::runtime_error(
+            "[lattice_target] LATTICE_TARGET_FAMILY " + family_id +
+            " USE_PROFILE_IDS and TARGET_IDS counts must match");
+      }
+      for (auto &profile_id : profile_ids) {
+        profile_id = kv::trim(profile_id);
+        if (profile_id.empty()) {
+          throw std::runtime_error(
+              "[lattice_target] LATTICE_TARGET_FAMILY " + family_id +
+              " USE_PROFILE_IDS contains an empty profile id");
+        }
+      }
+    }
+    if (target_ids.size() != subject_fact_families.size()) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_TARGET_FAMILY " + family_id +
+          " TARGET_IDS and SUBJECT_FACT_FAMILIES counts must match");
+    }
+    for (std::size_t i = 0; i < target_ids.size(); ++i) {
+      const auto target_id = kv::trim(target_ids[i]);
+      const auto subject_fact_family = kv::trim(subject_fact_families[i]);
+      if (target_id.empty()) {
+        throw std::runtime_error("[lattice_target] LATTICE_TARGET_FAMILY " +
+                                 family_id +
+                                 " TARGET_IDS contains an empty target id");
+      }
+      if (subject_fact_family.empty()) {
+        throw std::runtime_error(
+            "[lattice_target] LATTICE_TARGET_FAMILY " + family_id +
+            " SUBJECT_FACT_FAMILIES contains an empty fact family");
+      }
+      append_target(target_id,
+                    {{"USE_PROFILE", profile_ids[i]},
+                     {"PROTOCOL_ID", normalized_protocol_ids.front()},
+                     {"SUBJECT_FACT_FAMILY", subject_fact_family}});
+    }
+    return out;
+  }
+
+  throw std::runtime_error(
+      "[lattice_target] unsupported LATTICE_TARGET_FAMILY FAMILY_KIND=" +
+      family_kind + " for " + family_id);
+}
+
+[[nodiscard]] inline std::vector<cuwacunu::piaabo::parse::simple_kv::block_t>
+expand_lattice_target_authoring_blocks(
+    const std::vector<cuwacunu::piaabo::parse::simple_kv::block_t> &blocks) {
+  std::vector<cuwacunu::piaabo::parse::simple_kv::block_t> out;
+  out.reserve(blocks.size());
+  for (const auto &block : blocks) {
+    if (block.name == "LATTICE_TARGET_FAMILY") {
+      const auto expanded = expand_lattice_target_family_block(block);
+      out.insert(out.end(), expanded.begin(), expanded.end());
+      continue;
+    }
+    out.push_back(block);
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<cuwacunu::piaabo::parse::simple_kv::block_t>
 expand_lattice_warn_set_block(
     const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
@@ -16789,6 +17181,87 @@ expand_lattice_warn_set_block(
   return out;
 }
 
+[[nodiscard]] inline std::string
+lattice_plan_clause_field_value(const lattice_plan_clause_t &plan,
+                                std::string_view key) {
+  for (const auto &field : plan.fields) {
+    if (field.key == key) {
+      return field.value;
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] inline bool
+lattice_plan_has_authored_field(const lattice_target_compiled_t &target,
+                                std::string_view key) {
+  return std::any_of(
+      target.plans.begin(), target.plans.end(),
+      [key](const lattice_plan_clause_t &plan) {
+        return !lattice_plan_clause_field_value(plan, key).empty();
+      });
+}
+
+[[nodiscard]] inline std::string
+lattice_plan_override_reason(const lattice_target_compiled_t &target) {
+  for (const auto &plan : target.plans) {
+    const auto reason =
+        lattice_plan_clause_field_value(plan, "PLAN_INPUT_OVERRIDE_REASON");
+    if (!cuwacunu::piaabo::parse::simple_kv::trim(reason).empty()) {
+      return reason;
+    }
+  }
+  return {};
+}
+
+inline void assign_or_confirm_lattice_derived_plan_input(
+    lattice_target_compiled_t &target, std::string *field,
+    std::string_view field_name, const std::string &derived) {
+  if (field == nullptr || derived.empty()) {
+    return;
+  }
+  const auto current = cuwacunu::piaabo::parse::simple_kv::trim(*field);
+  if (current.empty()) {
+    *field = derived;
+    return;
+  }
+  if (current == derived) {
+    *field = derived;
+    return;
+  }
+  if (lattice_plan_has_authored_field(target, field_name) &&
+      !lattice_plan_override_reason(target).empty()) {
+    return;
+  }
+  throw std::runtime_error(
+      "[lattice_target] " + target.lowered_v0.target_id + " " +
+      std::string(field_name) + "=" + current +
+      " but target dependency/source selectors derive " + derived +
+      "; add PLAN_INPUT_OVERRIDE_REASON to keep an intentional override");
+}
+
+inline void derive_lattice_plan_inputs_from_target_graph(
+    std::vector<lattice_target_compiled_t> *targets,
+    const std::unordered_map<std::string, const lattice_target_spec_t *>
+        &target_by_id) {
+  if (targets == nullptr) {
+    return;
+  }
+  for (auto &target : *targets) {
+    if (target.plans.empty()) {
+      continue;
+    }
+    auto &spec = target.lowered_v0;
+    assign_or_confirm_lattice_derived_plan_input(
+        target, &spec.plan_input_mdn_checkpoint, "PLAN_INPUT_MDN_CHECKPOINT",
+        spec.evaluated_checkpoint_source);
+    assign_or_confirm_lattice_derived_plan_input(
+        target, &spec.plan_input_representation_checkpoint,
+        "PLAN_INPUT_REPRESENTATION_CHECKPOINT",
+        derive_representation_plan_input(spec, target_by_id));
+  }
+}
+
 [[nodiscard]] inline std::vector<lattice_target_compiled_t>
 decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
@@ -16802,7 +17275,8 @@ decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
   std::set<std::string> policy_gate_ids;
   std::vector<lattice_policy_gate_spec_t> policy_gates;
   std::vector<lattice_target_compiled_t> out;
-  const auto blocks = kv::parse_blocks(dsl_text);
+  const auto blocks =
+      expand_lattice_target_authoring_blocks(kv::parse_blocks(dsl_text));
   const auto append_target_clause =
       [](std::unordered_map<std::string, std::vector<kv::block_t>> &clauses,
          const kv::block_t &block) {
@@ -16938,10 +17412,6 @@ decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
     }
     compiled.warnings = spec.language_warnings;
     compiled.lowered_v0 = std::move(spec);
-    compiled.target_spec_fingerprint =
-        lattice_target_spec_fingerprint(compiled);
-    compiled.lowered_v0.target_spec_fingerprint =
-        compiled.target_spec_fingerprint;
     out.push_back(std::move(compiled));
   }
   std::set<std::string> target_ids;
@@ -17016,6 +17486,19 @@ decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
     check_latest_satisfying_reference(
         spec, "PLAN_INPUT_REPRESENTATION_CHECKPOINT",
         spec.plan_input_representation_checkpoint);
+  }
+  derive_lattice_plan_inputs_from_target_graph(&out, target_by_id);
+  for (const auto &target : out) {
+    const auto &spec = target.lowered_v0;
+    check_latest_satisfying_reference(spec, "PLAN_INPUT_MDN_CHECKPOINT",
+                                      spec.plan_input_mdn_checkpoint);
+    check_latest_satisfying_reference(
+        spec, "PLAN_INPUT_REPRESENTATION_CHECKPOINT",
+        spec.plan_input_representation_checkpoint);
+  }
+  for (auto &target : out) {
+    target.target_spec_fingerprint = lattice_target_spec_fingerprint(target);
+    target.lowered_v0.target_spec_fingerprint = target.target_spec_fingerprint;
   }
   const auto check_clause_targets = [&target_ids](
                                         const auto &clauses,

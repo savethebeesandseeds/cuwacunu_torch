@@ -90,7 +90,7 @@ valid_request(const std::filesystem::path &root) {
 
   marshal::marshal_evaluation_request_t request{};
   request.evaluation_id = "eval_mdn_validation_1800_2050";
-  request.wave_id = "cwu_02v_channel_validation_eval_mdn_1800_2050";
+  request.wave_id = "cwu_02v_validation_holdout_eval_mdn";
   request.runtime_exec_path = runtime_exec;
   request.evaluation_config_path = config_path;
   request.input_mdn_checkpoint = mdn_checkpoint;

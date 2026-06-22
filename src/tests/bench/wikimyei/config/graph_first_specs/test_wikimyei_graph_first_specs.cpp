@@ -7,11 +7,14 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "hero/config_derivation.h"
 #include "jkimyei/api/training_spec.h"
 #include "kikijyeba/environment/replay/spec.h"
 #include "kikijyeba/protocol/config_bundle.h"
+#include "piaabo/digest/sha256.h"
 #include "piaabo/parse/simple_kv_block.h"
 #include "ujcamei/source/registry/types/kline_feature_registry.h"
 #include "wikimyei/inference/expected_value/mdn/assembly.h"
@@ -71,6 +74,25 @@ read_config_paths(const std::string &path) {
       }
       out.emplace(std::move(key), std::move(value));
     }
+  }
+  std::vector<std::pair<std::string, std::string>> derived_paths;
+  for (const auto &[key, value] : out) {
+    const auto bnf_key =
+        cuwacunu::hero::config_derivation::paired_grammar_path_key(key);
+    if (!bnf_key.has_value() || out.count(*bnf_key) != 0) {
+      continue;
+    }
+    const auto derived =
+        cuwacunu::hero::config_derivation::resolved_grammar_path_for_key(
+            out, *bnf_key, std::filesystem::path(path),
+            true /* values_are_already_resolved */);
+    if (derived.has_value() && !derived->empty() &&
+        std::filesystem::exists(*derived)) {
+      derived_paths.emplace_back(*bnf_key, derived->string());
+    }
+  }
+  for (auto &[key, value] : derived_paths) {
+    out.emplace(std::move(key), std::move(value));
   }
   return out;
 }
@@ -336,6 +358,7 @@ void test_channel_specs_decode_and_validate() {
       protocol_bnf.find("OBSERVER") == std::string::npos ||
       protocol_bnf.find("ALLOCATION_POLICY") == std::string::npos ||
       protocol_bnf.find("NO_LOOKAHEAD_CONTRACT") == std::string::npos ||
+      protocol_bnf.find("CONTRACT_DIGEST") != std::string::npos ||
       vicreg_dsl_bnf.find("VICREG") == std::string::npos ||
       vicreg_net_bnf.find("VICREG_NET") == std::string::npos ||
       vicreg_net_bnf.find("VICREG_INVARIANCE_WEIGHT") == std::string::npos ||
@@ -495,6 +518,36 @@ void test_channel_specs_decode_and_validate() {
       representation_dsl_text, representation_net_text);
   const auto protocol_variant =
       protocol::decode_protocol_variant_from_dsl(protocol_dsl_text);
+  if (protocol_dsl_text.find("CONTRACT_DIGEST") != std::string::npos) {
+    throw std::runtime_error(
+        "no-lookahead CONTRACT_DIGEST leaked into protocol authoring surface");
+  }
+  if (!cuwacunu::piaabo::digest::is_sha256_hex(
+          protocol_variant.no_lookahead_contract.contract_digest) ||
+      protocol_variant.no_lookahead_contract.contract_digest ==
+          protocol_variant.no_lookahead_contract.contract_id) {
+    throw std::runtime_error(
+        "no-lookahead contract digest should be derived SHA256 identity");
+  }
+  const auto changed_no_lookahead_variant =
+      protocol::decode_protocol_variant_from_dsl(
+          replace_first(protocol_dsl_text,
+                        "  PUBLISH_RULE = valid_from_anchor_gte_fit_end;\n",
+                        "  PUBLISH_RULE = valid_from_anchor_gt_fit_end;\n"));
+  if (changed_no_lookahead_variant.no_lookahead_contract.contract_digest ==
+      protocol_variant.no_lookahead_contract.contract_digest) {
+    throw std::runtime_error(
+        "no-lookahead contract digest should change with contract body");
+  }
+  expect_throw(
+      [&] {
+        (void)protocol::decode_protocol_variant_from_dsl(replace_first(
+            protocol_dsl_text,
+            "  CERTIFICATE_SCHEMA = no_lookahead_artifact_provenance.v1;\n",
+            "  CONTRACT_DIGEST = stale_literal;\n"
+            "  CERTIFICATE_SCHEMA = no_lookahead_artifact_provenance.v1;\n"));
+      },
+      "authored no-lookahead contract digest");
   const auto mtf_spec = mtf::decode_mtf_jepa_mae_vicreg_spec_from_split_dsl(
       mtf_dsl_text, mtf_net_text);
   const auto mdn_spec =
@@ -507,6 +560,57 @@ void test_channel_specs_decode_and_validate() {
   const auto allocation_spec =
       graph_allocation::decode_graph_node_allocation_spec_from_dsl(
           graph_node_allocation_dsl_text);
+  if (graph_node_allocation_features_text.find("NODE_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_features_text.find("GLOBAL_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_features_text.find("RISK_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_net_text.find("INPUT_NODE_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_net_text.find("INPUT_GLOBAL_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_net_text.find("INPUT_RISK_FEATURE_DIM") !=
+          std::string::npos) {
+    throw std::runtime_error(
+        "graph-node allocation feature dimensions should be derived");
+  }
+  if (graph_node_allocation_features_bnf.find("NODE_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_features_bnf.find("GLOBAL_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_features_bnf.find("RISK_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("INPUT_NODE_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("INPUT_GLOBAL_FEATURE_DIM") !=
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("INPUT_RISK_FEATURE_DIM") !=
+          std::string::npos) {
+    throw std::runtime_error(
+        "graph-node allocation dimension keys should be retired from grammar");
+  }
+  expect_throw(
+      [&] {
+        const auto decoded = graph_allocation::
+            decode_graph_node_allocation_feature_manifest_from_dsl(
+                replace_first(graph_node_allocation_features_text,
+                              "NODE_FEATURE_NAMES",
+                              "NODE_FEATURE_DIM = 27;\n  NODE_FEATURE_NAMES"));
+        (void)decoded;
+      },
+      "retired feature manifest dimension key");
+  expect_throw(
+      [&] {
+        const auto decoded =
+            graph_allocation::decode_graph_node_allocation_net_spec_from_dsl(
+                replace_first(graph_node_allocation_net_text,
+                              "NODE_ENCODER_LAYERS",
+                              "INPUT_NODE_FEATURE_DIM = 27;\n  "
+                              "NODE_ENCODER_LAYERS"));
+        (void)decoded;
+      },
+      "retired allocation net dimension key");
   const auto allocation_net_spec =
       graph_allocation::decode_graph_node_allocation_net_spec_from_dsl(
           graph_node_allocation_net_text);
@@ -529,6 +633,24 @@ void test_channel_specs_decode_and_validate() {
   const auto allocation_feature_manifest =
       graph_allocation::decode_graph_node_allocation_feature_manifest_from_dsl(
           graph_node_allocation_features_text);
+  if (allocation_feature_manifest.node_feature_dim !=
+          static_cast<std::int64_t>(
+              allocation_feature_manifest.node_feature_names.size()) ||
+      allocation_feature_manifest.global_feature_dim !=
+          static_cast<std::int64_t>(
+              allocation_feature_manifest.global_feature_names.size()) ||
+      allocation_feature_manifest.risk_feature_dim !=
+          static_cast<std::int64_t>(
+              allocation_feature_manifest.risk_feature_names.size()) ||
+      allocation_net_spec.input_node_feature_dim !=
+          allocation_feature_manifest.node_feature_dim ||
+      allocation_net_spec.input_global_feature_dim !=
+          allocation_feature_manifest.global_feature_dim ||
+      allocation_net_spec.input_risk_feature_dim !=
+          allocation_feature_manifest.risk_feature_dim) {
+    throw std::runtime_error(
+        "graph-node allocation feature dimensions were not derived");
+  }
   const auto replay_environment_spec =
       environment::decode_replay_environment_spec_from_dsl(
           replay_environment_dsl_text);

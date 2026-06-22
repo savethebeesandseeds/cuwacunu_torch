@@ -6,6 +6,7 @@
 #include "ujcamei/source/registry/source_registry_decoder.h"
 #include "ujcamei/source/retrieval/retrieval_channel_decoder.h"
 
+#include "hero/config_derivation.h"
 #include "hero/config_path_defaults.h"
 #include "piaabo/core/utils.h"
 
@@ -254,6 +255,13 @@ required_config_value(const std::unordered_map<std::string, std::string> &cfg,
                       const std::string &key, const std::string &config_path) {
   const auto it = cfg.find(key);
   if (it == cfg.end() || !has_non_ws(it->second)) {
+    const auto derived =
+        cuwacunu::hero::config_derivation::resolved_grammar_path_for_key(
+            cfg, key, std::filesystem::path(config_path),
+            true /* values_are_already_resolved */);
+    if (derived.has_value() && !derived->empty()) {
+      return derived->string();
+    }
     throw std::runtime_error("missing required Ujcamei source config key '" +
                              key + "' in " + config_path);
   }

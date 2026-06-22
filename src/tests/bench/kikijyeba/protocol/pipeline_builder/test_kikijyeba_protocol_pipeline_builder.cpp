@@ -305,6 +305,21 @@ fixture_paths_t make_config_fixture(const std::string &label,
              "wikimyei.policy.portfolio.graph_node_allocation;\n"
              "  REPRESENTATION_CONTRACT = "
              "graph_order.channel_node_representation.v1;\n"
+             "};\n"
+             "\n"
+             "NO_LOOKAHEAD_CONTRACT {\n"
+             "  CONTRACT_ID = "
+             "fixture_no_lookahead_artifact_provenance.anchor_v1;\n"
+             "  CERTIFICATE_SCHEMA = no_lookahead_artifact_provenance.v1;\n"
+             "  INFLUENCE_SCHEMA = no_lookahead_artifact_provenance.anchor_v1;\n"
+             "  FRONTIER_UNIT = accepted_anchor_index;\n"
+             "  SERVING_ORDER = representation,mdn,policy;\n"
+             "  VISIBILITY_POLICY = prior_generation_per_slice;\n"
+             "  DERIVED_ARTIFACT_RULE = inherit_parent_influence;\n"
+             "  CHECKPOINT_RULE = generation_manifest_required;\n"
+             "  PUBLISH_RULE = valid_from_anchor_gte_fit_end;\n"
+             "  BOOTSTRAP_POLICY = explicit_lane_only;\n"
+             "  RESEARCH_POLICY = smoke_or_research_not_promotable;\n"
              "};\n");
 
   write_text(vicreg_dsl, "VICREG {\n"
@@ -546,7 +561,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
 
 void test_default_channel_config_dry_run_report() {
   const auto channel_config = make_default_config_with_runtime_wave_id(
-      "default_channel_wave", "cwu_02v_channel_validation_eval_mdn_1800_2050");
+      "default_channel_wave", "cwu_02v_validation_holdout_eval_mdn");
   const auto bundle =
       builder::load_channel_graph_first_config_bundle_from_config(
           channel_config);

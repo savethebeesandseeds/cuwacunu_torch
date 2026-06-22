@@ -18487,7 +18487,7 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   out.checkpoint_digest_reported = detail::first_string(
       runtime_checkpoint_io, report,
       {"checkpoint_digest_reported", "checkpoint_file_digest",
-       "checkpoint_artifact_digest", "checkpoint_artifact_hash"});
+       "checkpoint_artifact_digest"});
   out.checkpoint_digest_verified =
       detail::parse_bool_fallback(detail::first_string(
           runtime_checkpoint_io, report, {"checkpoint_digest_verified"}));

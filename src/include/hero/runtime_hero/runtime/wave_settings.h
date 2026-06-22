@@ -10,6 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -18,6 +19,7 @@
 
 #include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
 #include "piaabo/parse/simple_kv_block.h"
+#include "ujcamei/source/splits/source_split_catalog.h"
 
 namespace cuwacunu::hero::runtime::settings {
 
@@ -25,6 +27,7 @@ enum class wave_source_range_policy_t {
   all,
   anchor_index,
   source_key,
+  fraction_range,
 };
 
 enum class wave_source_order_policy_t {
@@ -53,6 +56,7 @@ struct wave_settings_t {
   wave_action_t action{wave_action_t::run};
   bool debug{false};
   std::string source_cursor_id{};
+  std::string source_split_id{};
   std::string source_cursor_kind{"graph_anchor"};
   std::string source_cursor_scope{"wave_batch"};
   wave_source_range_policy_t source_range_policy{
@@ -72,6 +76,8 @@ struct wave_settings_t {
   std::optional<std::size_t> anchor_index_end{std::nullopt};
   std::optional<std::int64_t> source_key_begin{std::nullopt};
   std::optional<std::int64_t> source_key_end{std::nullopt};
+  std::optional<cuwacunu::ujcamei::source::splits::source_split_t>
+      source_split_intent{std::nullopt};
 };
 
 struct wave_protocol_bindings_t {
@@ -86,6 +92,7 @@ struct wave_protocol_bindings_t {
 
 struct source_cursor_settings_t {
   std::string cursor_id{};
+  std::string source_split_id{};
   std::string source_cursor_kind{"graph_anchor"};
   std::string source_cursor_scope{"wave_batch"};
   wave_source_range_policy_t source_range_policy{
@@ -94,6 +101,8 @@ struct source_cursor_settings_t {
   std::optional<std::size_t> anchor_index_end{std::nullopt};
   std::optional<std::int64_t> source_key_begin{std::nullopt};
   std::optional<std::int64_t> source_key_end{std::nullopt};
+  std::optional<cuwacunu::ujcamei::source::splits::source_split_t>
+      source_split_intent{std::nullopt};
 };
 
 namespace wave_detail {
@@ -204,6 +213,9 @@ parse_source_range_policy(std::string value) {
   if (value == "source_key" || value == "anchor_key") {
     return wave_source_range_policy_t::source_key;
   }
+  if (value == "fraction_range") {
+    return wave_source_range_policy_t::fraction_range;
+  }
   throw std::runtime_error("[wave_settings] invalid SOURCE_RANGE: " + value);
 }
 
@@ -216,6 +228,8 @@ source_range_policy_name(wave_source_range_policy_t policy) {
     return "anchor_index";
   case wave_source_range_policy_t::source_key:
     return "source_key";
+  case wave_source_range_policy_t::fraction_range:
+    return "fraction_range";
   }
   throw std::runtime_error("[wave_settings] unknown SOURCE_RANGE policy");
 }
@@ -284,16 +298,13 @@ parse_optional_i64(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
   return wave_detail::kv::parse_i64(raw);
 }
 
-[[nodiscard]] inline std::optional<std::int64_t> parse_optional_i64_alias(
+inline void reject_retired_cursor_key(
     const cuwacunu::piaabo::parse::simple_kv::block_t &block,
-    const std::string &primary_key, const std::string &alias_key) {
-  const auto primary = parse_optional_i64(block, primary_key);
-  const auto alias = parse_optional_i64(block, alias_key);
-  if (primary.has_value() && alias.has_value() && *primary != *alias) {
-    throw std::runtime_error("[wave_settings] " + primary_key + " and " +
-                             alias_key + " disagree");
+    const std::string &key) {
+  if (block.values.find(key) != block.values.end()) {
+    throw std::runtime_error("[wave_settings] " + key +
+                             " is retired; use SOURCE_KEY_BEGIN/END");
   }
-  return primary.has_value() ? primary : alias;
 }
 
 [[nodiscard]] inline bool
@@ -357,6 +368,23 @@ validate_source_cursor_settings(const source_cursor_settings_t &settings) {
     }
     return;
   }
+  if (settings.source_range_policy ==
+      wave_source_range_policy_t::fraction_range) {
+    if (settings.anchor_index_begin.has_value() ||
+        settings.anchor_index_end.has_value() ||
+        settings.source_key_begin.has_value() ||
+        settings.source_key_end.has_value()) {
+      throw std::runtime_error(
+          "[wave_settings] fraction_range cursor must not carry concrete "
+          "source bounds");
+    }
+    if (settings.source_split_id.empty() ||
+        !settings.source_split_intent.has_value()) {
+      throw std::runtime_error(
+          "[wave_settings] SOURCE_RANGE=fraction_range requires SOURCE_SPLIT");
+    }
+    return;
+  }
   if (settings.anchor_index_begin.has_value() ||
       settings.anchor_index_end.has_value()) {
     throw std::runtime_error("[wave_settings] cursor ANCHOR_INDEX_BEGIN/END "
@@ -389,12 +417,12 @@ decode_source_cursor_settings_from_block(
   out.source_cursor_scope = kv::required(block, "SOURCE_CURSOR_SCOPE");
   out.source_range_policy =
       parse_source_range_policy(kv::required(block, "SOURCE_RANGE"));
+  reject_retired_cursor_key(block, "ANCHOR_KEY_BEGIN");
+  reject_retired_cursor_key(block, "ANCHOR_KEY_END");
   out.anchor_index_begin = parse_optional_size(block, "ANCHOR_INDEX_BEGIN");
   out.anchor_index_end = parse_optional_size(block, "ANCHOR_INDEX_END");
-  out.source_key_begin =
-      parse_optional_i64_alias(block, "SOURCE_KEY_BEGIN", "ANCHOR_KEY_BEGIN");
-  out.source_key_end =
-      parse_optional_i64_alias(block, "SOURCE_KEY_END", "ANCHOR_KEY_END");
+  out.source_key_begin = parse_optional_i64(block, "SOURCE_KEY_BEGIN");
+  out.source_key_end = parse_optional_i64(block, "SOURCE_KEY_END");
   validate_source_cursor_settings(out);
   return out;
 }
@@ -425,6 +453,62 @@ source_cursor_settings_from_dsl(const std::string &dsl_text,
                              cursor_id);
   }
   return found->second;
+}
+
+[[nodiscard]] inline std::string
+source_cursor_id_from_split_id(const std::string &split_id) {
+  const auto trimmed = wave_detail::kv::trim(split_id);
+  if (trimmed.empty()) {
+    throw std::runtime_error("[wave_settings] SOURCE_SPLIT is required");
+  }
+  return "split:" + trimmed;
+}
+
+[[nodiscard]] inline source_cursor_settings_t
+source_cursor_settings_from_split_dsl(const std::string &split_dsl_text,
+                                      std::string split_id) {
+  namespace source_split = cuwacunu::ujcamei::source::splits;
+  split_id = wave_detail::kv::trim(std::move(split_id));
+  if (split_id.empty()) {
+    throw std::runtime_error("[wave_settings] SOURCE_SPLIT is required");
+  }
+  if (wave_detail::kv::trim(split_dsl_text).empty()) {
+    throw std::runtime_error(
+        "[wave_settings] SOURCE_SPLIT requires an Ujcamei source split "
+        "catalog");
+  }
+  const auto split_catalog =
+      source_split::decode_source_split_catalog_from_dsl(split_dsl_text);
+  const auto *split = split_catalog.find_split(split_id);
+  if (split == nullptr) {
+    throw std::runtime_error("[wave_settings] SOURCE_SPLIT not found: " +
+                             split_id);
+  }
+  if (split->anchor_range.begin < 0 || split->anchor_range.end < 0) {
+    throw std::runtime_error(
+        "[wave_settings] SOURCE_SPLIT anchor range must be non-negative");
+  }
+  source_cursor_settings_t out{};
+  out.cursor_id = source_cursor_id_from_split_id(split_id);
+  out.source_split_id = split_id;
+  out.source_cursor_kind = "graph_anchor";
+  out.source_cursor_scope = "wave_batch";
+  out.source_split_intent = *split;
+  if (split->selector_kind ==
+      source_split::source_split_selector_kind_t::anchor_index_range) {
+    if (split->anchor_range.begin < 0 || split->anchor_range.end < 0) {
+      throw std::runtime_error(
+          "[wave_settings] SOURCE_SPLIT anchor range must be non-negative");
+    }
+    out.source_range_policy = wave_source_range_policy_t::anchor_index;
+    out.anchor_index_begin =
+        static_cast<std::size_t>(split->anchor_range.begin);
+    out.anchor_index_end = static_cast<std::size_t>(split->anchor_range.end);
+  } else {
+    out.source_range_policy = wave_source_range_policy_t::fraction_range;
+  }
+  validate_source_cursor_settings(out);
+  return out;
 }
 
 [[nodiscard]] inline const char *runtime_report_mode_name(
@@ -496,6 +580,24 @@ inline void validate_wave_settings(const wave_settings_t &settings) {
       throw std::runtime_error(
           "[wave_settings] ANCHOR_INDEX_END must be greater than "
           "ANCHOR_INDEX_BEGIN");
+    }
+    return;
+  }
+
+  if (settings.source_range_policy ==
+      wave_source_range_policy_t::fraction_range) {
+    if (settings.anchor_index_begin.has_value() ||
+        settings.anchor_index_end.has_value() ||
+        settings.source_key_begin.has_value() ||
+        settings.source_key_end.has_value()) {
+      throw std::runtime_error(
+          "[wave_settings] SOURCE_RANGE=fraction_range must not carry concrete "
+          "source bounds before materialization");
+    }
+    if (settings.source_split_id.empty() ||
+        !settings.source_split_intent.has_value()) {
+      throw std::runtime_error(
+          "[wave_settings] SOURCE_RANGE=fraction_range requires SOURCE_SPLIT");
     }
     return;
   }
@@ -620,6 +722,37 @@ resolve_source_range_to_anchor_indices(const wave_settings_t &settings,
     };
   }
 
+  if (settings.source_range_policy ==
+      wave_source_range_policy_t::fraction_range) {
+    if (!settings.source_split_intent.has_value()) {
+      throw std::runtime_error(
+          "[wave_settings] fraction_range wave range is missing SOURCE_SPLIT "
+          "intent");
+    }
+    if (anchor_keys.size() >
+        static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+      throw std::runtime_error(
+          "[wave_settings] accepted graph-anchor domain exceeds int64 range");
+    }
+    const auto materialized =
+        cuwacunu::ujcamei::source::splits::materialize_source_split_range(
+            *settings.source_split_intent,
+            static_cast<std::int64_t>(anchor_keys.size()));
+    if (materialized.begin < 0 || materialized.end < 0) {
+      throw std::runtime_error(
+          "[wave_settings] fraction_range materialized negative bounds");
+    }
+    if (static_cast<std::size_t>(materialized.end) > anchor_keys.size()) {
+      throw std::runtime_error(
+          "[wave_settings] fraction_range materialized beyond accepted graph "
+          "anchor domain");
+    }
+    return resolved_source_range_t{
+        .anchor_index_begin = static_cast<std::size_t>(materialized.begin),
+        .anchor_index_end = static_cast<std::size_t>(materialized.end),
+    };
+  }
+
   if (!cursor_report.reference_key_step.has_value()) {
     throw std::runtime_error(
         "[wave_settings] SOURCE_RANGE=source_key requires reference key step");
@@ -668,7 +801,8 @@ resolve_source_range_to_anchor_indices(const wave_settings_t &settings,
 [[nodiscard]] inline wave_settings_t decode_wave_settings_from_block(
     const cuwacunu::piaabo::parse::simple_kv::block_t &block,
     const wave_protocol_bindings_t &protocol = default_wave_protocol_bindings(),
-    const std::string &source_cursor_dsl_text = {}) {
+    const std::string &source_cursor_dsl_text = {},
+    const std::string &split_dsl_text = {}) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   wave_settings_t out{};
   out.wave_id = kv::required(block, "WAVE_ID");
@@ -701,7 +835,21 @@ resolve_source_range_to_anchor_indices(const wave_settings_t &settings,
         "train; debug is only a modifier");
   }
   out.action = saw_train ? wave_action_t::train : wave_action_t::run;
-  out.source_cursor_id = kv::required(block, "SOURCE_CURSOR_ID");
+  const std::string authored_source_cursor_id =
+      kv::optional(block, "SOURCE_CURSOR_ID", "");
+  const std::string authored_source_split_id =
+      kv::optional(block, "SOURCE_SPLIT", "");
+  out.source_split_id = kv::trim(authored_source_split_id);
+  if (!out.source_split_id.empty() &&
+      !kv::trim(authored_source_cursor_id).empty()) {
+    throw std::runtime_error(
+        "[wave_settings] SOURCE_SPLIT derives source cursor identity; omit "
+        "SOURCE_CURSOR_ID");
+  }
+  out.source_cursor_id =
+      out.source_split_id.empty()
+          ? kv::required(block, "SOURCE_CURSOR_ID")
+          : source_cursor_id_from_split_id(out.source_split_id);
   const auto source_order_it = block.values.find("SOURCE_ORDER");
   out.source_order_policy_explicit = source_order_it != block.values.end() &&
                                      !kv::trim(source_order_it->second).empty();
@@ -711,8 +859,11 @@ resolve_source_range_to_anchor_indices(const wave_settings_t &settings,
           : (out.action == wave_action_t::train
                  ? wave_source_order_policy_t::random_per_epoch
                  : wave_source_order_policy_t::sequential);
-  const auto cursor = source_cursor_settings_from_dsl(source_cursor_dsl_text,
-                                                      out.source_cursor_id);
+  const auto cursor = out.source_split_id.empty()
+                          ? source_cursor_settings_from_dsl(
+                                source_cursor_dsl_text, out.source_cursor_id)
+                          : source_cursor_settings_from_split_dsl(
+                                split_dsl_text, out.source_split_id);
   out.source_cursor_kind = cursor.source_cursor_kind;
   out.source_cursor_scope = cursor.source_cursor_scope;
   out.source_range_policy = cursor.source_range_policy;
@@ -720,6 +871,7 @@ resolve_source_range_to_anchor_indices(const wave_settings_t &settings,
   out.anchor_index_end = cursor.anchor_index_end;
   out.source_key_begin = cursor.source_key_begin;
   out.source_key_end = cursor.source_key_end;
+  out.source_split_intent = cursor.source_split_intent;
   out.job_kind = kv::optional(block, "JOB_KIND", "");
   out.policy_id = kv::optional(block, "POLICY_ID", "");
   out.policy_kind = kv::optional(block, "POLICY_KIND", "");
@@ -734,33 +886,11 @@ resolve_source_range_to_anchor_indices(const wave_settings_t &settings,
   return out;
 }
 
-[[nodiscard]] inline std::string wave_selection_id_from_blocks(
-    const std::vector<cuwacunu::piaabo::parse::simple_kv::block_t> &blocks) {
-  namespace kv = cuwacunu::piaabo::parse::simple_kv;
-  std::string selected{};
-  bool saw_selection = false;
-  for (const auto &block : blocks) {
-    if (block.name != "WAVE_SELECTION") {
-      continue;
-    }
-    if (saw_selection) {
-      throw std::runtime_error("[wave_settings] duplicate WAVE_SELECTION");
-    }
-    saw_selection = true;
-    selected = kv::optional(block, "ACTIVE_WAVE_ID",
-                            kv::optional(block, "WAVE_ID", ""));
-    if (kv::trim(selected).empty()) {
-      throw std::runtime_error(
-          "[wave_settings] WAVE_SELECTION requires ACTIVE_WAVE_ID");
-    }
-  }
-  return kv::trim(selected);
-}
-
 [[nodiscard]] inline wave_settings_t decode_wave_settings_from_dsl(
     const std::string &dsl_text, std::string selected_wave_id = {},
     const wave_protocol_bindings_t &protocol = default_wave_protocol_bindings(),
-    const std::string &source_cursor_dsl_text = {});
+    const std::string &source_cursor_dsl_text = {},
+    const std::string &split_dsl_text = {});
 
 [[nodiscard]] inline cuwacunu::piaabo::parse::simple_kv::block_t
 selected_wave_settings_block_from_dsl(const std::string &dsl_text,
@@ -770,6 +900,11 @@ selected_wave_settings_block_from_dsl(const std::string &dsl_text,
   std::vector<std::pair<std::string, kv::block_t>> waves{};
   std::unordered_set<std::string> wave_ids{};
   for (const auto &block : blocks) {
+    if (block.name == "WAVE_SELECTION") {
+      throw std::runtime_error(
+          "[wave_settings] WAVE_SELECTION is retired; select the active wave "
+          "with config runtime_wave_id");
+    }
     if (block.name != "WAVE_SETTINGS") {
       continue;
     }
@@ -785,15 +920,12 @@ selected_wave_settings_block_from_dsl(const std::string &dsl_text,
 
   selected_wave_id = kv::trim(selected_wave_id);
   if (selected_wave_id.empty()) {
-    selected_wave_id = wave_selection_id_from_blocks(blocks);
-  }
-  if (selected_wave_id.empty()) {
     if (waves.size() == 1) {
       return waves.front().second;
     }
     throw std::runtime_error(
         "[wave_settings] multiple WAVE_SETTINGS blocks require "
-        "WAVE_SELECTION.ACTIVE_WAVE_ID or config runtime_wave_id");
+        "config runtime_wave_id");
   }
 
   for (const auto &wave : waves) {
@@ -809,11 +941,12 @@ selected_wave_settings_block_from_dsl(const std::string &dsl_text,
 decode_wave_settings_from_dsl(const std::string &dsl_text,
                               std::string selected_wave_id,
                               const wave_protocol_bindings_t &protocol,
-                              const std::string &source_cursor_dsl_text) {
+                              const std::string &source_cursor_dsl_text,
+                              const std::string &split_dsl_text) {
   return decode_wave_settings_from_block(
       selected_wave_settings_block_from_dsl(dsl_text,
                                             std::move(selected_wave_id)),
-      protocol, source_cursor_dsl_text);
+      protocol, source_cursor_dsl_text, split_dsl_text);
 }
 
 } // namespace cuwacunu::hero::runtime::settings

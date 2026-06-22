@@ -1,0 +1,12 @@
+<instruction> ::= <catalog_block> {<split_block>} ;
+<catalog_block> ::= "UJCAMEI_SOURCE_SPLIT_CATALOG" [<whitespace>] "{" <line_end> {<catalog_assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<split_block> ::= "UJCAMEI_SOURCE_SPLIT" [<whitespace>] "{" <line_end> {<split_assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<catalog_assignment> ::= [<whitespace>] <catalog_key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<split_assignment> ::= [<whitespace>] <split_key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<catalog_key> ::= "CATALOG_ID" | "CURSOR_DOMAIN" ;
+<split_key> ::= "SPLIT_ID" | "ROLE" | "SELECTOR" | "ANCHOR_INDEX_BEGIN" | "ANCHOR_INDEX_END" | "BEGIN_FRACTION" | "END_FRACTION" | "MIN_COUNT" ;
+<value> ::= <value_char> {<value_char>} ;
+<value_char> ::= <letter> | <digit> | "_" | "." | "-" | "|" | "," | "+" | "/" ;
+<line_end> ::= [<whitespace>] <break_block> ;
+<break_block> ::= {<newline>} ;
+<whitespace> ::= {<empty>} ;

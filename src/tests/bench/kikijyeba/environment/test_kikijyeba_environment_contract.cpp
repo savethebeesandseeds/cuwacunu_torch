@@ -950,11 +950,11 @@ void test_environment_contract() {
           replay_environment_bnf.find("MAX_TURNOVER_L1") != std::string::npos,
       "environment replay BNF preserves safety contract");
   const auto global_config = read_text("/cuwacunu/src/config/.config");
-  check(global_config.find("kikijyeba_environment_replay_dsl_bnf_path") !=
+  check(global_config.find("kikijyeba_environment_replay_dsl_path") !=
                 std::string::npos &&
-            global_config.find("kikijyeba_environment_replay_dsl_path") !=
+            global_config.find("kikijyeba_environment_replay_dsl_bnf_path") ==
                 std::string::npos,
-        "environment replay DSL paths are bound in global config");
+        "environment replay DSL path is bound and grammar path is derived");
   const auto replay_environment_dsl =
       read_text("/cuwacunu/src/config/kikijyeba.environment.replay.dsl");
   const auto replay_spec =

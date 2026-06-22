@@ -1,7 +1,7 @@
 <instruction> ::= {<cursor>} ;
 <cursor>      ::= "UJCAMEI_SOURCE_CURSOR" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
 <assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key>         ::= "CURSOR_ID" | "SOURCE_CURSOR_KIND" | "SOURCE_CURSOR_SCOPE" | "SOURCE_RANGE" | "ANCHOR_INDEX_BEGIN" | "ANCHOR_INDEX_END" | "SOURCE_KEY_BEGIN" | "SOURCE_KEY_END" | "ANCHOR_KEY_BEGIN" | "ANCHOR_KEY_END" ;
+<key>         ::= "CURSOR_ID" | "WINDOW_KIND" | "SOURCE_CURSOR_KIND" | "SOURCE_CURSOR_SCOPE" | "SOURCE_RANGE" | "ANCHOR_INDEX_BEGIN" | "ANCHOR_INDEX_END" | "SOURCE_KEY_BEGIN" | "SOURCE_KEY_END" ;
 <value>       ::= <value_char> {<value_char>} ;
 <value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "|" | "," | "+" ;
 <line_end>    ::= [<whitespace>] <break_block> ;

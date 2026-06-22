@@ -1,5 +1,6 @@
 #include "hero/runtime_hero/hero_runtime_tools.h"
 
+#include "hero/config_derivation.h"
 #include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/lattice_hero/lattice/split/split_policy.h"
@@ -56,6 +57,7 @@ namespace fs = std::filesystem;
 namespace display = cuwacunu::hero::display;
 namespace exposure = cuwacunu::hero::lattice::exposure;
 namespace lattice_split = cuwacunu::hero::lattice::split;
+namespace source_split = cuwacunu::ujcamei::source::splits;
 
 constexpr int kPolicyErrorCode = -32050;
 
@@ -220,6 +222,17 @@ constexpr tool_descriptor_t kTools[] = {
     if (!item.empty()) {
       out.push_back(item);
     }
+  }
+  return out;
+}
+
+[[nodiscard]] std::vector<std::string> split_char(std::string_view raw,
+                                                  char delimiter) {
+  std::vector<std::string> out;
+  std::string item;
+  std::istringstream in{std::string(raw)};
+  while (std::getline(in, item, delimiter)) {
+    out.push_back(trim_ascii(item));
   }
   return out;
 }
@@ -1581,6 +1594,22 @@ append_handoff_derived_run_fields(const std::string &handoff_json,
     }
     return false;
   }
+  if (extract_json_raw_field(base_config_raw, "hash", nullptr)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: base_config.hash is retired";
+    }
+    return false;
+  }
+
+  std::string runtime_policy_raw;
+  if (extract_json_raw_field(handoff_json, "runtime_policy",
+                             &runtime_policy_raw) &&
+      extract_json_raw_field(runtime_policy_raw, "hash", nullptr)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: runtime_policy.hash is retired";
+    }
+    return false;
+  }
 
   std::string intent_raw;
   if (!extract_json_raw_field(handoff_json, "intent", &intent_raw)) {
@@ -1604,6 +1633,41 @@ append_handoff_derived_run_fields(const std::string &handoff_json,
                          first);
   if (!append_handoff_wave_overlay(handoff_json, out, first, err)) {
     return false;
+  }
+  std::string policy_training_lock_raw;
+  if (extract_json_raw_field(handoff_json, "policy_training_execution_lock",
+                             &policy_training_lock_raw)) {
+    if (extract_json_raw_field(policy_training_lock_raw, "hash", nullptr)) {
+      if (err) {
+        *err = "E_RUNTIME_HANDOFF_INVALID: "
+               "policy_training_execution_lock.hash is retired";
+      }
+      return false;
+    }
+    std::string lock_path;
+    if (!extract_json_string_field(policy_training_lock_raw, "path",
+                                   &lock_path) ||
+        trim_ascii(lock_path).empty()) {
+      if (err) {
+        *err = "E_RUNTIME_HANDOFF_INVALID: "
+               "policy_training_execution_lock.path is required";
+      }
+      return false;
+    }
+    std::string lock_digest;
+    if (!extract_json_string_field(policy_training_lock_raw, "digest",
+                                   &lock_digest) ||
+        trim_ascii(lock_digest).empty()) {
+      if (err) {
+        *err = "E_RUNTIME_HANDOFF_INVALID: "
+               "policy_training_execution_lock.digest is required";
+      }
+      return false;
+    }
+    append_string_json_field(out, "contract_path", trim_ascii(lock_path),
+                             first);
+    append_string_json_field(out, "contract_digest", trim_ascii(lock_digest),
+                             first);
   }
   append_raw_json_field(out, "runtime_handoff", handoff_json, first);
   return true;
@@ -1729,17 +1793,24 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
   const auto graph_bnf_path_raw =
       read_ini_value(fs::path(config_path), "KIKIJYEBA",
                      "kikijyeba_topology_graph_dsl_bnf_path");
-  if (!graph_bnf_path_raw.has_value() ||
-      trim_ascii(*graph_bnf_path_raw).empty()) {
+  fs::path graph_bnf_path;
+  if (graph_bnf_path_raw.has_value() &&
+      !trim_ascii(*graph_bnf_path_raw).empty()) {
+    graph_bnf_path =
+        resolve_against(fs::path(config_path), *graph_bnf_path_raw);
+  } else {
+    graph_bnf_path =
+        cuwacunu::hero::config_derivation::default_grammar_path_for_data_path(
+            fs::path(config_path), graph_path);
+  }
+  if (graph_bnf_path.empty()) {
     if (err != nullptr) {
       *err = "E_RUNTIME_POLICY_TRAINING_TARGET_NODE_IDS_GRAPH_GRAMMAR_"
-             "MISSING: kikijyeba_topology_graph_dsl_bnf_path is required "
-             "when kikijyeba_topology_graph_dsl_path is configured";
+             "MISSING: unable to derive graph grammar path from "
+             "kikijyeba_topology_graph_dsl_path";
     }
     return false;
   }
-  const fs::path graph_bnf_path =
-      resolve_against(fs::path(config_path), *graph_bnf_path_raw);
 
   std::string graph_grammar_text;
   std::string grammar_read_error;
@@ -2924,6 +2995,278 @@ single_replay_artifact_value(const std::vector<std::string> &values,
   return true;
 }
 
+struct policy_training_anchor_range_resolution_t {
+  bool recognized{false};
+  bool bound{false};
+  std::int64_t begin{0};
+  std::int64_t end{0};
+};
+
+[[nodiscard]] std::optional<std::int64_t>
+policy_training_accepted_anchor_count_from_cursor_token(
+    const std::string &token) {
+  constexpr std::string_view prefix{"accepted="};
+  std::size_t offset = 0;
+  while (offset <= token.size()) {
+    const auto next = token.find('|', offset);
+    const auto atom = token.substr(
+        offset, next == std::string::npos ? std::string::npos : next - offset);
+    if (atom.rfind(prefix, 0) == 0) {
+      const auto raw = atom.substr(prefix.size());
+      std::int64_t value = 0;
+      if (!parse_int64(raw, &value) || value <= 0) {
+        return std::nullopt;
+      }
+      return value;
+    }
+    if (next == std::string::npos) {
+      break;
+    }
+    offset = next + 1;
+  }
+  const auto accepted_pos = token.find(prefix);
+  if (accepted_pos != std::string::npos) {
+    std::size_t begin = accepted_pos + prefix.size();
+    std::size_t end = begin;
+    while (end < token.size() &&
+           std::isdigit(static_cast<unsigned char>(token[end])) != 0) {
+      ++end;
+    }
+    std::int64_t value = 0;
+    if (end > begin && parse_int64(token.substr(begin, end - begin), &value) &&
+        value > 0) {
+      return value;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::int64_t>
+policy_training_accepted_anchor_count_from_kv(
+    const std::unordered_map<std::string, std::string> &manifest,
+    const std::unordered_map<std::string, std::string> &state) {
+  const auto value_or_empty =
+      [](const std::unordered_map<std::string, std::string> &fields,
+         std::string_view key) -> std::string {
+    const auto found = fields.find(std::string(key));
+    return found == fields.end() ? std::string{} : found->second;
+  };
+  const std::array<std::string, 4> candidates{
+      value_or_empty(state, "source_cursor_token"),
+      value_or_empty(manifest, "source_cursor_token"),
+      value_or_empty(state, "accepted_anchor_count"),
+      value_or_empty(manifest, "accepted_anchor_count")};
+  for (std::size_t i = 0; i < candidates.size(); ++i) {
+    if (i < 2) {
+      const auto accepted =
+          policy_training_accepted_anchor_count_from_cursor_token(candidates[i]);
+      if (accepted.has_value()) {
+        return accepted;
+      }
+      continue;
+    }
+    std::int64_t value = 0;
+    if (parse_int64(candidates[i], &value) && value > 0) {
+      return value;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool policy_training_fraction_less(
+    const source_split::source_fraction_t &lhs,
+    const source_split::source_fraction_t &rhs) {
+  const auto left = static_cast<__int128>(lhs.numerator) *
+                    static_cast<__int128>(rhs.denominator);
+  const auto right = static_cast<__int128>(rhs.numerator) *
+                     static_cast<__int128>(lhs.denominator);
+  return left < right;
+}
+
+[[nodiscard]] bool validate_policy_training_fraction(
+    const source_split::source_fraction_t &fraction, std::string_view field_name,
+    std::string *err) {
+  if (fraction.numerator < 0 || fraction.denominator <= 0 ||
+      fraction.numerator > fraction.denominator) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_RANGE_DIGEST_INVALID: fractional " +
+             std::string(field_name) + " is outside [0,1]";
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool materialize_policy_training_fraction_range_digest(
+    const std::string &digest, std::string_view split_role,
+    const std::optional<std::int64_t> &accepted_anchor_count,
+    policy_training_anchor_range_resolution_t *out, std::string *err) {
+  const std::string trimmed = trim_ascii(digest);
+  const std::string prefix =
+      "policy_training_range_" + std::string(split_role) + "_fraction_";
+  constexpr std::string_view suffix = "_v1";
+  if (trimmed.rfind(prefix, 0) != 0) {
+    return true;
+  }
+  if (out != nullptr) {
+    out->recognized = true;
+  }
+  if (trimmed.size() <= prefix.size() ||
+      trimmed.compare(trimmed.size() - suffix.size(), suffix.size(), suffix) !=
+          0) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_RANGE_DIGEST_INVALID: malformed "
+             "fractional " +
+             std::string(split_role) + "_range_digest";
+    }
+    return false;
+  }
+  if (!accepted_anchor_count.has_value()) {
+    return true;
+  }
+
+  const std::string body = trimmed.substr(
+      prefix.size(), trimmed.size() - prefix.size() - suffix.size());
+  const auto tokens = split_char(body, '_');
+  if (tokens.size() != 6 || tokens[4] != "min") {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_RANGE_DIGEST_INVALID: malformed "
+             "fractional " +
+             std::string(split_role) + "_range_digest";
+    }
+    return false;
+  }
+
+  source_split::source_split_t split{};
+  split.split_id =
+      "policy_training_" + std::string(split_role) + "_fraction_range";
+  split.selector_kind = source_split::source_split_selector_kind_t::fraction_range;
+  if (!parse_int64(tokens[0], &split.fraction_range.begin.numerator) ||
+      !parse_int64(tokens[1], &split.fraction_range.begin.denominator) ||
+      !parse_int64(tokens[2], &split.fraction_range.end.numerator) ||
+      !parse_int64(tokens[3], &split.fraction_range.end.denominator) ||
+      !parse_int64(tokens[5], &split.min_count) || split.min_count <= 0 ||
+      !validate_policy_training_fraction(split.fraction_range.begin, "begin",
+                                         err) ||
+      !validate_policy_training_fraction(split.fraction_range.end, "end", err) ||
+      !policy_training_fraction_less(split.fraction_range.begin,
+                                     split.fraction_range.end)) {
+    if (err != nullptr && err->empty()) {
+      *err = "E_RUNTIME_POLICY_TRAINING_RANGE_DIGEST_INVALID: invalid "
+             "fractional " +
+             std::string(split_role) + "_range_digest";
+    }
+    return false;
+  }
+
+  try {
+    const auto materialized = source_split::materialize_source_split_range(
+        split, *accepted_anchor_count);
+    if (out != nullptr) {
+      out->bound = true;
+      out->begin = materialized.begin;
+      out->end = materialized.end;
+    }
+    return true;
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_RANGE_MATERIALIZATION_FAILED: " +
+             std::string(ex.what());
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] bool resolve_policy_training_range_digest_to_anchor_range(
+    const std::string &digest, std::string_view split_role,
+    const std::optional<std::int64_t> &accepted_anchor_count,
+    policy_training_anchor_range_resolution_t *out, std::string *err) {
+  policy_training_anchor_range_resolution_t resolved{};
+  std::int64_t begin = 0;
+  std::int64_t end = 0;
+  if (parse_policy_training_anchor_range_digest(digest, split_role, &begin,
+                                                &end)) {
+    resolved.recognized = true;
+    resolved.bound = true;
+    resolved.begin = begin;
+    resolved.end = end;
+    if (out != nullptr) {
+      *out = resolved;
+    }
+    return true;
+  }
+  if (!materialize_policy_training_fraction_range_digest(
+          digest, split_role, accepted_anchor_count, &resolved, err)) {
+    return false;
+  }
+  if (out != nullptr) {
+    *out = resolved;
+  }
+  return true;
+}
+
+[[nodiscard]] bool policy_training_ranges_disjoint(
+    const policy_training_anchor_range_resolution_t &lhs,
+    const policy_training_anchor_range_resolution_t &rhs) {
+  return lhs.bound && rhs.bound && (lhs.end <= rhs.begin || rhs.end <= lhs.begin);
+}
+
+[[nodiscard]] bool policy_training_contract_range_resolution(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    const std::string &digest, std::string_view split_role,
+    policy_training_anchor_range_resolution_t *out, std::string *err) {
+  return resolve_policy_training_range_digest_to_anchor_range(
+      digest, split_role,
+      policy_training_accepted_anchor_count_from_cursor_token(
+          contract.source_cursor_token),
+      out, err);
+}
+
+[[nodiscard]] bool canonicalize_policy_training_materialized_split_disjointness(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  policy_training_anchor_range_resolution_t training_range{};
+  policy_training_anchor_range_resolution_t validation_range{};
+  policy_training_anchor_range_resolution_t test_range{};
+  if (!policy_training_contract_range_resolution(
+          *contract, contract->training_range_digest, "train", &training_range,
+          err) ||
+      !policy_training_contract_range_resolution(
+          *contract, contract->validation_range_digest, "validation",
+          &validation_range, err) ||
+      !policy_training_contract_range_resolution(
+          *contract, contract->test_range_digest, "test", &test_range, err)) {
+    return false;
+  }
+  const auto reject_overlap =
+      [&](const policy_training_anchor_range_resolution_t &lhs,
+          const policy_training_anchor_range_resolution_t &rhs,
+          std::string_view issue) -> bool {
+    if (!lhs.bound || !rhs.bound || policy_training_ranges_disjoint(lhs, rhs)) {
+      return true;
+    }
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_SPLIT_OVERLAP: " + std::string(issue) +
+             " materializes to [" + std::to_string(lhs.begin) + "," +
+             std::to_string(lhs.end) + ") and [" + std::to_string(rhs.begin) +
+             "," + std::to_string(rhs.end) + ")";
+    }
+    return false;
+  };
+  return reject_overlap(training_range, validation_range,
+                        "training_validation_range_overlap") &&
+         reject_overlap(training_range, test_range,
+                        "training_test_range_overlap") &&
+         reject_overlap(validation_range, test_range,
+                        "validation_test_range_overlap");
+}
+
 [[nodiscard]] bool assign_or_confirm_policy_training_anchor_mirror(
     std::int64_t *field, bool *field_bound, std::string_view field_name,
     std::int64_t expected, std::string_view owner, std::string *err) {
@@ -2956,21 +3299,24 @@ single_replay_artifact_value(const std::vector<std::string> &values,
     }
     return false;
   }
-  std::int64_t begin = 0;
-  std::int64_t end = 0;
-  if (!parse_policy_training_anchor_range_digest(
-          contract->validation_range_digest, "validation", &begin, &end)) {
+  policy_training_anchor_range_resolution_t validation_range{};
+  if (!policy_training_contract_range_resolution(
+          *contract, contract->validation_range_digest, "validation",
+          &validation_range, err)) {
+    return false;
+  }
+  if (!validation_range.bound) {
     return true;
   }
   return assign_or_confirm_policy_training_anchor_mirror(
              &contract->policy_execution_target_anchor_begin,
              &contract->policy_execution_target_anchor_begin_bound,
-             "policy_execution_target_anchor_begin", begin,
+             "policy_execution_target_anchor_begin", validation_range.begin,
              "validation_range_digest", err) &&
          assign_or_confirm_policy_training_anchor_mirror(
              &contract->policy_execution_target_anchor_end_exclusive,
              &contract->policy_execution_target_anchor_end_exclusive_bound,
-             "policy_execution_target_anchor_end_exclusive", end,
+             "policy_execution_target_anchor_end_exclusive", validation_range.end,
              "validation_range_digest", err);
 }
 
@@ -3775,7 +4121,7 @@ block_value_or_empty(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
     if (err != nullptr) {
       *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_MISMATCH: contract " +
              std::string(field_name) + "=" + current +
-             " but active Runtime wave derives " + expected;
+             " but Runtime policy-training sources derive " + expected;
     }
     return false;
   }
@@ -3821,6 +4167,254 @@ block_value_or_empty(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
   return false;
 }
 
+struct policy_training_wave_derived_defaults_t {
+  std::string policy_id{};
+  std::string policy_kind{};
+  std::string training_schedule_mode{};
+  std::string causal_schedule_digest{};
+  std::string snapshot_family_digest{};
+  std::string early_stopping_policy_digest{};
+  std::string hyperparameter_selection_policy_digest{};
+  std::string selector_policy_digest{};
+};
+
+[[nodiscard]] std::string policy_training_policy_suffix(
+    cuwacunu::jkimyei::training::training_task_t task) {
+  namespace training = cuwacunu::jkimyei::training;
+  switch (task) {
+  case training::training_task_t::policy_graph_node_allocation_ppo_v0:
+    return "ppo_v0";
+  case training::training_task_t::mdn_expected_value_inference:
+  case training::training_task_t::vicreg_representation:
+  case training::training_task_t::mtf_jepa_mae_vicreg_representation:
+    return {};
+  }
+  return {};
+}
+
+[[nodiscard]] bool derive_policy_training_wave_defaults_from_config(
+    const fs::path &config_path, policy_training_wave_derived_defaults_t *out,
+    std::string *err) {
+  if (out == nullptr) {
+    if (err != nullptr) {
+      *err = "policy training wave defaults output pointer is null";
+    }
+    return false;
+  }
+  *out = {};
+  namespace graph_policy =
+      cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
+  namespace protocol = cuwacunu::kikijyeba::protocol;
+  namespace training = cuwacunu::jkimyei::training;
+
+  const auto protocol_dsl_path = configured_policy_source_path(
+      config_path, "KIKIJYEBA", "kikijyeba_protocol_dsl_path");
+  if (!protocol_dsl_path.has_value()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_MISSING: missing "
+             "[KIKIJYEBA].kikijyeba_protocol_dsl_path in " +
+             config_path.string();
+    }
+    return false;
+  }
+  std::string protocol_text;
+  std::string read_error;
+  if (!read_text_file(*protocol_dsl_path, &protocol_text, &read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_READ_FAILED: " +
+             read_error;
+    }
+    return false;
+  }
+
+  const auto policy_dsl_path =
+      configured_graph_node_allocation_dsl_path(config_path);
+  if (!policy_dsl_path.has_value()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_MISSING: missing "
+             "wikimyei_policy_portfolio_graph_node_allocation_dsl_path in " +
+             config_path.string();
+    }
+    return false;
+  }
+  std::string policy_dsl_text;
+  if (!read_text_file(*policy_dsl_path, &policy_dsl_text, &read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_READ_FAILED: " +
+             read_error;
+    }
+    return false;
+  }
+
+  const auto policy_jkimyei_path =
+      configured_graph_node_allocation_jkimyei_path(config_path);
+  if (!policy_jkimyei_path.has_value()) {
+    if (err != nullptr) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_MISSING: missing "
+          "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path in " +
+          config_path.string();
+    }
+    return false;
+  }
+  std::string policy_jkimyei_text;
+  if (!read_text_file(*policy_jkimyei_path, &policy_jkimyei_text,
+                      &read_error)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_READ_FAILED: " +
+             read_error;
+    }
+    return false;
+  }
+
+  try {
+    const auto variant =
+        protocol::decode_protocol_variant_from_dsl(protocol_text);
+    const auto policy_spec =
+        graph_policy::decode_graph_node_allocation_spec_from_dsl(
+            policy_dsl_text);
+    if (!policy_spec.ppo_implemented) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_INVALID: "
+               "configured graph-node allocation policy has PPO disabled";
+      }
+      return false;
+    }
+
+    auto training_defaults = training::canonical_training_contract_defaults();
+    training_defaults.component_assembly_id = policy_spec.component_assembly_id;
+    if (protocol::protocol_no_lookahead_contract_declared(
+            variant.no_lookahead_contract)) {
+      training_defaults.no_lookahead_contract_id =
+          variant.no_lookahead_contract.contract_id;
+      training_defaults.no_lookahead_contract_digest =
+          variant.no_lookahead_contract.contract_digest;
+      training_defaults.component_order_contract_id =
+          variant.no_lookahead_contract.contract_id;
+      training_defaults.component_order_contract_digest =
+          variant.no_lookahead_contract.contract_digest;
+    }
+    const auto training_spec = training::decode_training_run_spec_from_dsl(
+        policy_jkimyei_text, training_defaults);
+    if (training_spec.task !=
+        training::training_task_t::policy_graph_node_allocation_ppo_v0) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_INVALID: "
+               "configured graph-node allocation jkimyei is not PPO V0";
+      }
+      return false;
+    }
+    const std::string policy_suffix =
+        policy_training_policy_suffix(training_spec.task);
+    if (policy_suffix.empty()) {
+      if (err != nullptr) {
+        *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_INVALID: "
+               "unsupported policy-training task";
+      }
+      return false;
+    }
+
+    out->policy_id = variant.policy_component_family + "." + policy_suffix;
+    out->policy_kind = "ppo_policy_adapter.v1";
+    out->training_schedule_mode = training_spec.training_schedule_mode;
+    out->causal_schedule_digest = "policy_training_causal_walk_forward_all_v1";
+    out->snapshot_family_digest = "policy_training_causal_snapshots." +
+                                  variant.protocol_id + ".graph_anchor.v1";
+    out->early_stopping_policy_digest =
+        "validation_only_patience_" + policy_suffix + "_v1";
+    out->hyperparameter_selection_policy_digest =
+        "validation_only_grid_" + policy_suffix + "_v1";
+    out->selector_policy_digest =
+        "validation_selector_no_test_access_" + policy_suffix + "_v1";
+    return true;
+  } catch (const std::exception &ex) {
+    if (err != nullptr) {
+      *err = std::string("E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_SOURCE_DECODE_"
+                         "FAILED: ") +
+             ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] bool confirm_policy_training_authored_wave_default(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block,
+    std::string_view wave_key, std::string_view field_name,
+    const std::string &expected, std::string *err) {
+  const std::string authored = block_value_or_empty(block, wave_key);
+  if (authored.empty() || expected.empty() || authored == expected) {
+    return true;
+  }
+  if (err != nullptr) {
+    *err = "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_MISMATCH: active Runtime "
+           "wave " +
+           std::string(wave_key) + "=" + authored +
+           " but Runtime policy-training sources derive " + expected + " for " +
+           std::string(field_name);
+  }
+  return false;
+}
+
+[[nodiscard]] bool confirm_policy_training_authored_wave_defaults(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block,
+    const policy_training_wave_derived_defaults_t &defaults, std::string *err) {
+  return confirm_policy_training_authored_wave_default(
+             block, "POLICY_ID", "policy_id", defaults.policy_id, err) &&
+         confirm_policy_training_authored_wave_default(
+             block, "POLICY_KIND", "policy_kind", defaults.policy_kind, err) &&
+         confirm_policy_training_authored_wave_default(
+             block, "TRAINING_SCHEDULE_MODE", "training_schedule_mode",
+             defaults.training_schedule_mode, err) &&
+         confirm_policy_training_authored_wave_default(
+             block, "CAUSAL_SCHEDULE_DIGEST", "causal_schedule_digest",
+             defaults.causal_schedule_digest, err) &&
+         confirm_policy_training_authored_wave_default(
+             block, "SNAPSHOT_FAMILY_DIGEST", "snapshot_family_digest",
+             defaults.snapshot_family_digest, err) &&
+         confirm_policy_training_authored_wave_default(
+             block, "EARLY_STOPPING_POLICY_DIGEST",
+             "early_stopping_policy_digest",
+             defaults.early_stopping_policy_digest, err) &&
+         confirm_policy_training_authored_wave_default(
+             block, "HYPERPARAMETER_SELECTION_POLICY_DIGEST",
+             "hyperparameter_selection_policy_digest",
+             defaults.hyperparameter_selection_policy_digest, err) &&
+         confirm_policy_training_authored_wave_default(
+             block, "SELECTOR_POLICY_DIGEST", "selector_policy_digest",
+             defaults.selector_policy_digest, err);
+}
+
+inline void set_policy_training_wave_default_value(
+    std::unordered_map<std::string, std::string> *values, std::string_view key,
+    const std::string &value) {
+  if (values == nullptr || value.empty()) {
+    return;
+  }
+  (*values)[std::string(key)] = value;
+}
+
+inline void apply_policy_training_wave_derived_defaults_to_values(
+    const policy_training_wave_derived_defaults_t &defaults,
+    std::unordered_map<std::string, std::string> *values) {
+  set_policy_training_wave_default_value(values, "POLICY_ID",
+                                         defaults.policy_id);
+  set_policy_training_wave_default_value(values, "POLICY_KIND",
+                                         defaults.policy_kind);
+  set_policy_training_wave_default_value(values, "TRAINING_SCHEDULE_MODE",
+                                         defaults.training_schedule_mode);
+  set_policy_training_wave_default_value(values, "CAUSAL_SCHEDULE_DIGEST",
+                                         defaults.causal_schedule_digest);
+  set_policy_training_wave_default_value(values, "SNAPSHOT_FAMILY_DIGEST",
+                                         defaults.snapshot_family_digest);
+  set_policy_training_wave_default_value(values, "EARLY_STOPPING_POLICY_DIGEST",
+                                         defaults.early_stopping_policy_digest);
+  set_policy_training_wave_default_value(
+      values, "HYPERPARAMETER_SELECTION_POLICY_DIGEST",
+      defaults.hyperparameter_selection_policy_digest);
+  set_policy_training_wave_default_value(values, "SELECTOR_POLICY_DIGEST",
+                                         defaults.selector_policy_digest);
+}
+
 [[nodiscard]] bool wave_settings_block_requests_policy_training(
     const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
   const std::string policy_id = block_value_or_empty(block, "POLICY_ID");
@@ -3839,12 +4433,16 @@ block_value_or_empty(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
       block_value_or_empty(block, "SELECTOR_POLICY_DIGEST");
   const std::string job_kind =
       lowercase_ascii(block_value_or_empty(block, "JOB_KIND"));
+  const std::string target =
+      lowercase_ascii(block_value_or_empty(block, "TARGET"));
   return job_kind == "policy_training" || !policy_id.empty() ||
          !policy_kind.empty() || !training_schedule_mode.empty() ||
          !causal_schedule_digest.empty() || !snapshot_family_digest.empty() ||
          !early_stopping_policy_digest.empty() ||
          !hyperparameter_selection_policy_digest.empty() ||
-         !selector_policy_digest.empty();
+         !selector_policy_digest.empty() ||
+         target == "wikimyei.policy.portfolio" ||
+         target == "wikimyei.policy.portfolio.graph_node_allocation";
 }
 
 [[nodiscard]] bool select_unique_policy_training_wave_settings_block_from_dsl(
@@ -3944,10 +4542,24 @@ block_value_or_empty(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
 
 [[nodiscard]] std::string policy_training_range_digest_from_split(
     const lattice_split::lattice_split_t &split) {
-  return "policy_training_range_" +
-         std::string(exposure::exposure_split_role_name(split.role)) +
-         "_anchor_" + std::to_string(split.anchor_range.begin) + "_" +
-         std::to_string(split.anchor_range.end) + "_v1";
+  const auto role = std::string(exposure::exposure_split_role_name(split.role));
+  const auto &intent = split.source_split_intent;
+  if (intent.selector_kind ==
+      cuwacunu::ujcamei::source::splits::source_split_selector_kind_t::
+          fraction_range) {
+    const auto fraction_token =
+        [](const cuwacunu::ujcamei::source::splits::source_fraction_t &value) {
+          return std::to_string(value.numerator) + "_" +
+                 std::to_string(value.denominator);
+        };
+    return "policy_training_range_" + role + "_fraction_" +
+           fraction_token(intent.fraction_range.begin) + "_" +
+           fraction_token(intent.fraction_range.end) + "_min_" +
+           std::to_string(intent.min_count) + "_v1";
+  }
+  return "policy_training_range_" + role + "_anchor_" +
+         std::to_string(intent.anchor_range.begin) + "_" +
+         std::to_string(intent.anchor_range.end) + "_v1";
 }
 
 [[nodiscard]] bool assign_or_confirm_policy_training_split_default(
@@ -3965,7 +4577,9 @@ block_value_or_empty(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
     if (err != nullptr) {
       *err = "E_RUNTIME_POLICY_TRAINING_SPLIT_DEFAULT_MISMATCH: contract " +
              std::string(field_name) + "=" + current +
-             " but Runtime wave/Lattice split catalog derives " + expected;
+             " but Runtime wave/Ujcamei source splits/Lattice split policy "
+             "derive " +
+             expected;
     }
     return false;
   }
@@ -3976,20 +4590,35 @@ block_value_or_empty(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
 [[nodiscard]] bool load_lattice_split_policy_from_config(
     const fs::path &config_path, lattice_split::lattice_split_policy_t *out,
     std::string *err) {
-  const auto splits_path_raw =
-      read_ini_value(config_path, "HERO", "lattice_splits_dsl_path");
-  if (!splits_path_raw.has_value() || trim_ascii(*splits_path_raw).empty()) {
+  const auto source_splits_path_raw =
+      read_ini_value(config_path, "UJCAMEI", "ujcamei_source_splits_dsl_path");
+  if (!source_splits_path_raw.has_value() ||
+      trim_ascii(*source_splits_path_raw).empty()) {
     if (err != nullptr) {
       *err = "E_RUNTIME_POLICY_TRAINING_SPLIT_CONFIG_MISSING: missing "
-             "[HERO].lattice_splits_dsl_path in " +
+             "[UJCAMEI].ujcamei_source_splits_dsl_path in " +
              config_path.string();
     }
     return false;
   }
-  const fs::path splits_path = resolve_against(config_path, *splits_path_raw);
+  const auto split_policy_path_raw =
+      read_ini_value(config_path, "HERO", "lattice_split_policy_dsl_path");
+  if (!split_policy_path_raw.has_value() ||
+      trim_ascii(*split_policy_path_raw).empty()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_SPLIT_CONFIG_MISSING: missing "
+             "[HERO].lattice_split_policy_dsl_path in " +
+             config_path.string();
+    }
+    return false;
+  }
+  const fs::path source_splits_path =
+      resolve_against(config_path, *source_splits_path_raw);
+  const fs::path split_policy_path =
+      resolve_against(config_path, *split_policy_path_raw);
   try {
-    auto policy =
-        lattice_split::load_lattice_split_policy_from_file(splits_path);
+    auto policy = lattice_split::load_lattice_split_policy_from_files(
+        split_policy_path, source_splits_path);
     if (out != nullptr) {
       *out = std::move(policy);
     }
@@ -4115,42 +4744,45 @@ block_value_or_empty(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
     return true;
   }
   try {
-    const std::string policy_id = block_value_or_empty(block, "POLICY_ID");
-    const std::string policy_kind = block_value_or_empty(block, "POLICY_KIND");
-    const std::string training_schedule_mode =
-        block_value_or_empty(block, "TRAINING_SCHEDULE_MODE");
     if (!wave_settings_block_requests_policy_training(block)) {
       return true;
     }
 
+    policy_training_wave_derived_defaults_t defaults{};
+    if (!derive_policy_training_wave_defaults_from_config(fs::path(config_path),
+                                                          &defaults, err)) {
+      return false;
+    }
+    if (!confirm_policy_training_authored_wave_defaults(block, defaults, err)) {
+      return false;
+    }
+
     if (!assign_or_confirm_policy_training_wave_default(
-            &contract->policy_id, "policy_id", policy_id, err) ||
+            &contract->policy_id, "policy_id", defaults.policy_id, err) ||
         !assign_or_confirm_policy_training_wave_default(
-            &contract->policy_kind, "policy_kind", policy_kind, err) ||
+            &contract->policy_kind, "policy_kind", defaults.policy_kind, err) ||
         !assign_or_confirm_policy_training_wave_default(
             &contract->training_schedule_mode, "training_schedule_mode",
-            training_schedule_mode, err)) {
+            defaults.training_schedule_mode, err)) {
       return false;
     }
     if (!assign_or_confirm_policy_training_wave_default(
             &contract->causal_schedule_digest, "causal_schedule_digest",
-            block_value_or_empty(block, "CAUSAL_SCHEDULE_DIGEST"), err) ||
+            defaults.causal_schedule_digest, err) ||
         !assign_or_confirm_policy_training_wave_default(
             &contract->snapshot_family_digest, "snapshot_family_digest",
-            block_value_or_empty(block, "SNAPSHOT_FAMILY_DIGEST"), err) ||
+            defaults.snapshot_family_digest, err) ||
         !assign_or_confirm_policy_training_wave_default(
             &contract->early_stopping_policy_digest,
             "early_stopping_policy_digest",
-            block_value_or_empty(block, "EARLY_STOPPING_POLICY_DIGEST"), err) ||
+            defaults.early_stopping_policy_digest, err) ||
         !assign_or_confirm_policy_training_wave_default(
             &contract->hyperparameter_selection_policy_digest,
             "hyperparameter_selection_policy_digest",
-            block_value_or_empty(block,
-                                 "HYPERPARAMETER_SELECTION_POLICY_DIGEST"),
-            err) ||
+            defaults.hyperparameter_selection_policy_digest, err) ||
         !assign_or_confirm_policy_training_wave_default(
             &contract->selector_policy_digest, "selector_policy_digest",
-            block_value_or_empty(block, "SELECTOR_POLICY_DIGEST"), err)) {
+            defaults.selector_policy_digest, err)) {
       return false;
     }
 
@@ -5270,6 +5902,10 @@ void apply_policy_training_request_fixed_contract_values(
                                                                  err)) {
     return false;
   }
+  if (!canonicalize_policy_training_materialized_split_disjointness(&parsed,
+                                                                    err)) {
+    return false;
+  }
   if (!canonicalize_policy_training_parent_input_mirrors(&parsed, err)) {
     return false;
   }
@@ -5506,6 +6142,11 @@ inline void populate_wave_info_values(
   info->values["TARGET"] = wave_settings::wave_target_name(settings.target);
   info->values["MODE"] = settings.mode_text;
   info->values["SOURCE_CURSOR_ID"] = settings.source_cursor_id;
+  if (!settings.source_split_id.empty()) {
+    info->values["SOURCE_SPLIT"] = settings.source_split_id;
+  } else {
+    info->values.erase("SOURCE_SPLIT");
+  }
   info->values["SOURCE_CURSOR_KIND"] = settings.source_cursor_kind;
   info->values["SOURCE_CURSOR_SCOPE"] = settings.source_cursor_scope;
   info->values["SOURCE_RANGE"] =
@@ -5520,8 +6161,6 @@ inline void populate_wave_info_values(
   info->values.erase("ANCHOR_INDEX_END");
   info->values.erase("SOURCE_KEY_BEGIN");
   info->values.erase("SOURCE_KEY_END");
-  info->values.erase("ANCHOR_KEY_BEGIN");
-  info->values.erase("ANCHOR_KEY_END");
   if (settings.anchor_index_begin.has_value()) {
     info->values["ANCHOR_INDEX_BEGIN"] =
         std::to_string(*settings.anchor_index_begin);
@@ -5594,6 +6233,19 @@ inline void populate_wave_info_values(
   }
   info.cursor_readable = true;
 
+  std::string split_text;
+  const auto maybe_splits =
+      read_ini_value(config_path, "UJCAMEI", "ujcamei_source_splits_dsl_path");
+  if (maybe_splits.has_value() && !trim_ascii(*maybe_splits).empty()) {
+    const fs::path source_splits_path =
+        resolve_against(config_path, *maybe_splits);
+    std::string split_error;
+    if (!read_text_file(source_splits_path, &split_text, &split_error)) {
+      info.error = split_error;
+      return info;
+    }
+  }
+
   const auto maybe_wave_id =
       read_ini_value(config_path, "HERO", "runtime_wave_id");
   info.selected_wave_id =
@@ -5605,11 +6257,27 @@ inline void populate_wave_info_values(
         selected_wave_settings_block_from_dsl(text, info.selected_wave_id);
     const auto settings =
         cuwacunu::hero::runtime::settings::decode_wave_settings_from_block(
-            block, protocol_bindings, cursor_text);
+            block, protocol_bindings, cursor_text, split_text);
     if (info.selected_wave_id.empty()) {
       info.selected_wave_id = settings.wave_id;
     }
     populate_wave_info_values(block, settings, &info);
+    if (wave_settings_block_requests_policy_training(block)) {
+      policy_training_wave_derived_defaults_t defaults{};
+      std::string derive_error;
+      if (!derive_policy_training_wave_defaults_from_config(
+              config_path, &defaults, &derive_error)) {
+        info.error = derive_error;
+        return info;
+      }
+      if (!confirm_policy_training_authored_wave_defaults(block, defaults,
+                                                          &derive_error)) {
+        info.error = derive_error;
+        return info;
+      }
+      apply_policy_training_wave_derived_defaults_to_values(defaults,
+                                                            &info.values);
+    }
   } catch (const std::exception &ex) {
     info.error = ex.what();
     return info;
@@ -5778,8 +6446,6 @@ inline void apply_wave_overlay_to_info(wave_info_t *info,
   info->values.erase("ANCHOR_INDEX_END");
   info->values.erase("SOURCE_KEY_BEGIN");
   info->values.erase("SOURCE_KEY_END");
-  info->values.erase("ANCHOR_KEY_BEGIN");
-  info->values.erase("ANCHOR_KEY_END");
   if (overlay.source_range == "anchor_index") {
     info->values["ANCHOR_INDEX_BEGIN"] = overlay.anchor_index_begin;
     info->values["ANCHOR_INDEX_END"] = overlay.anchor_index_end;
@@ -6030,6 +6696,9 @@ execution_chain(std::string_view target, std::string_view action,
       info.values.count("SOURCE_CURSOR_ID") != 0
           ? info.values.at("SOURCE_CURSOR_ID")
           : std::string{};
+  const std::string source_split_id = info.values.count("SOURCE_SPLIT") != 0
+                                          ? info.values.at("SOURCE_SPLIT")
+                                          : std::string{};
   const std::string protocol_id = protocol_id_from_info(info);
   const std::string wave_protocol_id = wave_protocol_id_from_info(info);
   const std::string protocol_status =
@@ -6126,6 +6795,7 @@ execution_chain(std::string_view target, std::string_view action,
       << ",\"action\":" << json_quote(action)
       << ",\"debug\":" << bool_json(wave_debug_from_mode(mode))
       << ",\"source_cursor_id\":" << json_quote(source_cursor_id)
+      << ",\"source_split_id\":" << json_quote(source_split_id)
       << ",\"source_cursor_kind\":" << json_quote(cursor_kind)
       << ",\"source_cursor_scope\":" << json_quote(cursor_scope)
       << ",\"source_range\":" << json_quote(source_range)
@@ -6149,16 +6819,12 @@ execution_chain(std::string_view target, std::string_view action,
   out << ",\"source_key_begin\":";
   if (info.values.count("SOURCE_KEY_BEGIN") != 0) {
     out << json_quote(info.values.at("SOURCE_KEY_BEGIN"));
-  } else if (info.values.count("ANCHOR_KEY_BEGIN") != 0) {
-    out << json_quote(info.values.at("ANCHOR_KEY_BEGIN"));
   } else {
     out << "null";
   }
   out << ",\"source_key_end\":";
   if (info.values.count("SOURCE_KEY_END") != 0) {
     out << json_quote(info.values.at("SOURCE_KEY_END"));
-  } else if (info.values.count("ANCHOR_KEY_END") != 0) {
-    out << json_quote(info.values.at("ANCHOR_KEY_END"));
   } else {
     out << "null";
   }
@@ -11646,30 +12312,20 @@ policy_training_lattice_identity_from_source_job(
     std::string_view policy_wave_id) {
   const auto forecast_fields =
       parse_kv_file(source_replay_job_dir / "lattice.forecast_eval.fact");
-  const bool forecast_is_legacy_splitless_alias =
-      !forecast_fields.empty() &&
-      !trim_ascii(parent_forecast_eval_fact_digest).empty() &&
-      trim_ascii(kv_get(forecast_fields, "split_policy_fingerprint")).empty();
   if (!forecast_fields.empty() &&
       (trim_ascii(parent_forecast_eval_fact_digest).empty() ||
        kv_get(forecast_fields, "fact_digest") ==
-           trim_ascii(parent_forecast_eval_fact_digest) ||
-       forecast_is_legacy_splitless_alias)) {
+           trim_ascii(parent_forecast_eval_fact_digest))) {
     return policy_training_lattice_identity_from_parent_fields(
         forecast_fields, policy_job_id, policy_wave_id);
   }
 
   const auto observer_fields =
       parse_kv_file(source_replay_job_dir / "lattice.observer_belief.fact");
-  const bool observer_is_legacy_splitless_alias =
-      !observer_fields.empty() &&
-      !trim_ascii(parent_observer_belief_fact_digest).empty() &&
-      trim_ascii(kv_get(observer_fields, "split_policy_fingerprint")).empty();
   if (!observer_fields.empty() &&
       (trim_ascii(parent_observer_belief_fact_digest).empty() ||
        kv_get(observer_fields, "fact_digest") ==
-           trim_ascii(parent_observer_belief_fact_digest) ||
-       observer_is_legacy_splitless_alias)) {
+           trim_ascii(parent_observer_belief_fact_digest))) {
     return policy_training_lattice_identity_from_parent_fields(
         observer_fields, policy_job_id, policy_wave_id);
   }
@@ -12443,6 +13099,30 @@ policy_training_lattice_identity_from_source_job(
       !contract.policy_execution_provenance_closure_digest.empty() &&
       !output_generation_vector_digest.empty() &&
       !output_provenance_closure_digest.empty();
+  policy_training_anchor_range_resolution_t training_range{};
+  policy_training_anchor_range_resolution_t validation_range{};
+  policy_training_anchor_range_resolution_t test_range{};
+  std::string range_resolution_error;
+  const bool training_range_ok = policy_training_contract_range_resolution(
+      contract, contract.training_range_digest, "train", &training_range,
+      &range_resolution_error);
+  range_resolution_error.clear();
+  const bool validation_range_ok = policy_training_contract_range_resolution(
+      contract, contract.validation_range_digest, "validation", &validation_range,
+      &range_resolution_error);
+  range_resolution_error.clear();
+  const bool test_range_ok = policy_training_contract_range_resolution(
+      contract, contract.test_range_digest, "test", &test_range,
+      &range_resolution_error);
+  const bool training_validation_disjoint =
+      training_range_ok && validation_range_ok &&
+      policy_training_ranges_disjoint(training_range, validation_range);
+  const bool training_test_disjoint =
+      training_range_ok && test_range_ok &&
+      policy_training_ranges_disjoint(training_range, test_range);
+  const bool validation_test_disjoint =
+      validation_range_ok && test_range_ok &&
+      policy_training_ranges_disjoint(validation_range, test_range);
   append_assignment(out, "influence_schema",
                     cuwacunu::hero::runtime::
                         k_no_lookahead_artifact_provenance_anchor_schema_v1);
@@ -12476,9 +13156,12 @@ policy_training_lattice_identity_from_source_job(
   append_assignment(out, "influence_no_lookahead_contract_digest",
                     contract.policy_execution_no_lookahead_contract_digest);
   append_assignment(out, "random_seed", std::to_string(contract.random_seed));
-  append_assignment_bool(out, "training_range_disjoint_validation", true);
-  append_assignment_bool(out, "training_range_disjoint_test", true);
-  append_assignment_bool(out, "validation_range_disjoint_test", true);
+  append_assignment_bool(out, "training_range_disjoint_validation",
+                         training_validation_disjoint);
+  append_assignment_bool(out, "training_range_disjoint_test",
+                         training_test_disjoint);
+  append_assignment_bool(out, "validation_range_disjoint_test",
+                         validation_test_disjoint);
   append_assignment_bool(out, "normalization_fit_training_only", true);
   append_assignment_bool(out, "replay_buffer_training_only", true);
   append_assignment_bool(out, "reward_baseline_training_only", true);
@@ -12918,15 +13601,6 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
              "no-lookahead contract digest is required";
       return false;
     }
-    const auto consumed_artifacts =
-        split_csv(contract.policy_execution_consumed_artifact_digests);
-    const auto consumed_artifact_contains = [&](const std::string &digest) {
-      if (trim_ascii(digest).empty()) {
-        return false;
-      }
-      return std::find(consumed_artifacts.begin(), consumed_artifacts.end(),
-                       trim_ascii(digest)) != consumed_artifacts.end();
-    };
     if (contract.policy_execution_input_parent_forecast_eval_fact_digest !=
         contract.parent_forecast_eval_fact_digest) {
       *err =
@@ -12946,22 +13620,12 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     if (!source_forecast_fact.empty()) {
       const auto source_forecast_digest =
           kv_get(source_forecast_fact, "fact_digest");
-      const auto source_forecast_split =
-          kv_get(source_forecast_fact, "split_policy_fingerprint");
       const auto source_forecast_artifact =
           kv_get(source_forecast_fact, "forecast_artifact_digest");
-      const bool legacy_splitless_forecast_alias =
-          trim_ascii(source_forecast_split).empty() &&
-          !trim_ascii(source_forecast_artifact).empty() &&
-          source_forecast_artifact ==
-              contract.policy_execution_input_parent_forecast_artifact_digest &&
-          consumed_artifact_contains(
-              contract.policy_execution_input_parent_forecast_eval_fact_digest);
       if (!source_forecast_digest.empty() &&
           source_forecast_digest !=
               contract
-                  .policy_execution_input_parent_forecast_eval_fact_digest &&
-          !legacy_splitless_forecast_alias) {
+                  .policy_execution_input_parent_forecast_eval_fact_digest) {
         *err = "E_RUNTIME_POLICY_EXECUTION_CERTIFIED_FORECAST_MISMATCH: source "
                "replay forecast fact differs from the certified lock";
         return false;
@@ -14034,6 +14698,10 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
                                                                  err)) {
     return false;
   }
+  if (!canonicalize_policy_training_materialized_split_disjointness(&contract,
+                                                                    err)) {
+    return false;
+  }
   if (!canonicalize_policy_training_embargo_window_from_target_range(&contract,
                                                                      err)) {
     return false;
@@ -14975,6 +15643,10 @@ void apply_policy_training_request_fixed_contract_values(
                                                                  err)) {
     return false;
   }
+  if (!canonicalize_policy_training_materialized_split_disjointness(&contract,
+                                                                    err)) {
+    return false;
+  }
   if (!canonicalize_policy_training_embargo_window_from_target_range(&contract,
                                                                      err)) {
     return false;
@@ -15190,11 +15862,15 @@ struct runtime_handoff_binding_t {
   std::string base_config_digest;
   const std::string actual_base_config_digest = file_digest_or_empty(
       config_path, "kikijyeba.runtime.handoff.base_config_file.v1");
+  if (extract_json_raw_field(base_config_raw, "hash", nullptr)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: base_config.hash is retired";
+    }
+    return false;
+  }
   if (!extract_json_string_field(base_config_raw, "path", &base_config_path) ||
-      (!extract_json_string_field(base_config_raw, "digest",
-                                  &base_config_digest) &&
-       !extract_json_string_field(base_config_raw, "hash",
-                                  &base_config_digest)) ||
+      !extract_json_string_field(base_config_raw, "digest",
+                                 &base_config_digest) ||
       trim_ascii(base_config_digest).empty() ||
       base_config_digest != actual_base_config_digest ||
       fs::path(base_config_path).lexically_normal() !=
@@ -15217,12 +15893,16 @@ struct runtime_handoff_binding_t {
   std::string runtime_policy_digest;
   const std::string actual_runtime_policy_digest = file_digest_or_empty(
       policy_path, "kikijyeba.runtime.handoff.runtime_policy_file.v1");
+  if (extract_json_raw_field(runtime_policy_raw, "hash", nullptr)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: runtime_policy.hash is retired";
+    }
+    return false;
+  }
   if (!extract_json_string_field(runtime_policy_raw, "path",
                                  &runtime_policy_path) ||
-      (!extract_json_string_field(runtime_policy_raw, "digest",
-                                  &runtime_policy_digest) &&
-       !extract_json_string_field(runtime_policy_raw, "hash",
-                                  &runtime_policy_digest)) ||
+      !extract_json_string_field(runtime_policy_raw, "digest",
+                                 &runtime_policy_digest) ||
       trim_ascii(runtime_policy_path).empty() ||
       trim_ascii(runtime_policy_digest).empty() ||
       runtime_policy_digest != actual_runtime_policy_digest ||
@@ -15459,12 +16139,9 @@ struct runtime_handoff_binding_t {
   std::string expected_source_key_begin;
   if (extract_json_string_field(expected_raw, "source_key_begin",
                                 &expected_source_key_begin)) {
-    const std::string actual_begin =
-        wave.values.count("SOURCE_KEY_BEGIN") != 0
-            ? wave.values.at("SOURCE_KEY_BEGIN")
-            : (wave.values.count("ANCHOR_KEY_BEGIN") != 0
-                   ? wave.values.at("ANCHOR_KEY_BEGIN")
-                   : std::string{});
+    const std::string actual_begin = wave.values.count("SOURCE_KEY_BEGIN") != 0
+                                         ? wave.values.at("SOURCE_KEY_BEGIN")
+                                         : std::string{};
     if (expected_source_key_begin != actual_begin) {
       if (err) {
         *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: source_key_begin differs";
@@ -15476,12 +16153,9 @@ struct runtime_handoff_binding_t {
   std::string expected_source_key_end;
   if (extract_json_string_field(expected_raw, "source_key_end",
                                 &expected_source_key_end)) {
-    const std::string actual_end =
-        wave.values.count("SOURCE_KEY_END") != 0
-            ? wave.values.at("SOURCE_KEY_END")
-            : (wave.values.count("ANCHOR_KEY_END") != 0
-                   ? wave.values.at("ANCHOR_KEY_END")
-                   : std::string{});
+    const std::string actual_end = wave.values.count("SOURCE_KEY_END") != 0
+                                       ? wave.values.at("SOURCE_KEY_END")
+                                       : std::string{};
     if (expected_source_key_end != actual_end) {
       if (err) {
         *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: source_key_end differs";
@@ -17259,14 +17933,16 @@ struct policy_training_replay_source_candidate_t {
   if (out != nullptr) {
     out->clear();
   }
-  std::int64_t validation_begin = 0;
-  std::int64_t validation_end = 0;
-  if (!parse_policy_training_anchor_range_digest(
-          contract.validation_range_digest, "validation", &validation_begin,
-          &validation_end)) {
+  policy_training_anchor_range_resolution_t contract_validation_range{};
+  if (!policy_training_contract_range_resolution(
+          contract, contract.validation_range_digest, "validation",
+          &contract_validation_range, err)) {
+    return false;
+  }
+  if (!contract_validation_range.recognized) {
     if (err != nullptr) {
       *err = "E_RUNTIME_POLICY_TRAINING_REPLAY_SOURCE_RANGE_UNRESOLVED: "
-             "validation_range_digest does not encode an anchor range";
+             "validation_range_digest does not encode a supported source range";
     }
     return false;
   }
@@ -17305,19 +17981,34 @@ struct policy_training_replay_source_candidate_t {
                      &candidate_begin) ||
         !parse_int64(kv_get(state, "resolved_anchor_index_end"),
                      &candidate_end) ||
-        candidate_begin != validation_begin ||
-        candidate_end != validation_end) {
+        candidate_end <= candidate_begin) {
       continue;
     }
 
     const fs::path job_dir = normalize_path(it->path().parent_path());
+    const auto manifest = parse_kv_file(job_dir / "job.manifest");
+    auto expected_validation_range = contract_validation_range;
+    if (!expected_validation_range.bound) {
+      std::string materialization_error;
+      if (!resolve_policy_training_range_digest_to_anchor_range(
+              contract.validation_range_digest, "validation",
+              policy_training_accepted_anchor_count_from_kv(manifest, state),
+              &expected_validation_range, &materialization_error) ||
+          !expected_validation_range.bound) {
+        continue;
+      }
+    }
+    if (candidate_begin != expected_validation_range.begin ||
+        candidate_end != expected_validation_range.end) {
+      continue;
+    }
+
     const fs::path replay_batch_index =
         runtime_replay_batch_index_path(job_dir);
     if (!fs::is_regular_file(replay_batch_index)) {
       continue;
     }
 
-    const auto manifest = parse_kv_file(job_dir / "job.manifest");
     const std::string contract_protocol_id = trim_ascii(contract.protocol_id);
     const std::string contract_graph_order =
         trim_ascii(contract.graph_order_fingerprint);
@@ -17365,8 +18056,10 @@ struct policy_training_replay_source_candidate_t {
           "E_RUNTIME_POLICY_TRAINING_REPLAY_SOURCE_NOT_FOUND: no completed "
           "wikimyei.inference.expected_value.mdn replay job matches validation "
           "anchor range " +
-          std::to_string(validation_begin) + "_" +
-          std::to_string(validation_end);
+          (contract_validation_range.bound
+               ? std::to_string(contract_validation_range.begin) + "_" +
+                     std::to_string(contract_validation_range.end)
+               : trim_ascii(contract.validation_range_digest));
     }
     return false;
   }

@@ -3,21 +3,15 @@
   =========================
   Shared source cursor catalog for Runtime waves.
 
-  Runtime waves select these entries by SOURCE_CURSOR_ID. Cursor identities are
-  source-level and protocol-neutral; protocol-specific component choices live in
-  the Runtime wave and Kikijyeba protocol DSLs.
+  Runtime waves select these entries by SOURCE_CURSOR_ID for source-owned or
+  ad hoc windows. Waves that want a named train/validation/test split should use
+  SOURCE_SPLIT in hero.runtime.wave.dsl; those bounds are derived from
+  ujcamei.source.splits.dsl instead of duplicated here.
 */
-UJCAMEI_SOURCE_CURSOR {
-  CURSOR_ID = validation_eval.1800_2050;
-  SOURCE_CURSOR_KIND = graph_anchor;
-  SOURCE_CURSOR_SCOPE = wave_batch;
-  SOURCE_RANGE = anchor_index;
-  ANCHOR_INDEX_BEGIN = 1800;
-  ANCHOR_INDEX_END = 2050;
-};
 
 UJCAMEI_SOURCE_CURSOR {
-  CURSOR_ID = validation_eval.1600_2247;
+  CURSOR_ID = validation_eval_extended_window;
+  WINDOW_KIND = ad_hoc_window;
   SOURCE_CURSOR_KIND = graph_anchor;
   SOURCE_CURSOR_SCOPE = wave_batch;
   SOURCE_RANGE = anchor_index;
@@ -26,16 +20,8 @@ UJCAMEI_SOURCE_CURSOR {
 };
 
 UJCAMEI_SOURCE_CURSOR {
-  CURSOR_ID = validation_eval.1200_2247;
-  SOURCE_CURSOR_KIND = graph_anchor;
-  SOURCE_CURSOR_SCOPE = wave_batch;
-  SOURCE_RANGE = anchor_index;
-  ANCHOR_INDEX_BEGIN = 1200;
-  ANCHOR_INDEX_END = 2247;
-};
-
-UJCAMEI_SOURCE_CURSOR {
-  CURSOR_ID = validation_eval.1630_2247;
+  CURSOR_ID = validation_eval_late_window;
+  WINDOW_KIND = ad_hoc_window;
   SOURCE_CURSOR_KIND = graph_anchor;
   SOURCE_CURSOR_SCOPE = wave_batch;
   SOURCE_RANGE = anchor_index;
@@ -44,40 +30,25 @@ UJCAMEI_SOURCE_CURSOR {
 };
 
 UJCAMEI_SOURCE_CURSOR {
-  CURSOR_ID = validation_eval.all;
+  CURSOR_ID = validation_eval_full_domain;
   SOURCE_CURSOR_KIND = graph_anchor;
   SOURCE_CURSOR_SCOPE = wave_batch;
   SOURCE_RANGE = all;
 };
 
 UJCAMEI_SOURCE_CURSOR {
-  CURSOR_ID = train_core.all;
+  CURSOR_ID = train_core_full_domain;
   SOURCE_CURSOR_KIND = graph_anchor;
   SOURCE_CURSOR_SCOPE = wave_batch;
   SOURCE_RANGE = all;
 };
 
 UJCAMEI_SOURCE_CURSOR {
-  CURSOR_ID = train_core.0_1600;
+  CURSOR_ID = cwu_01v_train_core_window;
+  WINDOW_KIND = ad_hoc_window;
   SOURCE_CURSOR_KIND = graph_anchor;
   SOURCE_CURSOR_SCOPE = wave_batch;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
   ANCHOR_INDEX_END = 1600;
-};
-
-UJCAMEI_SOURCE_CURSOR {
-  CURSOR_ID = train_core.0_1170;
-  SOURCE_CURSOR_KIND = graph_anchor;
-  SOURCE_CURSOR_SCOPE = wave_batch;
-  SOURCE_RANGE = anchor_index;
-  ANCHOR_INDEX_BEGIN = 0;
-  ANCHOR_INDEX_END = 1170;
-};
-
-UJCAMEI_SOURCE_CURSOR {
-  CURSOR_ID = policy_training.all;
-  SOURCE_CURSOR_KIND = graph_anchor;
-  SOURCE_CURSOR_SCOPE = wave_batch;
-  SOURCE_RANGE = all;
 };

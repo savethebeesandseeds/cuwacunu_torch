@@ -20,6 +20,9 @@ struct marshal_prior_dry_run_evidence_t {
   std::string runtime_wave_digest{};
   std::string runtime_response_digest{};
   std::string dry_run_response_digest{};
+  bool policy_training_execution_lock_materialized{false};
+  std::string policy_training_execution_lock_path{};
+  std::string policy_training_execution_lock_digest{};
   std::string evidence_digest{};
 };
 
@@ -38,6 +41,7 @@ struct marshal_execution_gate_result_t {
   std::vector<marshal_refusal_reason_t> refusal_reasons{};
   std::vector<std::string> messages{};
   marshal_dispatch_decision_t decision{};
+  marshal_prior_dry_run_evidence_t prior_dry_run{};
   std::string non_authority_statement{
       k_marshal_dispatch_non_authority_statement};
 
@@ -76,6 +80,14 @@ inline void add_refusal(marshal_execution_gate_result_t &result,
                     evidence.runtime_response_digest);
   detail::append_kv(out, "dry_run_response_digest",
                     evidence.dry_run_response_digest);
+  detail::append_kv(
+      out, "policy_training_execution_lock_materialized",
+      detail::bool_text(evidence.policy_training_execution_lock_materialized));
+  detail::append_kv(out, "policy_training_execution_lock_path",
+                    detail::normalize_path_text(
+                        evidence.policy_training_execution_lock_path));
+  detail::append_kv(out, "policy_training_execution_lock_digest",
+                    evidence.policy_training_execution_lock_digest);
   return out.str();
 }
 
@@ -114,6 +126,13 @@ make_prior_dry_run_evidence(
       response.response_digest.empty()
           ? dry_run_dispatch_response_digest(response)
           : response.response_digest;
+  const auto lock =
+      detail::materialize_policy_training_execution_lock_from_runtime_dry_run(
+          response.decision.runtime_request,
+          response.runtime_handoff.tool_result_json);
+  evidence.policy_training_execution_lock_materialized = lock.available;
+  evidence.policy_training_execution_lock_path = lock.path.string();
+  evidence.policy_training_execution_lock_digest = lock.digest;
   evidence.evidence_digest = prior_dry_run_evidence_digest(evidence);
   return evidence;
 }
@@ -151,6 +170,7 @@ confirmation_token(const marshal_dispatch_advice_t &advice,
 [[nodiscard]] inline marshal_execution_gate_result_t
 validate_execution_gate(const marshal_execution_gate_input_t &input) {
   marshal_execution_gate_result_t result{};
+  result.prior_dry_run = input.prior_dry_run;
   result.expected_confirmation_token =
       confirmation_token(input.advice, input.request);
 
@@ -257,6 +277,16 @@ validate_execution_gate(const marshal_execution_gate_input_t &input) {
                   "prior dry-run evidence digest does not match the structured "
                   "dry-run evidence");
     }
+    const bool active_policy_training_wave =
+        input.active_wave.job_kind == "policy_training";
+    if (active_policy_training_wave &&
+        (!input.prior_dry_run.policy_training_execution_lock_materialized ||
+         input.prior_dry_run.policy_training_execution_lock_path.empty() ||
+         input.prior_dry_run.policy_training_execution_lock_digest.empty())) {
+      add_refusal(result, marshal_refusal_reason_t::dry_run_receipt_mismatch,
+                  "policy-training execution requires the materialized "
+                  "execution lock produced by the accepted Runtime dry-run");
+    }
   }
 
   result.accepted = result.refusal_reasons.empty();
@@ -270,16 +300,22 @@ call_runtime_hero_execution(
   if (!gate.accepted || !gate.decision.accepted ||
       !gate.decision.runtime_handoff_available) {
     marshal_runtime_hero_handoff_result_t out{};
-    out.arguments_json = runtime_hero_execute_args_json(
-        gate.decision.runtime_request, false);
+    out.arguments_json =
+        runtime_hero_execute_args_json(gate.decision.runtime_request, false);
     out.arguments_digest = marshal_digest_for_text(
         "kikijyeba.marshal.runtime_handoff_arguments.v1", out.arguments_json);
     out.error_message =
         "Marshal execution gate is not accepted for Runtime Hero execution";
     return out;
   }
+  marshal_policy_training_execution_lock_t lock{};
+  if (gate.prior_dry_run.policy_training_execution_lock_materialized) {
+    lock.available = true;
+    lock.path = gate.prior_dry_run.policy_training_execution_lock_path;
+    lock.digest = gate.prior_dry_run.policy_training_execution_lock_digest;
+  }
   return detail::call_runtime_hero_execute_request(
-      gate.decision.runtime_request, options, false);
+      gate.decision.runtime_request, options, false, lock);
 }
 
 } // namespace cuwacunu::hero::marshal

@@ -4,6 +4,7 @@
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/lattice_hero/lattice/split/split_policy.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -19,14 +20,16 @@ namespace split = cuwacunu::hero::lattice::split;
 struct scanned_forecast_artifact_fixture_options_t {
   bool forecast_baseline_digest_mismatch{false};
   bool load_split_policy{true};
+  std::filesystem::path source_split_catalog_path{
+      "/cuwacunu/src/config/ujcamei.source.splits.dsl"};
   std::filesystem::path split_policy_path{
-      "/cuwacunu/src/config/hero.lattice.splits.dsl"};
+      "/cuwacunu/src/config/hero.lattice.split_policy.dsl"};
   std::string split_id{"validation_holdout"};
 
   std::string contract_fingerprint{"contract_1"};
   std::string protocol_id{"cwu_02v"};
   std::string graph_order_fingerprint{"graph_1"};
-  std::string source_cursor_token{"cursor_1"};
+  std::string source_cursor_token{"cursor_1|accepted=1000"};
   std::string component_assembly_fingerprint{"mdn_1"};
   std::string target_component_family_id{
       "wikimyei.inference.expected_value.mdn"};
@@ -78,6 +81,33 @@ inline void write_fixture_text(const std::filesystem::path &path,
   out << text;
 }
 
+[[nodiscard]] inline std::int64_t
+accepted_anchor_count_from_source_cursor_token(
+    const std::string &source_cursor_token) {
+  const std::string marker = "|accepted=";
+  const auto marker_pos = source_cursor_token.find(marker);
+  if (marker_pos == std::string::npos) {
+    return 0;
+  }
+  const auto value_begin = marker_pos + marker.size();
+  const auto value_end = source_cursor_token.find('|', value_begin);
+  const auto value = source_cursor_token.substr(
+      value_begin, value_end == std::string::npos
+                       ? std::string::npos
+                       : value_end - value_begin);
+  if (value.empty()) {
+    throw std::runtime_error("source_cursor_token has empty accepted count: " +
+                             source_cursor_token);
+  }
+  std::size_t consumed = 0;
+  const auto count = std::stoll(value, &consumed);
+  if (consumed != value.size() || count < 0) {
+    throw std::runtime_error("source_cursor_token has invalid accepted count: " +
+                             source_cursor_token);
+  }
+  return count;
+}
+
 inline void apply_split_identity(
     exposure::lattice_exposure_fact_t &parent_seed,
     const scanned_forecast_artifact_fixture_options_t &options) {
@@ -90,18 +120,26 @@ inline void apply_split_identity(
     return;
   }
 
-  const auto policy =
-      split::load_lattice_split_policy_from_file(options.split_policy_path);
+  const auto policy = split::load_lattice_split_policy_from_files(
+      options.split_policy_path, options.source_split_catalog_path);
   const auto *selected_split = policy.find_split(options.split_id);
   if (selected_split == nullptr) {
     throw std::runtime_error("missing lattice split: " + options.split_id);
   }
+  const auto accepted_anchor_count =
+      accepted_anchor_count_from_source_cursor_token(
+          options.source_cursor_token);
+  const auto materialized_split =
+      selected_split->anchor_range_materialized && accepted_anchor_count <= 0
+          ? *selected_split
+          : split::materialize_lattice_split(*selected_split,
+                                             accepted_anchor_count);
   parent_seed.cursor_domain = policy.cursor_domain;
   parent_seed.split_policy_fingerprint =
       split::lattice_split_policy_fingerprint(policy);
-  parent_seed.split_name = selected_split->split_id;
-  parent_seed.split_role = selected_split->role;
-  parent_seed.anchor_range = selected_split->anchor_range;
+  parent_seed.split_name = materialized_split.split_id;
+  parent_seed.split_role = materialized_split.role;
+  parent_seed.anchor_range = materialized_split.anchor_range;
 }
 
 inline void write_scanned_forecast_artifact_fixture(

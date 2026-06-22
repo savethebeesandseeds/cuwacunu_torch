@@ -1,0 +1,2 @@
+data/raw/**/*.cache.bin
+data/raw/**/*.cache.norm.*.bin

@@ -972,13 +972,17 @@ runtime job manifests, job state, component reports, and checkpoints, then
 returns a status plus an optional suggested wave. It does not execute.
 
 Named split policy lives under `cuwacunu::hero::lattice::split`.
-`hero.lattice.splits.dsl` defines graph-anchor cursor ranges and roles
-outside the target language. Targets may use `TRAIN_SPLIT` / `OVER_SPLIT` to
-resolve their anchor-index training range. Validation/test splits may also
-declare `PROTECT_FROM_USES`, and targets can use `PROTECT_SPLIT` to apply that
-holdout protection without repeating low-level forbidden-use lists. This keeps
-train/validation/test definitions centralized instead of duplicating raw ranges
-across target blocks. The split policy has a deterministic fingerprint. Target
+`ujcamei.source.splits.dsl` defines graph-anchor cursor ranges and roles outside
+the target language. `hero.lattice.split_policy.dsl` binds Lattice
+proof/protection policy to those source-owned split ids. Targets may use
+`TRAIN_SPLIT` / `OVER_SPLIT` to resolve their anchor-index training range.
+Validation/test splits may also declare `PROTECT_FROM_USES`; split-bound training
+readiness derives `validation_holdout` protection, and evaluation readiness
+derives protection from its evaluation split. `PROTECT_SPLIT` remains available
+for intentional non-default protection without repeating low-level forbidden-use
+lists. This keeps train/validation/test definitions centralized instead of
+duplicating raw
+ranges across target blocks. The split policy has a deterministic fingerprint. Target
 evaluation reports that fingerprint, and exposure facts can carry it; once a
 fact records a split-policy fingerprint, evaluation will not accept it under a
 different split policy. Concrete named-split facts without that fingerprint are
@@ -1006,14 +1010,28 @@ The target language also supports lightweight `LATTICE_PROFILE` and
 `LATTICE_GUARD` blocks. Profiles name reusable target defaults, including
 artifact-readiness class/scope/component defaults; guards remain
 available for low-level reusable forbidden exposure policies, while ordinary
-holdout protection should prefer split-level `PROTECT_FROM_USES` plus target
-`PROTECT_SPLIT`. The decoder lowers these forms into the existing v0 scalar
+holdout protection should prefer split-level `PROTECT_FROM_USES` plus the
+target-derived protected split. The decoder lowers these forms into the existing v0 scalar
 target fields, so they improve authoring and inspection without changing
-evaluator semantics. Preferred aliases are `OVER_SPLIT`, `WAVE_MODE`, and
-`PLAN_MAX_ATTEMPTS`; older names still load for compatibility and mixed old/new
+evaluator semantics. Preferred spellings are `OVER_SPLIT`, `WAVE_MODE`, and
+`PLAN_MAX_ATTEMPTS`; older names still load as deprecated synonyms and mixed old/new
 spellings produce validation warnings. Ordinary readiness targets derive their
 component from `TARGET_KIND`; explicit `SUBJECT_COMPONENT` belongs to artifact
 or other non-standard proof surfaces.
+`LATTICE_TARGET_FAMILY` is a deterministic compact authoring form. The
+`protocol_train_core_readiness` family lowers `PROTOCOL_IDS`,
+`REPRESENTATION_PROFILE_IDS`, `MDN_PROFILE_ID`, and `OVER_SPLIT` into ordinary
+protocol-scoped representation and MDN train-core readiness target ids before
+validation and fingerprinting. The `protocol_channel_mdn_leakage_guard_chain`
+family lowers `PROTOCOL_IDS` into validation and test no-leakage guard target
+ids with deterministic checkpoint-source chaining. The
+`protocol_channel_mdn_evaluation_readiness` family lowers `PROTOCOL_IDS` and
+`EVALUATION_SPLITS` into validation/certified-replay evaluation target ids with
+the derived checkpoint-source and split-protection bindings. The
+`profile_artifact_readiness_targets` family lowers either one shared
+`USE_PROFILE` or paired `USE_PROFILE_IDS` plus `TARGET_IDS` and
+`SUBJECT_FACT_FAMILIES` into artifact-readiness targets.
+Callers still inspect and evaluate the expanded targets.
 The first clause blocks are also supported and lower into the same v0 evaluator
 model:
 
@@ -1041,9 +1059,10 @@ LATTICE_PLAN
   declares advisory plan identity and optional model-state hints. Suggested
   wave mode, split/range, and planning attempt limit may be inherited from the
   target/profile. Channel-MDN training plans can derive
-  PLAN_INPUT_REPRESENTATION_CHECKPOINT from UPSTREAM_TARGET_ID; evaluation plans
-  can derive PLAN_INPUT_MDN_CHECKPOINT from EVALUATED_CHECKPOINT_SOURCE unless a
-  clause declares an explicit model-state hint.
+  PLAN_INPUT_REPRESENTATION_CHECKPOINT from UPSTREAM_TARGET_ID. Evaluation
+  plans can derive PLAN_INPUT_MDN_CHECKPOINT from EVALUATED_CHECKPOINT_SOURCE
+  and derive the representation input by walking the evaluated target graph.
+  Differing explicit hints require PLAN_INPUT_OVERRIDE_REASON.
 
 LATTICE_WARN
   declares non-blocking warning checks over exposure load, effort density, or
@@ -1071,9 +1090,10 @@ evaluator still consumes the lowered v0 target, while `hero.lattice.inspect.targ
 exposes the preserved proof object without scanning runtime evidence.
 
 Targets can optionally bind readiness to the exposure ledger with cursor-indexed
-checks. `MIN_OBSERVED_INPUT_COVERAGE` and
+checks. `OVER_SPLIT`/`TRAIN_SPLIT` derives `SOURCE_RANGE=anchor_index` when the
+source range is omitted. `MIN_OBSERVED_INPUT_COVERAGE` and
 `MIN_TARGET_SUPERVISION_COVERAGE` require a checkpoint exposure closure to cover
-a fraction of an explicit `SOURCE_RANGE=anchor_index` interval. In
+a fraction of the split-bound or explicit anchor-index interval. In
 `LATTICE_REQUIRES KIND=exposure_coverage`, `CURSOR_EPOCHS` is the calmer
 authoring alias for `MIN_COVERAGE`: it means the selected exposure use covers
 that fraction of the named Ujcamei graph-anchor cursor range. Coverage uses the
@@ -1157,7 +1177,7 @@ names and their trigger/measurement-availability semantics, plus
 also includes a `warning_summary` object that aggregates warning-result count,
 triggered-warning count, unavailable-warning count, clear measured warning
 count, blocking and non-blocking warning counts, `all_warnings_non_blocking`,
-the compatibility `warning_count` alias, and relation counts for each threshold
+the public `warning_count` alias, and relation counts for each threshold
 relation value.
 The target compiler also applies small dimensional checks to authored numeric
 thresholds. Coverage fractions, valid-target fractions, accepted-anchor
@@ -1212,11 +1232,13 @@ state hints, but those are symbolic `latest_satisfying` source-target
 references, not contract identity or proof evidence, and the concrete checkpoint
 loaded by runtime still must be proven by the resulting report/facts. When a
 `LATTICE_PLAN` omits those hints, channel-MDN training plans derive the
-representation hint from `UPSTREAM_TARGET_ID`, and evaluation plans derive the
-MDN hint from `EVALUATED_CHECKPOINT_SOURCE`. Changing those plan-input hint
-values does not change `target_spec_fingerprint`; the fingerprint is reserved
-for the target proof obligation, not the checkpoint source hint used to run the
-next wave. Likewise, advisory planning knobs such as
+representation hint from `UPSTREAM_TARGET_ID`; evaluation plans derive the MDN
+hint from `EVALUATED_CHECKPOINT_SOURCE` and derive the representation hint by
+walking the evaluated target graph back to the representation readiness target.
+Changing those plan-input hint values requires `PLAN_INPUT_OVERRIDE_REASON` and
+does not change `target_spec_fingerprint`; the fingerprint is reserved for the
+target proof obligation, not the checkpoint source hint used to run the next
+wave. Likewise, advisory planning knobs such as
 `WAVE_MODE`, `PLAN_MODE`, `PLAN_MAX_ATTEMPTS`, and `MAX_WAVES` may live on the
 target/profile and lower into suggested-wave behavior without changing
 `target_spec_fingerprint`.
@@ -1252,7 +1274,6 @@ LATTICE_TARGET {
   SUBJECT_FACT_FAMILY = observer_belief;
   SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
   PROTOCOL_ID = cwu_02v;
-  SOURCE_RANGE = anchor_index;
   OVER_SPLIT = validation_holdout;
 }
 ```
@@ -1502,7 +1523,7 @@ Hero JSON also emits `derived_query_rule_vocabulary_digest_schema` and
 `derived_query_results`, so clients can compare the declared query vocabulary
 from `inspect.target` with evaluate/plan projections.
 Hero JSON also emits `derived_query_projection_semantics_vocabulary`, which
-defines the allowed quantifier, empty-policy, and compatibility-alias values
+defines the allowed quantifier, empty-policy, and public-alias values
 used by rule vocabulary and live result rows.
 `evaluate.target` and `evaluate.deficit` additionally emit
 `derived_query_results`, a compact read-only projection of those relation truth
@@ -1540,9 +1561,9 @@ therefore include `rule_projection_scope` for the declared rule shape and
 `rule_projection_quantifier` for the declared rule quantifier; they also include
 `result_projection_scope` and `result_projection_quantifier` for the emitted
 compact projection. `projection_scope` and `projection_quantifier` are kept as
-compatibility aliases for the result fields. Live rows also carry
+public aliases for the result fields. Live rows also carry
 `rule_empty_projection_policy`, `result_empty_projection_policy`, and the
-compatibility alias `empty_projection_policy`, plus `projection_row_count`,
+public alias `empty_projection_policy`, plus `projection_row_count`,
 `projection_true_count`, `projection_false_count`, and
 `projection_row_source` so clients can audit which dependency, coverage,
 warning, leakage-witness, plan-deficit, or fixed-premise rows were summarized by
@@ -1691,7 +1712,7 @@ closure and leakage booleans, aggregate and weakest-node support confidence when
 available, node-support imbalance maxima, source-key audit count, source-key
 audit issue count, affine source-key mismatch count, blocking deficit count,
 unresolved lineage count, total warning-result count, triggered warning count,
-unavailable warning-measurement count, and the compatibility `warning_count`
+unavailable warning-measurement count, and the public `warning_count`
 alias for triggered warnings. These warning dimensions are projected from
 `warning_summary`, so clients can inspect aggregate warning state without
 recounting every warning row. The lattice intentionally does not collapse these
@@ -1713,8 +1734,8 @@ triggered warnings, and unavailable warning counts are lower-is-stronger, total
 source-key audit and warning-result counts are visibility-only, and repeated
 cursor-load is higher-is-stronger only as clean load. If higher load arrives with
 more warnings, the comparator reports incomparability rather than hiding the
-warning behind a scalar score. The compatibility `warning_count` field remains
-an alias for `triggered_warning_count`; comparison uses the structured
+warning behind a scalar score. The public `warning_count` field remains an alias
+for `triggered_warning_count`; comparison uses the structured
 `triggered_warning_count` dimension.
 `hero.lattice.compare` evaluates two targets with one scan and returns
 the two vectors, per-dimension comparison rows, clean-checkpoint participation
@@ -1789,9 +1810,11 @@ Hero JSON emits `plan_advice_scope_policy_vocabulary`, which makes the planning
 boundary machine-readable: `plan_basis`, `suggested_wave`, and `PLAN_INPUT_*`
 are advisory projections from deficits; `PLAN_MAX_ATTEMPTS`/`MAX_WAVES` are
 recommendation guards; none of these surfaces is evidence authority, contract
-identity, scheduler authority, or a Lattice execution path. `PLAN_INPUT_*`
-remains a symbolic source-target hint until Runtime Hero executes a wave and the
-runtime report proves the exact checkpoint path that was loaded.
+identity, scheduler authority, or a Lattice execution path. Channel-MDN
+representation and MDN inputs are derived from target dependency/source
+selectors unless a differing hint carries `PLAN_INPUT_OVERRIDE_REASON`.
+`PLAN_INPUT_*` remains a symbolic source-target hint until Runtime Hero executes
+a wave and the runtime report proves the exact checkpoint path that was loaded.
 Hero JSON also emits `deficit_vector_planning_summary`, a compact self-check for
 the planning algebra: ordered deficit classes, advisory plan surfaces, no
 evidence or contract-identity authority, no Lattice executor, and the explicit
@@ -1848,19 +1871,22 @@ Lattice Hero reads, explains, evaluates, and plans.
 Runtime Hero executes.
 ```
 
-The active global config points to one target DSL and one split DSL:
+The active global config points to one target DSL, one source split DSL, and one
+Lattice split policy DSL:
 
 ```text
 hero.lattice.targets.dsl
-hero.lattice.splits.dsl
+ujcamei.source.splits.dsl
+hero.lattice.split_policy.dsl
 ```
 
 There is one active file of each kind per config in v0, but each file may carry
 multiple blocks. `hero.lattice.targets.dsl` contains many
 `LATTICE_TARGET` declarations plus reusable profiles, dependencies,
-requirements, forbids, and plan clauses. `hero.lattice.splits.dsl`
-contains one split policy and many named graph-anchor cursor ranges such as
-`train_core`, `validation_holdout`, and `test_holdout`.
+requirements, forbids, and plan clauses. `ujcamei.source.splits.dsl` contains
+named graph-anchor cursor ranges such as `train_core`, `validation_holdout`, and
+`test_holdout`; `hero.lattice.split_policy.dsl` contains the Lattice
+proof/protection policy bound to those names.
 
 Agent runbook:
 
@@ -1975,7 +2001,7 @@ MUST report Lattice Hero warnings and blocked/exposure_failed reasons verbatim.
 MUST produce Runtime identity evidence before graph-anchor evaluation.
 MUST use Runtime Hero, not Lattice Hero, for execution.
 SHOULD prefer inspect.target before changing target DSL.
-SHOULD prefer OVER_SPLIT, PROTECT_SPLIT, and CURSOR_EPOCHS when authoring.
+SHOULD prefer OVER_SPLIT and CURSOR_EPOCHS when authoring.
 ```
 
 ## Operational Readiness V1 Gate
@@ -2093,7 +2119,6 @@ When the target language feels too low-level, prefer the calmer authoring layer:
 
 ```text
 OVER_SPLIT = train_core;
-PROTECT_SPLIT = validation_holdout;
 CURSOR_EPOCHS = 0.95;
 ```
 

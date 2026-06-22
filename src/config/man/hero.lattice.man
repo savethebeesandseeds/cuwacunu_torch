@@ -13,21 +13,27 @@ KEYS
     Current runtime supports STDIO only. HTTPS/SSE fails fast.
 
   default_config_path
-    Global .config used to find Hero-owned Lattice target and split DSL paths.
+    Global .config used to find Hero-owned Lattice target/split-policy paths
+    plus Ujcamei-owned source split paths.
 
   lattice_targets_dsl_bnf_path
-    Grammar for hero.lattice.targets.dsl.
+    Optional grammar override for hero.lattice.targets.dsl. The canonical
+    .config omits this key and derives
+    grammar/hero.lattice.targets.dsl.bnf from lattice_targets_dsl_path.
 
   lattice_targets_dsl_path
     Active Lattice target catalog. This is a Hero-owned config pointer under
     [HERO], not a Kikijyeba environment/protocol pointer.
 
-  lattice_splits_dsl_bnf_path
-    Grammar for hero.lattice.splits.dsl.
+  lattice_split_policy_dsl_bnf_path
+    Optional grammar override for hero.lattice.split_policy.dsl. The canonical
+    .config omits this key and derives
+    grammar/hero.lattice.split_policy.dsl.bnf from lattice_split_policy_dsl_path.
 
-  lattice_splits_dsl_path
-    Active Lattice split/range catalog. This is a Hero-owned config pointer
-    under [HERO].
+  lattice_split_policy_dsl_path
+    Active Lattice split proof/protection policy. Source split intent is owned
+    by [UJCAMEI].ujcamei_source_splits_dsl_path; this Hero-owned file only binds
+    Lattice policy semantics to those split ids.
 
   runtime_root
     Default runtime job artifact root.
@@ -167,6 +173,25 @@ AGENT RUNBOOK
     protocol variant must not satisfy another. The catalog envelope is read-only,
     target_proof=false, dispatchable=false, runtime_executor=false, and
     fact_families_are_not_target_kinds=true.
+    LATTICE_TARGET_FAMILY is a deterministic authoring expansion. The
+    protocol_train_core_readiness family materializes the protocol-scoped
+    representation and MDN train-core readiness aliases from PROTOCOL_IDS,
+    REPRESENTATION_PROFILE_IDS, MDN_PROFILE_ID, and OVER_SPLIT; callers still
+    see ordinary expanded target ids. The
+    protocol_channel_mdn_leakage_guard_chain family materializes validation and
+    test no-leakage guard targets from PROTOCOL_IDS. The
+    protocol_channel_mdn_evaluation_readiness family materializes
+    validation/certified-replay evaluation targets from PROTOCOL_IDS and
+    EVALUATION_SPLITS. The profile_artifact_readiness_targets family
+    materializes artifact-readiness target/fact-family pairs from one shared
+    USE_PROFILE or from paired USE_PROFILE_IDS.
+    OVER_SPLIT/TRAIN_SPLIT resolves to SOURCE_RANGE=anchor_index when
+    SOURCE_RANGE is omitted; fraction split intent materializes from the active
+    accepted-anchor count during evaluation. Keep explicit SOURCE_RANGE for
+    full-range targets and manually bounded anchor-index targets.
+    Split-bound training readiness derives default validation_holdout
+    protection, and evaluation readiness derives protection from its evaluation
+    split. Use PROTECT_SPLIT only for intentional non-default protected splits.
     Artifact-readiness targets may use ARTIFACT_SCOPE=cwu_02v_validation,
     directly or through LATTICE_PROFILE, as the compact authoring form for
     PROTOCOL_ID=cwu_02v,
@@ -186,9 +211,11 @@ AGENT RUNBOOK
     not contract identity or proof evidence. They remain symbolic
     latest_satisfying source-target references until runtime reports prove the
     exact loaded checkpoint paths. Channel-MDN training plans derive
-    PLAN_INPUT_REPRESENTATION_CHECKPOINT from UPSTREAM_TARGET_ID, and evaluation
-    plans derive PLAN_INPUT_MDN_CHECKPOINT from EVALUATED_CHECKPOINT_SOURCE
-    unless a clause declares an explicit model-state hint. Their values do not alter
+    PLAN_INPUT_REPRESENTATION_CHECKPOINT from UPSTREAM_TARGET_ID. Evaluation
+    plans derive PLAN_INPUT_MDN_CHECKPOINT from EVALUATED_CHECKPOINT_SOURCE and
+    derive the representation input by walking the evaluated target graph back
+    to the representation readiness target. Differing explicit hints require
+    PLAN_INPUT_OVERRIDE_REASON. Their values do not alter
 	    target_spec_fingerprint. Advisory planning knobs such as WAVE_MODE,
 	    PLAN_MODE, PLAN_MAX_ATTEMPTS, and MAX_WAVES also do not alter
 	    target_spec_fingerprint. Non-blocking LATTICE_WARN clauses
@@ -584,7 +611,7 @@ AGENT RUNBOOK
     coverage/leakage authority row, four audit-only source-key rows, declared
     order-preserving/affine/gap fields, and no source-key audit row with
     coverage or leakage authority.
-    warning_count remains the compatibility alias for triggered warnings. It is
+    warning_count remains the public alias for triggered warnings. It is
     projected from warning_summary. The vector is not a scalar lattice score, and
     dimensions can remain incomparable. Internal callers can use
     compare_lattice_evidence_order_vectors for the explicit
@@ -671,12 +698,12 @@ AGENT RUNBOOK
     are repeated in live derived_query_results so clients can compare
     explain/evaluate/plan surfaces without recomputing the canonical text.
     derived_query_projection_semantics_vocabulary defines the
-    allowed projection-scope, quantifier, empty-policy, and compatibility-alias
+    allowed projection-scope, quantifier, empty-policy, and public-alias
     values used by rule and result rows. Live result rows include
     rule_projection_scope and rule_projection_quantifier for that declared
     relation shape, plus result_projection_scope and result_projection_quantifier
     for the emitted compact projection. projection_scope and
-    projection_quantifier remain compatibility aliases for the result fields, so
+    projection_quantifier remain public aliases for the result fields, so
     compact booleans say whether they summarize all rows or any witness. Compact
     result envelopes declare schema=kikijyeba.lattice.derived_query_results.v1,
     rule_vocabulary_digest_schema, and result_projection_digest_schema, and
@@ -840,9 +867,11 @@ AGENT RUNBOOK
     advisory symbolic hints; PLAN_MAX_ATTEMPTS/MAX_WAVES are recommendation
     guards; LATTICE_PLAN can inherit component, mode, split, and attempt budget
     from the target/profile when it only needs to name the plan. Channel-MDN
-    training representation checkpoint hints derive from UPSTREAM_TARGET_ID, and
-    evaluation MDN hints derive from EVALUATED_CHECKPOINT_SOURCE unless
-    explicitly overridden; Runtime Hero remains the only executor.
+    training representation checkpoint hints derive from UPSTREAM_TARGET_ID.
+    Evaluation MDN hints derive from EVALUATED_CHECKPOINT_SOURCE, and
+    evaluation representation hints derive from the evaluated target graph.
+    Differing explicit hints require PLAN_INPUT_OVERRIDE_REASON; Runtime Hero
+    remains the only executor.
     deficit_vector_planning_summary self-checks this boundary with ordered
     deficit-priority counts, advisory-policy counts, zero evidence/identity
     authority, zero Lattice execution authority, and a single Runtime Hero

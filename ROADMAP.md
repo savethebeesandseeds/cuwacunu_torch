@@ -261,6 +261,24 @@ increase_certified_replay_exposure.v2
   exposure/performance evidence only, not a policy-quality gate or
   paper-online/deployment readiness claim.
 
+synthetic_benchmark_oracle_readiness.v1
+  First deterministic synthetic benchmark pack is in place under
+  `src/config/benchmarks/synthetic_continuous_graph_v1`. The pack uses
+  synthetic kline-shaped CSVs so the current graph-first Runtime path can be
+  exercised without adding a new active `basic` source tensor path. It defines
+  three synthetic asset/numeraire instruments, active 1w/3d/1d log-return
+  channels, synthetic graph topology, train/eval/test anchor splits, candidate
+  Runtime waves, Lattice targets, deterministic data generation, and an
+  evaluation-only hindsight oracle. The materialized source set has 9 CSV files
+  with 1200 rows each. Config validation passes, Runtime status accepts
+  `synthetic_benchmark.config`, Lattice loads 4 splits and 4 targets, and a
+  `hero.runtime.run mode=dry_run` for `synthetic_train_representation` resolves
+  720 anchors and writes dry-run evidence without checkpoint writes. This is
+  benchmark infrastructure only: no MDN training, forecast/replay generation,
+  policy training, oracle comparison, policy acceptance, paper-online
+  readiness, deployment readiness, or live authority has been claimed. The next
+  bounded run goal is `synthetic_continuous_graph_benchmark_run.v1`.
+
 training_order_lattice_correctness.v1
   Anchor-v1 now proves non-anticipative artifact provenance over the concrete
   checkpoint -> forecast_eval -> replay_environment -> policy execution path,

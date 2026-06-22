@@ -2,16 +2,16 @@
 
 `src/config/.config` section: `[WIKIMYEI]`
 
-The Wikimyei section binds authored DSL files and grammars into the
+The Wikimyei section binds authored DSL, net, and feature files into the
 graph-first protocol bundle. These paths are part of deterministic protocol
-construction; when a component's semantic contract changes, update both its DSL
-and BNF path entries.
+construction. Conventional grammar paths are derived from the paired data paths
+under `src/config/grammar`; author explicit `*_bnf_path` keys only for
+nonstandard grammar overrides.
 
 ## Observer Belief
 
-- `wikimyei_observer_belief_dsl_bnf_path`
-  - Grammar for `wikimyei.observer.belief.dsl`.
 - `wikimyei_observer_belief_dsl_path`
+  - Default grammar: `grammar/wikimyei.observer.belief.dsl.bnf`.
   - Deterministic observer contract that converts Channel MDN NodeLift
     potential distributions into NodeLift-aware allocation belief semantics.
   - V1 requires feature semantics from the Ujcamei kline registry/dock
@@ -24,9 +24,9 @@ and BNF path entries.
 
 ## Spot Distributional Utility Policy
 
-- `wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path`
-  - Grammar for `wikimyei.policy.portfolio.spot_distributional_utility.dsl`.
 - `wikimyei_policy_portfolio_spot_distributional_utility_dsl_path`
+  - Default grammar:
+    `grammar/wikimyei.policy.portfolio.spot_distributional_utility.dsl.bnf`.
   - Deterministic portfolio policy contract for the first allocation method.
   - V1 consumes only post-projection `AllocationBelief`, is long-only and
     spot-only, uses projected-gradient search over unified graph-node target
@@ -37,9 +37,9 @@ and BNF path entries.
 
 ## Graph Node Allocation Policy
 
-- `wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path`
-  - Grammar for `wikimyei.policy.portfolio.graph_node_allocation.dsl`.
 - `wikimyei_policy_portfolio_graph_node_allocation_dsl_path`
+  - Default grammar:
+    `grammar/wikimyei.policy.portfolio.graph_node_allocation.dsl.bnf`.
   - Contract-only trainable policy surface for future graph-node allocation policies.
   - V1 consumes `kikijyeba.environment.policy_input.v1` and emits
     `kikijyeba.environment.action.target_node_weights.v1` through
@@ -63,30 +63,32 @@ and BNF path entries.
     allocation files, derives PPO contract fields from the `.jkimyei`, and
     derives the PPO config digest from bound PPO V0 hyperparameters when the
     full digest input set is present.
-- `wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path`
-  - Grammar for `wikimyei.policy.portfolio.graph_node_allocation.net`.
 - `wikimyei_policy_portfolio_graph_node_allocation_net_path`
+  - Default grammar:
+    `grammar/wikimyei.policy.portfolio.graph_node_allocation.net.bnf`.
   - Architecture identity for the bounded PPO V0 graph-node allocation policy.
     V1 binds the feature manifest, node/global/risk encoder shape,
     mask-aware pooling, `node_weight_logits` policy head, `state_value` critic
     head, Dirichlet default distribution config, and logistic-normal candidate
     config. The net decoder derives the V1 action adapter/distribution and PPO
-    execution gate from the policy surface. Raw timestamp and anchor identity
-    stay outside the actor-visible global feature tensor.
-- `wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path`
-  - Grammar for
-    `wikimyei.policy.portfolio.graph_node_allocation.features.dsl`.
+    execution gate from the policy surface, and derives input feature dimensions
+    from the feature manifest contract. Raw timestamp and anchor identity stay
+    outside the actor-visible global feature tensor.
 - `wikimyei_policy_portfolio_graph_node_allocation_features_path`
+  - Default grammar:
+    `grammar/wikimyei.policy.portfolio.graph_node_allocation.features.dsl.bnf`.
   - Actor-feature manifest for the graph-node allocation policy. It freezes
-    the 28 node features, 6 global features, and 10 compact cross-node risk
-    features used by `kikijyeba.environment.policy_input.v1`, while declaring
-    raw MDN tensors and the full scenario bank forbidden for V1.
+    the actor-visible node/global/risk feature names used by
+    `kikijyeba.environment.policy_input.v1`; the decoder derives feature
+    dimensions from those lists and treats authored dimension fields as optional
+    assertions. Raw MDN tensors and the full scenario bank remain forbidden for
+    V1.
 
 `src/config/.config` section: `[JKIMYEI]`
 
-- `wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path`
-  - Grammar for the graph-node allocation PPO V0 `.jkimyei`.
 - `wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path`
+  - Default grammar:
+    `grammar/wikimyei.policy.portfolio.graph_node_allocation.jkimyei.bnf`.
   - Bounded PPO V0 policy-training profile. It requires
     `TASK = policy_graph_node_allocation_ppo_v0`; the training-spec decoder
     derives the fixed PPO optimizer, causal schedule requirement, PPO execution
@@ -96,13 +98,15 @@ and BNF path entries.
 All trainable component `.jkimyei` grammars keep only component training knobs.
 The current canonical no-lookahead/order contract block is
 `NO_LOOKAHEAD_CONTRACT` in `src/config/kikijyeba.protocol.cwu_02v.dsl`;
-config-bundle loading derives no-lookahead ids, digests, component roles, and
-serving-order indexes from that protocol contract, and component assembly ids
-from the owning component DSLs, before validating training specs. The
-training-spec decoder also derives each training version token, freeze policy,
-and policy-task causal/PPO checkpoint gate from `TASK` and fills the canonical
-v1 visibility, lane, valid-from, and artifact-provenance policies when those
-fields are omitted from root `.jkimyei` profiles. Runtime
+that block authors `CONTRACT_ID`, while config-bundle loading derives the
+no-lookahead contract digest from a canonical serialization of the block. It
+then derives no-lookahead ids, digests, component roles, and serving-order
+indexes from that protocol contract, and component assembly ids from the owning
+component DSLs, before validating training specs. The training-spec decoder also
+derives each training version token, freeze policy, and policy-task causal/PPO
+checkpoint gate from `TASK` and fills the canonical v1 visibility, lane,
+valid-from, and artifact-provenance policies when those fields are omitted from
+root `.jkimyei` profiles. Runtime
 carries the derived policy `.jkimyei` contract refs into policy-training
 evidence, and Lattice fails readiness-grade
 claims closed when those refs are missing or drift from the canonical cwu_02v
@@ -113,9 +117,10 @@ derived from the graph/accounting pair; policy input/action/reward surface
 values, policy-source identity digests, and action-distribution config digest
 are derived from
 `src/config/wikimyei.policy.portfolio.graph_node_allocation.dsl`, the
-configured graph-node allocation net, the feature manifest, and the configured
-policy `.jkimyei`; none of these are authored in checked-in activation config,
-including `training_config_digest`; policy
+configured graph-node allocation net, the feature manifest, derived manifest
+feature dimensions, and the configured policy `.jkimyei`; none of these are
+authored in checked-in activation config, including `training_config_digest`;
+policy
 id/kind, training-schedule mode, causal schedule digest, snapshot-family digest,
 and selector policy digests are derived from the selected policy-training
 Runtime wave. If the
@@ -147,8 +152,9 @@ completed compatible replay artifacts; execute still requires a materialized
 proof contract or handoff carrying policy-execution no-lookahead locks.
 Policy-training Runtime waves bind `TRAIN_SPLIT`,
 `VALIDATION_SPLIT`, and `TEST_SPLIT`; Runtime derives the split-policy
-fingerprint plus the training/validation/test range digests from those names
-and `[HERO].lattice_splits_dsl_path`. Runtime derives
+fingerprint plus the training/validation/test semantic range digests from those
+names and `[UJCAMEI].ujcamei_source_splits_dsl_path` bound to
+`[HERO].lattice_split_policy_dsl_path`. Runtime derives
 `normalization_fit_range_digest` and `replay_buffer_source_range_digest` from
 `training_range_digest`, and policy-execution parent replay input mirrors from
 the parent replay environment identity. Runtime derives the policy-execution

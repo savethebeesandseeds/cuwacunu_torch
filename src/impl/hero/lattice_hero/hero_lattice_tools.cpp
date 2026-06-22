@@ -1589,11 +1589,17 @@ exposure_uses_json(const std::vector<exposure::exposure_use_t> &uses) {
         resolution_status = "unresolved_no_split_policy";
         resolution_error = "warning split requires split policy";
       } else if (const auto *split = split_policy->find_split(warning.split)) {
-        effective_warning.anchor_index_begin =
-            static_cast<std::size_t>(split->anchor_range.begin);
-        effective_warning.anchor_index_end =
-            static_cast<std::size_t>(split->anchor_range.end);
-        resolution_status = "resolved";
+        if (!split->anchor_range_materialized) {
+          resolution_status = "unresolved_requires_source_domain";
+          resolution_error =
+              "warning split requires active accepted anchor count";
+        } else {
+          effective_warning.anchor_index_begin =
+              static_cast<std::size_t>(split->anchor_range.begin);
+          effective_warning.anchor_index_end =
+              static_cast<std::size_t>(split->anchor_range.end);
+          resolution_status = "resolved";
+        }
       } else {
         resolution_status = "unresolved_unknown_split";
         resolution_error = "unknown warning split";
@@ -1609,11 +1615,17 @@ exposure_uses_json(const std::vector<exposure::exposure_use_t> &uses) {
         resolution_error = "target split requires split policy";
       } else if (const auto *split =
                      split_policy->find_split(spec.train_split)) {
-        effective_spec.anchor_index_begin =
-            static_cast<std::size_t>(split->anchor_range.begin);
-        effective_spec.anchor_index_end =
-            static_cast<std::size_t>(split->anchor_range.end);
-        resolution_status = "resolved";
+        if (!split->anchor_range_materialized) {
+          resolution_status = "unresolved_requires_source_domain";
+          resolution_error =
+              "target split requires active accepted anchor count";
+        } else {
+          effective_spec.anchor_index_begin =
+              static_cast<std::size_t>(split->anchor_range.begin);
+          effective_spec.anchor_index_end =
+              static_cast<std::size_t>(split->anchor_range.end);
+          resolution_status = "resolved";
+        }
       } else {
         resolution_status = "unresolved_unknown_split";
         resolution_error = "unknown target split";
@@ -12308,7 +12320,10 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << ",\"config_path\":" << json_quote(config_path.string())
        << ",\"runtime_root\":" << json_quote(runtime_root.string())
        << ",\"targets_path\":" << json_quote(paths.targets_dsl_path.string())
-       << ",\"splits_path\":" << json_quote(paths.splits_dsl_path.string())
+       << ",\"source_splits_path\":"
+       << json_quote(paths.source_splits_dsl_path.string())
+       << ",\"split_policy_path\":"
+       << json_quote(paths.split_policy_dsl_path.string())
        << ",\"split_count\":"
        << (split_policy.has_value() ? split_policy->splits.size() : 0)
        << ",\"split_policy_fingerprint\":"
@@ -12428,7 +12443,10 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << "," << lattice_no_decision_authority_json()
        << ",\"config_path\":" << json_quote(config_path.string())
        << ",\"targets_path\":" << json_quote(paths.targets_dsl_path.string())
-       << ",\"splits_path\":" << json_quote(paths.splits_dsl_path.string())
+       << ",\"source_splits_path\":"
+       << json_quote(paths.source_splits_dsl_path.string())
+       << ",\"split_policy_path\":"
+       << json_quote(paths.split_policy_dsl_path.string())
        << ",\"target_count\":" << targets.size()
        << ",\"artifact_readiness_proof_template_registry\":"
        << artifact_readiness_proof_template_registry_json()
@@ -12642,7 +12660,10 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << "," << lattice_no_decision_authority_json()
        << ",\"config_path\":" << json_quote(config_path.string())
        << ",\"targets_path\":" << json_quote(paths.targets_dsl_path.string())
-       << ",\"splits_path\":" << json_quote(paths.splits_dsl_path.string())
+       << ",\"source_splits_path\":"
+       << json_quote(paths.source_splits_dsl_path.string())
+       << ",\"split_policy_path\":"
+       << json_quote(paths.split_policy_dsl_path.string())
        << ",\"target\":" << compiled_target_json(*found)
        << ",\"artifact_readiness_proof_template_registry\":"
        << artifact_readiness_proof_template_registry_json()

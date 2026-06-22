@@ -26,7 +26,6 @@ PROTOCOL {
 
 NO_LOOKAHEAD_CONTRACT {
   CONTRACT_ID = cwu_02v_no_lookahead_artifact_provenance.anchor_v1;
-  CONTRACT_DIGEST = cwu_02v_no_lookahead_artifact_provenance.anchor_v1;
   CERTIFICATE_SCHEMA = no_lookahead_artifact_provenance.v1;
   INFLUENCE_SCHEMA = no_lookahead_artifact_provenance.anchor_v1;
   FRONTIER_UNIT = accepted_anchor_index;

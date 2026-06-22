@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
+#include "piaabo/digest/sha256.h"
 #include "piaabo/parse/simple_kv_block.h"
 
 namespace cuwacunu::kikijyeba::protocol {
@@ -53,6 +55,45 @@ namespace protocol_variant_detail {
 
 namespace kv = cuwacunu::piaabo::parse::simple_kv;
 
+inline void append_canonical_field(std::ostringstream &out,
+                                   const std::string &key,
+                                   const std::string &value) {
+  out << key << "=" << value.size() << ":" << value << "\n";
+}
+
+[[nodiscard]] inline std::string canonical_no_lookahead_contract_text(
+    const protocol_no_lookahead_contract_t &contract) {
+  std::ostringstream out;
+  out << "kikijyeba.protocol.no_lookahead_contract.canonical.v1\n";
+  append_canonical_field(out, "CONTRACT_ID", kv::trim(contract.contract_id));
+  append_canonical_field(out, "CERTIFICATE_SCHEMA",
+                         kv::trim(contract.certificate_schema));
+  append_canonical_field(out, "INFLUENCE_SCHEMA",
+                         kv::trim(contract.influence_schema));
+  append_canonical_field(out, "FRONTIER_UNIT",
+                         kv::trim(contract.frontier_unit));
+  append_canonical_field(out, "SERVING_ORDER",
+                         kv::trim(contract.serving_order));
+  append_canonical_field(out, "VISIBILITY_POLICY",
+                         kv::trim(contract.visibility_policy));
+  append_canonical_field(out, "DERIVED_ARTIFACT_RULE",
+                         kv::trim(contract.derived_artifact_rule));
+  append_canonical_field(out, "CHECKPOINT_RULE",
+                         kv::trim(contract.checkpoint_rule));
+  append_canonical_field(out, "PUBLISH_RULE", kv::trim(contract.publish_rule));
+  append_canonical_field(out, "BOOTSTRAP_POLICY",
+                         kv::trim(contract.bootstrap_policy));
+  append_canonical_field(out, "RESEARCH_POLICY",
+                         kv::trim(contract.research_policy));
+  return out.str();
+}
+
+[[nodiscard]] inline std::string derive_no_lookahead_contract_digest(
+    const protocol_no_lookahead_contract_t &contract) {
+  return cuwacunu::piaabo::digest::sha256_hex(
+      canonical_no_lookahead_contract_text(contract));
+}
+
 [[nodiscard]] inline protocol_representation_family_t
 parse_representation_family(std::string value) {
   value = kv::lowercase(kv::trim(value));
@@ -74,13 +115,15 @@ parse_representation_family(std::string value) {
 
 [[nodiscard]] inline bool protocol_no_lookahead_contract_declared(
     const protocol_no_lookahead_contract_t &contract) {
-  return !contract.contract_id.empty() || !contract.contract_digest.empty() ||
+  return !contract.contract_id.empty() ||
          !contract.certificate_schema.empty() ||
-         !contract.influence_schema.empty() || !contract.frontier_unit.empty() ||
-         !contract.serving_order.empty() || !contract.visibility_policy.empty() ||
+         !contract.influence_schema.empty() ||
+         !contract.frontier_unit.empty() || !contract.serving_order.empty() ||
+         !contract.visibility_policy.empty() ||
          !contract.derived_artifact_rule.empty() ||
          !contract.checkpoint_rule.empty() || !contract.publish_rule.empty() ||
-         !contract.bootstrap_policy.empty() || !contract.research_policy.empty();
+         !contract.bootstrap_policy.empty() ||
+         !contract.research_policy.empty();
 }
 
 inline void validate_protocol_no_lookahead_contract(
@@ -90,17 +133,13 @@ inline void validate_protocol_no_lookahead_contract(
     throw std::runtime_error(
         "[protocol_variant] NO_LOOKAHEAD_CONTRACT CONTRACT_ID is required");
   }
-  if (kv::trim(contract.contract_digest).empty()) {
-    throw std::runtime_error(
-        "[protocol_variant] NO_LOOKAHEAD_CONTRACT CONTRACT_DIGEST is required");
-  }
   if (kv::trim(contract.certificate_schema).empty()) {
     throw std::runtime_error("[protocol_variant] NO_LOOKAHEAD_CONTRACT "
                              "CERTIFICATE_SCHEMA is required");
   }
   if (kv::trim(contract.influence_schema).empty()) {
-    throw std::runtime_error(
-        "[protocol_variant] NO_LOOKAHEAD_CONTRACT INFLUENCE_SCHEMA is required");
+    throw std::runtime_error("[protocol_variant] NO_LOOKAHEAD_CONTRACT "
+                             "INFLUENCE_SCHEMA is required");
   }
   if (kv::trim(contract.frontier_unit).empty()) {
     throw std::runtime_error(
@@ -127,8 +166,8 @@ inline void validate_protocol_no_lookahead_contract(
         "[protocol_variant] NO_LOOKAHEAD_CONTRACT PUBLISH_RULE is required");
   }
   if (kv::trim(contract.bootstrap_policy).empty()) {
-    throw std::runtime_error(
-        "[protocol_variant] NO_LOOKAHEAD_CONTRACT BOOTSTRAP_POLICY is required");
+    throw std::runtime_error("[protocol_variant] NO_LOOKAHEAD_CONTRACT "
+                             "BOOTSTRAP_POLICY is required");
   }
   if (kv::trim(contract.research_policy).empty()) {
     throw std::runtime_error(
@@ -193,8 +232,7 @@ inline void validate_protocol_variant(const protocol_variant_t &variant) {
     throw std::runtime_error(
         "[protocol_variant] REPRESENTATION_CONTRACT is required");
   }
-  if (protocol_no_lookahead_contract_declared(
-          variant.no_lookahead_contract)) {
+  if (protocol_no_lookahead_contract_declared(variant.no_lookahead_contract)) {
     validate_protocol_no_lookahead_contract(variant.no_lookahead_contract);
   }
   if (variant.representation_family ==
@@ -247,9 +285,13 @@ decode_protocol_variant_from_dsl(const std::string &dsl_text) {
   }
   if (no_lookahead_block != nullptr) {
     auto &contract = out.no_lookahead_contract;
+    if (no_lookahead_block->values.find("CONTRACT_DIGEST") !=
+        no_lookahead_block->values.end()) {
+      throw std::runtime_error(
+          "[protocol_variant] NO_LOOKAHEAD_CONTRACT CONTRACT_DIGEST is derived "
+          "from the contract body; remove authored CONTRACT_DIGEST");
+    }
     contract.contract_id = kv::optional(*no_lookahead_block, "CONTRACT_ID", "");
-    contract.contract_digest =
-        kv::optional(*no_lookahead_block, "CONTRACT_DIGEST", "");
     contract.certificate_schema =
         kv::optional(*no_lookahead_block, "CERTIFICATE_SCHEMA", "");
     contract.influence_schema =
@@ -270,6 +312,8 @@ decode_protocol_variant_from_dsl(const std::string &dsl_text) {
         kv::optional(*no_lookahead_block, "BOOTSTRAP_POLICY", "");
     contract.research_policy =
         kv::optional(*no_lookahead_block, "RESEARCH_POLICY", "");
+    contract.contract_digest =
+        protocol_variant_detail::derive_no_lookahead_contract_digest(contract);
   }
   validate_protocol_variant(out);
   return out;

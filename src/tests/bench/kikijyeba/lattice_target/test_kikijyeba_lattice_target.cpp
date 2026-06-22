@@ -389,7 +389,7 @@ void write_mtf_job_fixture(const fs::path &runtime_root,
               "resolved_anchor_index_begin=0\n"
               "resolved_anchor_index_end=10\n"
               "accepted_anchor_count=10\n"
-              "source_cursor_token=cursor_1\n"
+              "source_cursor_token=cursor_1|accepted=1000\n"
               "protocol_contract_fingerprint=contract_1\n"
               "mtf_jepa_mae_vicreg_assembly_fingerprint=mtf_1\n";
   write_text(job_dir / "job.manifest", manifest.str());
@@ -431,7 +431,7 @@ void write_mtf_job_fixture_with_loss(const fs::path &runtime_root,
            << "resolved_anchor_index_begin=0\n"
            << "resolved_anchor_index_end=10\n"
            << "accepted_anchor_count=10\n"
-           << "source_cursor_token=cursor_1\n"
+           << "source_cursor_token=cursor_1|accepted=1000\n"
            << "protocol_contract_fingerprint=contract_1\n"
            << "mtf_jepa_mae_vicreg_assembly_fingerprint=mtf_1\n";
   write_text(job_dir / "job.manifest", manifest.str());
@@ -617,7 +617,7 @@ mtf_eval_options(const fs::path &runtime_root) {
   options.active_identity.protocol_id = "cwu_02v";
   options.active_identity.protocol_contract_fingerprint = "contract_1";
   options.active_identity.graph_order_fingerprint = "graph_1";
-  options.active_identity.source_cursor_token = "cursor_1";
+  options.active_identity.source_cursor_token = "cursor_1|accepted=1000";
   options.active_identity.mtf_jepa_mae_vicreg_assembly_fingerprint = "mtf_1";
   return options;
 }
@@ -855,7 +855,7 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   parent.contract_fingerprint = "contract_1";
   parent.protocol_id = "cwu_02v";
   parent.graph_order_fingerprint = "graph_1";
-  parent.source_cursor_token = "cursor_1";
+  parent.source_cursor_token = "cursor_1|accepted=1000";
   parent.cursor_domain = "ujcamei.graph_anchor";
   parent.split_policy_fingerprint = "split_policy_1";
   parent.component_assembly_fingerprint = "mdn_1";
@@ -1089,7 +1089,7 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   forecast.influence_summary.provenance_closure_digest =
       "forecast_provenance_closure_1";
   forecast.influence_summary.no_lookahead_contract_digest =
-      "cwu_02v_no_lookahead_artifact_provenance_anchor_v1";
+      protocol_fixture::canonical_cwu_02v_no_lookahead_contract_digest();
   if (no_lookahead_mode !=
           no_lookahead_fixture_mode_t::checkpoint_generation_manifest_missing &&
       !forecast.evaluated_representation_checkpoint_digest.empty() &&
@@ -2414,7 +2414,7 @@ artifact_eval_options(const exposure::lattice_exposure_ledger_t &ledger) {
   options.active_identity.protocol_id = "cwu_02v";
   options.active_identity.protocol_contract_fingerprint = "contract_1";
   options.active_identity.graph_order_fingerprint = "graph_1";
-  options.active_identity.source_cursor_token = "cursor_1";
+  options.active_identity.source_cursor_token = "cursor_1|accepted=1000";
   options.active_identity.mdn_assembly_fingerprint = "mdn_1";
   return options;
 }
@@ -2427,14 +2427,59 @@ artifact_runtime_eval_options(const fs::path &runtime_root) {
   options.active_identity.protocol_id = "cwu_02v";
   options.active_identity.protocol_contract_fingerprint = "contract_1";
   options.active_identity.graph_order_fingerprint = "graph_1";
-  options.active_identity.source_cursor_token = "cursor_1";
+  options.active_identity.source_cursor_token = "cursor_1|accepted=1000";
   options.active_identity.mdn_assembly_fingerprint = "mdn_1";
   return options;
+}
+
+void test_checkpoint_artifact_hash_is_retired() {
+  const auto root =
+      fs::temp_directory_path() / "cuwacunu_lattice_target_checkpoint_hash";
+  fs::remove_all(root);
+  const auto job_dir = root / "mdn_ready_job";
+  fs::create_directories(job_dir);
+
+  target::lattice_target_spec_t spec{};
+  spec.kind = target::lattice_target_kind_t::channel_mdn_ready;
+  spec.component = "wikimyei.inference.expected_value.mdn";
+
+  namespace target_detail =
+      cuwacunu::hero::lattice::target::lattice_target_eval_detail;
+  target_detail::job_candidate_t candidate{};
+  candidate.dir = job_dir;
+  candidate.time = fs::file_time_type::clock::now();
+  candidate.manifest = {
+      {"job_kind", target::job_kind_for_target_kind(spec.kind)},
+      {"target_component_family_id", spec.component},
+  };
+
+  write_text(job_dir / "runtime.checkpoint_io.fact",
+             "checkpoint_artifact_hash=legacy_hash\n"
+             "checkpoint_digest_verified=true\n");
+  const auto legacy_hash_evidence =
+      target_detail::make_evidence_from_candidate(candidate, spec, 1, 1);
+  check(legacy_hash_evidence.checkpoint_digest_reported.empty(),
+        "checkpoint_artifact_hash should not populate checkpoint digest");
+  check(!legacy_hash_evidence.checkpoint_digest_verified,
+        "checkpoint_artifact_hash should not verify checkpoint digest");
+
+  write_text(job_dir / "runtime.checkpoint_io.fact",
+             "checkpoint_artifact_digest=canonical_digest\n"
+             "checkpoint_digest_verified=true\n");
+  const auto canonical_digest_evidence =
+      target_detail::make_evidence_from_candidate(candidate, spec, 1, 1);
+  check(canonical_digest_evidence.checkpoint_digest_reported ==
+            "canonical_digest",
+        "checkpoint_artifact_digest should populate checkpoint digest");
+
+  fs::remove_all(root);
 }
 
 } // namespace
 
 int main() {
+  test_checkpoint_artifact_hash_is_retired();
+
   const auto specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = vicreg_ready;
@@ -2521,8 +2566,419 @@ LATTICE_TARGET {
       "proof certificate digest policy includes artifact proofs as a hashed "
       "status surface");
 
-  const auto active_specs = target::decode_lattice_targets_from_dsl(
-      read_active_lattice_targets_dsl());
+  const auto family_specs = target::decode_lattice_targets_from_dsl(R"DSL(
+LATTICE_PROFILE {
+  PROFILE_ID = vicreg_training_readiness;
+  TARGET_KIND = vicreg_ready;
+};
+
+LATTICE_PROFILE {
+  PROFILE_ID = mtf_representation_training_readiness;
+  TARGET_KIND = mtf_representation_ready;
+};
+
+LATTICE_PROFILE {
+  PROFILE_ID = channel_mdn_training_readiness;
+  TARGET_KIND = channel_mdn_ready;
+};
+
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = protocol_train_core_readiness;
+  FAMILY_KIND = protocol_train_core_readiness;
+  PROTOCOL_IDS = cwu_01v, cwu_02v;
+  REPRESENTATION_PROFILE_IDS = vicreg_training_readiness, mtf_representation_training_readiness;
+  MDN_PROFILE_ID = channel_mdn_training_readiness;
+  OVER_SPLIT = train_core;
+};
+)DSL");
+  const auto find_family_spec = [&family_specs](const std::string &target_id)
+      -> const target::lattice_target_spec_t & {
+    const auto it = std::find_if(
+        family_specs.begin(), family_specs.end(),
+        [&](const auto &spec) { return spec.target_id == target_id; });
+    check(it != family_specs.end(), "family materializes " + target_id);
+    return *it;
+  };
+  check(family_specs.size() == 4 &&
+            find_family_spec("cwu_01v_representation_train_core_ready").kind ==
+                target::lattice_target_kind_t::vicreg_ready &&
+            find_family_spec("cwu_02v_representation_train_core_ready").kind ==
+                target::lattice_target_kind_t::mtf_representation_ready &&
+            find_family_spec("cwu_01v_mdn_train_core_ready").protocol_id ==
+                "cwu_01v" &&
+            find_family_spec("cwu_02v_mdn_train_core_ready").protocol_id ==
+                "cwu_02v" &&
+            find_family_spec("cwu_02v_mdn_train_core_ready").train_split ==
+                "train_core" &&
+            find_family_spec("cwu_02v_mdn_train_core_ready").source_range ==
+                "anchor_index" &&
+            find_family_spec("cwu_02v_mdn_train_core_ready").forbid_split ==
+                "validation_holdout",
+        "protocol train-core target family materializes representation and MDN "
+        "readiness aliases");
+  const auto explicit_protection_override_specs =
+      target::decode_lattice_targets_from_dsl(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = split_target_with_non_default_protection;
+  TARGET_KIND = vicreg_ready;
+  OVER_SPLIT = train_core;
+  PROTECT_SPLIT = test_holdout;
+};
+)DSL");
+  check(explicit_protection_override_specs.size() == 1 &&
+            explicit_protection_override_specs.front().source_range ==
+                "anchor_index" &&
+            explicit_protection_override_specs.front().forbid_split ==
+                "test_holdout",
+        "split-bound target can keep an explicit non-default protection split");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = split_target_with_wrong_source_range;
+  TARGET_KIND = vicreg_ready;
+  SOURCE_RANGE = all;
+  OVER_SPLIT = train_core;
+};
+)DSL",
+                      "OVER_SPLIT requires SOURCE_RANGE=anchor_index",
+                      "split-bound target rejects explicit non-anchor source "
+                      "range");
+  expect_decode_error(
+      R"DSL(
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = invalid_protocol_train_core_readiness;
+  FAMILY_KIND = protocol_train_core_readiness;
+  PROTOCOL_IDS = cwu_01v, cwu_02v;
+  REPRESENTATION_PROFILE_IDS = vicreg_training_readiness;
+  MDN_PROFILE_ID = channel_mdn_training_readiness;
+  OVER_SPLIT = train_core;
+};
+)DSL",
+      "counts must match",
+      "target family rejects mismatched protocol/profile lists");
+
+  const auto leakage_family_specs = target::decode_lattice_targets_from_dsl(
+      R"DSL(
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = cwu_02v_channel_mdn_leakage_guard_chain;
+  FAMILY_KIND = protocol_channel_mdn_leakage_guard_chain;
+  PROTOCOL_IDS = cwu_02v;
+};
+)DSL");
+  const auto find_leakage_family_spec =
+      [&leakage_family_specs](const std::string &target_id)
+      -> const target::lattice_target_spec_t & {
+    const auto it = std::find_if(
+        leakage_family_specs.begin(), leakage_family_specs.end(),
+        [&](const auto &spec) { return spec.target_id == target_id; });
+    check(it != leakage_family_specs.end(),
+          "leakage family materializes " + target_id);
+    return *it;
+  };
+  check(leakage_family_specs.size() == 2 &&
+            find_leakage_family_spec(
+                "cwu_02v_mdn_train_core_no_validation_leakage")
+                    .checkpoint_source ==
+                "latest_satisfying:cwu_02v_mdn_train_core_ready" &&
+            find_leakage_family_spec("cwu_02v_mdn_train_core_no_test_leakage")
+                    .checkpoint_source ==
+                "latest_satisfying:cwu_02v_mdn_train_core_no_validation_"
+                "leakage" &&
+            find_leakage_family_spec("cwu_02v_mdn_train_core_no_test_leakage")
+                    .forbid_split == "test_holdout",
+        "protocol channel-MDN leakage family materializes validation and test "
+        "guard chain");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = invalid_channel_mdn_leakage_guard_chain;
+  FAMILY_KIND = protocol_channel_mdn_leakage_guard_chain;
+  PROTOCOL_IDS = cwu_02v, cwu_02v;
+};
+)DSL",
+                      "repeats PROTOCOL_ID",
+                      "target family rejects duplicate protocol ids");
+
+  const auto evaluation_family_specs = target::decode_lattice_targets_from_dsl(
+      R"DSL(
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = cwu_02v_channel_mdn_evaluation_readiness;
+  FAMILY_KIND = protocol_channel_mdn_evaluation_readiness;
+  PROTOCOL_IDS = cwu_02v;
+  EVALUATION_SPLITS = validation_holdout, certified_replay_expansion_eval;
+};
+)DSL");
+  const auto find_evaluation_family_spec =
+      [&evaluation_family_specs](const std::string &target_id)
+      -> const target::lattice_target_spec_t & {
+    const auto it = std::find_if(
+        evaluation_family_specs.begin(), evaluation_family_specs.end(),
+        [&](const auto &spec) { return spec.target_id == target_id; });
+    check(it != evaluation_family_specs.end(),
+          "evaluation family materializes " + target_id);
+    return *it;
+  };
+  check(evaluation_family_specs.size() == 2 &&
+            find_evaluation_family_spec("channel_mdn_validation_eval_ready")
+                    .target_class == "evaluation_readiness" &&
+            find_evaluation_family_spec("channel_mdn_validation_eval_ready")
+                    .train_split == "validation_holdout" &&
+            find_evaluation_family_spec(
+                "channel_mdn_certified_replay_expansion_eval_ready")
+                    .evaluated_checkpoint_source ==
+                "latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage" &&
+            find_evaluation_family_spec(
+                "channel_mdn_certified_replay_expansion_eval_ready")
+                    .forbid_split == "certified_replay_expansion_eval",
+        "protocol channel-MDN evaluation family materializes validation and "
+        "certified replay targets");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = invalid_channel_mdn_evaluation_readiness;
+  FAMILY_KIND = protocol_channel_mdn_evaluation_readiness;
+  PROTOCOL_IDS = cwu_02v;
+  EVALUATION_SPLITS = unexpected_eval_split;
+};
+)DSL",
+                      "unsupported EVALUATION_SPLIT",
+                      "target family rejects unsupported evaluation splits");
+
+  const auto artifact_family_specs = target::decode_lattice_targets_from_dsl(
+      R"DSL(
+LATTICE_PROFILE {
+  PROFILE_ID = cwu_02v_validation_mdn_artifact_readiness;
+  TARGET_CLASS = artifact_readiness;
+  ARTIFACT_SCOPE = cwu_02v_validation;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+};
+
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = cwu_02v_validation_mdn_artifact_readiness_targets;
+  FAMILY_KIND = profile_artifact_readiness_targets;
+  PROTOCOL_IDS = cwu_02v;
+  USE_PROFILE = cwu_02v_validation_mdn_artifact_readiness;
+  TARGET_IDS = target_transform_contract_ready, forecast_eval_artifact_ready;
+  SUBJECT_FACT_FAMILIES = target_transform, forecast_eval;
+};
+)DSL");
+  const auto find_artifact_family_spec =
+      [&artifact_family_specs](const std::string &target_id)
+      -> const target::lattice_target_spec_t & {
+    const auto it = std::find_if(
+        artifact_family_specs.begin(), artifact_family_specs.end(),
+        [&](const auto &spec) { return spec.target_id == target_id; });
+    check(it != artifact_family_specs.end(),
+          "artifact family materializes " + target_id);
+    return *it;
+  };
+  check(
+      artifact_family_specs.size() == 2 &&
+          find_artifact_family_spec("target_transform_contract_ready")
+                  .target_class == "artifact_readiness" &&
+          find_artifact_family_spec("target_transform_contract_ready")
+                  .protocol_id == "cwu_02v" &&
+          find_artifact_family_spec("forecast_eval_artifact_ready")
+                  .subject_fact_family == "forecast_eval" &&
+          find_artifact_family_spec("forecast_eval_artifact_ready").component ==
+              "wikimyei.inference.expected_value.mdn",
+      "profile artifact-readiness family materializes target/fact-family "
+      "pairs");
+
+  const auto paired_artifact_family_specs =
+      target::decode_lattice_targets_from_dsl(R"DSL(
+LATTICE_PROFILE {
+  PROFILE_ID = cwu_02v_validation_policy_training_artifact_readiness;
+  TARGET_CLASS = artifact_readiness;
+  ARTIFACT_SCOPE = cwu_02v_validation;
+  SUBJECT_COMPONENT = wikimyei.policy.portfolio.graph_node_allocation;
+};
+
+LATTICE_PROFILE {
+  PROFILE_ID = cwu_02v_validation_tsodao_policy_artifact_readiness;
+  TARGET_CLASS = artifact_readiness;
+  ARTIFACT_SCOPE = cwu_02v_validation;
+  SUBJECT_COMPONENT = tsodao.policy_acceptance;
+};
+
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = cwu_02v_validation_specialized_artifact_readiness_targets;
+  FAMILY_KIND = profile_artifact_readiness_targets;
+  PROTOCOL_IDS = cwu_02v;
+  USE_PROFILE_IDS = cwu_02v_validation_policy_training_artifact_readiness, cwu_02v_validation_tsodao_policy_artifact_readiness;
+  TARGET_IDS = policy_training_artifact_ready, policy_acceptance_contract_ready;
+  SUBJECT_FACT_FAMILIES = policy_training, policy_acceptance;
+};
+)DSL");
+  const auto find_paired_artifact_family_spec =
+      [&paired_artifact_family_specs](const std::string &target_id)
+      -> const target::lattice_target_spec_t & {
+    const auto it =
+        std::find_if(paired_artifact_family_specs.begin(),
+                     paired_artifact_family_specs.end(), [&](const auto &spec) {
+                       return spec.target_id == target_id;
+                     });
+    check(it != paired_artifact_family_specs.end(),
+          "paired artifact family materializes " + target_id);
+    return *it;
+  };
+  check(paired_artifact_family_specs.size() == 2 &&
+            find_paired_artifact_family_spec("policy_training_artifact_ready")
+                    .component ==
+                "wikimyei.policy.portfolio.graph_node_allocation" &&
+            find_paired_artifact_family_spec("policy_training_artifact_ready")
+                    .subject_fact_family == "policy_training" &&
+            find_paired_artifact_family_spec("policy_acceptance_contract_ready")
+                    .component == "tsodao.policy_acceptance" &&
+            find_paired_artifact_family_spec("policy_acceptance_contract_ready")
+                    .protocol_id == "cwu_02v",
+        "profile artifact-readiness family materializes paired profile/target/"
+        "fact-family rows");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = invalid_artifact_readiness_targets;
+  FAMILY_KIND = profile_artifact_readiness_targets;
+  PROTOCOL_IDS = cwu_02v;
+  USE_PROFILE = cwu_02v_validation_mdn_artifact_readiness;
+  TARGET_IDS = target_transform_contract_ready, forecast_eval_artifact_ready;
+  SUBJECT_FACT_FAMILIES = target_transform;
+};
+)DSL",
+                      "counts must match",
+                      "artifact target family rejects mismatched target/fact "
+                      "lists");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = invalid_ambiguous_artifact_readiness_targets;
+  FAMILY_KIND = profile_artifact_readiness_targets;
+  PROTOCOL_IDS = cwu_02v;
+  USE_PROFILE = cwu_02v_validation_mdn_artifact_readiness;
+  USE_PROFILE_IDS = cwu_02v_validation_policy_training_artifact_readiness;
+  TARGET_IDS = policy_training_artifact_ready;
+  SUBJECT_FACT_FAMILIES = policy_training;
+};
+)DSL",
+                      "exactly one of USE_PROFILE or USE_PROFILE_IDS",
+                      "artifact target family rejects ambiguous profile "
+                      "authoring");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET_FAMILY {
+  FAMILY_ID = invalid_paired_artifact_readiness_targets;
+  FAMILY_KIND = profile_artifact_readiness_targets;
+  PROTOCOL_IDS = cwu_02v;
+  USE_PROFILE_IDS = cwu_02v_validation_policy_training_artifact_readiness;
+  TARGET_IDS = policy_training_artifact_ready, policy_acceptance_contract_ready;
+  SUBJECT_FACT_FAMILIES = policy_training, policy_acceptance;
+};
+)DSL",
+                      "USE_PROFILE_IDS and TARGET_IDS counts must match",
+                      "artifact target family rejects mismatched profile/"
+                      "target lists");
+
+  const auto active_lattice_targets_dsl = read_active_lattice_targets_dsl();
+  check(active_lattice_targets_dsl.find(
+            "SOURCE_RANGE = anchor_index;\n  OVER_SPLIT") == std::string::npos,
+        "active Lattice target DSL does not repeat anchor_index source ranges "
+        "on split-bound targets");
+  check(active_lattice_targets_dsl.find("PROTECT_SPLIT = validation_holdout") ==
+            std::string::npos,
+        "active Lattice target DSL derives default validation protection");
+  const auto active_specs =
+      target::decode_lattice_targets_from_dsl(active_lattice_targets_dsl);
+  const auto find_active_plan_spec =
+      [&active_specs](const std::string &target_id)
+      -> const target::lattice_target_spec_t & {
+    const auto it = std::find_if(
+        active_specs.begin(), active_specs.end(),
+        [&](const auto &spec) { return spec.target_id == target_id; });
+    check(it != active_specs.end(), "active target exists for " + target_id);
+    return *it;
+  };
+  check(
+      find_active_plan_spec("cwu_01v_representation_train_core_ready")
+                  .protocol_id == "cwu_01v" &&
+          find_active_plan_spec("cwu_02v_representation_train_core_ready")
+                  .kind ==
+              target::lattice_target_kind_t::mtf_representation_ready &&
+          find_active_plan_spec("cwu_01v_mdn_train_core_ready").train_split ==
+              "train_core" &&
+          find_active_plan_spec("cwu_01v_mdn_train_core_ready").source_range ==
+              "anchor_index" &&
+          find_active_plan_spec("cwu_01v_mdn_train_core_ready").forbid_split ==
+              "validation_holdout" &&
+          find_active_plan_spec("cwu_02v_mdn_train_core_ready").protocol_id ==
+              "cwu_02v",
+      "active protocol train-core family preserves expanded target ids");
+  check(find_active_plan_spec("cwu_02v_mdn_train_core_no_validation_leakage")
+                    .checkpoint_source ==
+                "latest_satisfying:cwu_02v_mdn_train_core_ready" &&
+            find_active_plan_spec("cwu_02v_mdn_train_core_no_test_leakage")
+                    .checkpoint_source ==
+                "latest_satisfying:cwu_02v_mdn_train_core_no_validation_"
+                "leakage" &&
+            find_active_plan_spec("cwu_02v_mdn_train_core_no_test_leakage")
+                    .protocol_id == "cwu_02v",
+        "active protocol leakage family preserves expanded target ids and "
+        "checkpoint chain");
+  check(find_active_plan_spec("channel_mdn_validation_eval_ready")
+                    .evaluated_checkpoint_source ==
+                "latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage" &&
+            find_active_plan_spec("channel_mdn_validation_eval_ready")
+                    .forbid_split == "validation_holdout" &&
+            find_active_plan_spec(
+                "channel_mdn_certified_replay_expansion_eval_ready")
+                    .train_split == "certified_replay_expansion_eval" &&
+            find_active_plan_spec(
+                "channel_mdn_certified_replay_expansion_eval_ready")
+                    .source_range == "anchor_index" &&
+            find_active_plan_spec(
+                "channel_mdn_certified_replay_expansion_eval_ready")
+                    .upstream_target_id ==
+                "cwu_02v_mdn_train_core_no_test_leakage",
+        "active protocol evaluation family preserves expanded target ids and "
+        "checkpoint bindings");
+  check(
+      find_active_plan_spec("target_transform_contract_ready").protocol_id ==
+              "cwu_02v" &&
+          find_active_plan_spec("forecast_eval_artifact_ready")
+                  .subject_fact_family == "forecast_eval" &&
+          find_active_plan_spec("observer_belief_artifact_ready").component ==
+              "wikimyei.inference.expected_value.mdn" &&
+          find_active_plan_spec("allocation_artifact_ready")
+                  .subject_fact_family == "allocation_engine" &&
+          find_active_plan_spec("replay_environment_artifact_ready")
+                  .subject_fact_family == "replay_environment" &&
+          find_active_plan_spec("policy_training_artifact_ready").component ==
+              "wikimyei.policy.portfolio.graph_node_allocation" &&
+          find_active_plan_spec("tsodao_settings_protection_ready")
+                  .subject_fact_family == "tsodao_settings_protection" &&
+          find_active_plan_spec("policy_acceptance_contract_ready").component ==
+              "tsodao.policy_acceptance" &&
+          find_active_plan_spec("paper_online_readiness_contract_ready")
+                  .protocol_id == "cwu_02v",
+      "active artifact-readiness family preserves expanded target ids and "
+      "fact families");
+  check(find_active_plan_spec("cwu_02v_mdn_train_core_ready")
+                .plan_input_representation_checkpoint ==
+            "latest_satisfying:cwu_02v_representation_train_core_ready",
+        "cwu_02v MDN training plan derives representation input from "
+        "UPSTREAM_TARGET_ID");
+  check(find_active_plan_spec("channel_mdn_validation_eval_ready")
+                    .plan_input_mdn_checkpoint ==
+                "latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage" &&
+            find_active_plan_spec("channel_mdn_validation_eval_ready")
+                    .plan_input_representation_checkpoint ==
+                "latest_satisfying:cwu_02v_representation_train_core_ready",
+        "validation evaluation plan derives MDN input from "
+        "EVALUATED_CHECKPOINT_SOURCE and representation input from the "
+        "evaluated target graph");
+  check(
+      find_active_plan_spec("channel_mdn_certified_replay_expansion_eval_ready")
+                  .plan_input_mdn_checkpoint ==
+              "latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage" &&
+          find_active_plan_spec(
+              "channel_mdn_certified_replay_expansion_eval_ready")
+                  .plan_input_representation_checkpoint ==
+              "latest_satisfying:cwu_02v_representation_train_core_ready",
+      "certified replay expansion evaluation plan derives both checkpoint "
+      "input hints");
   const auto active_policy_gates = target::decode_lattice_policy_gates_from_dsl(
       read_active_lattice_targets_dsl());
   check(
@@ -2595,19 +3051,118 @@ LATTICE_TARGET {
       "active target catalog may declare disabled future policy gates without "
       "making them target proofs");
 
+  expect_decode_error(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = rep_ready;
+  TARGET_KIND = vicreg_ready;
+  SOURCE_RANGE = all;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = other_rep_ready;
+  TARGET_KIND = vicreg_ready;
+  SOURCE_RANGE = all;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = mdn_ready;
+  TARGET_KIND = channel_mdn_ready;
+  SOURCE_RANGE = all;
+  UPSTREAM_TARGET_ID = rep_ready;
+};
+
+LATTICE_PLAN {
+  TARGET_ID = mdn_ready;
+  PLAN_ID = train_mdn_ready;
+  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:other_rep_ready;
+};
+)DSL",
+                      "PLAN_INPUT_OVERRIDE_REASON",
+                      "stale plan-input override without reason is rejected");
+
+  expect_decode_error(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = rep_ready;
+  TARGET_KIND = vicreg_ready;
+  SOURCE_RANGE = all;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = mdn_ready;
+  TARGET_KIND = channel_mdn_ready;
+  SOURCE_RANGE = all;
+  UPSTREAM_TARGET_ID = rep_ready;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = other_mdn_ready;
+  TARGET_KIND = channel_mdn_ready;
+  SOURCE_RANGE = all;
+  UPSTREAM_TARGET_ID = rep_ready;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = mdn_eval_ready;
+  TARGET_KIND = channel_mdn_ready;
+  SOURCE_RANGE = all;
+  EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:mdn_ready;
+};
+
+LATTICE_PLAN {
+  TARGET_ID = mdn_eval_ready;
+  PLAN_ID = eval_mdn_ready;
+  PLAN_INPUT_MDN_CHECKPOINT = latest_satisfying:other_mdn_ready;
+};
+)DSL",
+                      "PLAN_INPUT_OVERRIDE_REASON",
+                      "stale mdn plan-input override without reason is "
+                      "rejected");
+
+  const auto reasoned_override_specs = target::decode_lattice_targets_from_dsl(
+      R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = rep_ready;
+  TARGET_KIND = vicreg_ready;
+  SOURCE_RANGE = all;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = other_rep_ready;
+  TARGET_KIND = vicreg_ready;
+  SOURCE_RANGE = all;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = mdn_ready;
+  TARGET_KIND = channel_mdn_ready;
+  SOURCE_RANGE = all;
+  UPSTREAM_TARGET_ID = rep_ready;
+};
+
+LATTICE_PLAN {
+  TARGET_ID = mdn_ready;
+  PLAN_ID = train_mdn_ready;
+  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:other_rep_ready;
+  PLAN_INPUT_OVERRIDE_REASON = intentional_test_override;
+};
+)DSL");
+  check(
+      reasoned_override_specs.size() == 3 &&
+          reasoned_override_specs.back().plan_input_representation_checkpoint ==
+              "latest_satisfying:other_rep_ready",
+      "reasoned plan-input override remains explicit");
+
   const auto literal_requires_targets =
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = set_equivalent_mtf_ready;
   TARGET_KIND = mtf_representation_ready;
-  SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
 };
 
 LATTICE_TARGET {
   TARGET_ID = set_equivalent_vicreg_ready;
   TARGET_KIND = vicreg_ready;
-  SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
 };
 
@@ -2632,14 +3187,12 @@ LATTICE_REQUIRES {
 LATTICE_TARGET {
   TARGET_ID = set_equivalent_mtf_ready;
   TARGET_KIND = mtf_representation_ready;
-  SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
 };
 
 LATTICE_TARGET {
   TARGET_ID = set_equivalent_vicreg_ready;
   TARGET_KIND = vicreg_ready;
-  SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
 };
 
@@ -6686,7 +7239,7 @@ LATTICE_WARN {
                                   "candidate protocol id does not match "
                                   "active protocol id"),
         "readiness evidence without protocol identity fails closed even for "
-        "compatibility unscoped targets");
+        "public unscoped targets");
 
   const auto missing_schema_root =
       fs::temp_directory_path() / "cuwacunu_lattice_target_mtf_missing_schema";

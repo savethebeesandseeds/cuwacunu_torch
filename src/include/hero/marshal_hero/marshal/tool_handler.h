@@ -1253,14 +1253,16 @@ prepare_tool_route(std::string_view tool_name) {
 [[nodiscard]] inline marshal_prior_dry_run_evidence_t
 parse_prior_dry_run(const std::string &raw) {
   const auto fields = object_fields(raw);
-  validate_fields(fields,
-                  {"present", "accepted", "advice_digest",
-                   "dispatch_request_identity_digest",
-                   "runtime_preview_request_digest", "suggested_wave_digest",
-                   "plan_input_digest", "runtime_policy_digest",
-                   "runtime_wave_digest", "runtime_response_digest",
-                   "dry_run_response_digest", "evidence_digest"},
-                  {}, "prior_dry_run");
+  validate_fields(
+      fields,
+      {"present", "accepted", "advice_digest",
+       "dispatch_request_identity_digest", "runtime_preview_request_digest",
+       "suggested_wave_digest", "plan_input_digest", "runtime_policy_digest",
+       "runtime_wave_digest", "runtime_response_digest",
+       "dry_run_response_digest", "policy_training_execution_lock_materialized",
+       "policy_training_execution_lock_path",
+       "policy_training_execution_lock_digest", "evidence_digest"},
+      {}, "prior_dry_run");
   marshal_prior_dry_run_evidence_t out{};
   out.present = optional_bool(fields, "present", false);
   out.accepted = optional_bool(fields, "accepted", false);
@@ -1277,6 +1279,12 @@ parse_prior_dry_run(const std::string &raw) {
       optional_string(fields, "runtime_response_digest");
   out.dry_run_response_digest =
       optional_string(fields, "dry_run_response_digest");
+  out.policy_training_execution_lock_materialized = optional_bool(
+      fields, "policy_training_execution_lock_materialized", false);
+  out.policy_training_execution_lock_path =
+      optional_string(fields, "policy_training_execution_lock_path");
+  out.policy_training_execution_lock_digest =
+      optional_string(fields, "policy_training_execution_lock_digest");
   out.evidence_digest = optional_string(fields, "evidence_digest");
   return out;
 }
@@ -8869,7 +8877,8 @@ load_marshal_policy(const std::filesystem::path &policy_path,
       structured << "}";
     } else if (prepare_route.has_value()) {
       tool_detail::validate_fields(
-          args, {"target_id", "mode", "profile", "include_machine_payload"},
+          args,
+          {"target_id", "mode", "profile", "include_machine_payload"},
           {"target_id", "mode"}, tool_name);
       if (tool_detail::optional_string(args, "target_id").empty()) {
         throw std::runtime_error(tool_name + " requires target_id");

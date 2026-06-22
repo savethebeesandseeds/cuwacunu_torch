@@ -702,9 +702,10 @@ ledger, explains the compiled proof object for
 `hero.lattice.targets.dsl`, evaluates targets, recommends the next wave
 when a target is not satisfied, and inspects checkpoint exposure closures. It
 does not execute waves. Named train/validation/test ranges live in
-`hero.lattice.splits.dsl`; target evaluation resolves `TRAIN_SPLIT` /
-`OVER_SPLIT` from that file before planning and can apply split-level holdout
-defaults through `PROTECT_SPLIT`. The future lattice DB should index immutable
+`ujcamei.source.splits.dsl`; target evaluation resolves `TRAIN_SPLIT` /
+`OVER_SPLIT` from that file before planning and applies Lattice split-level
+holdout defaults from `hero.lattice.split_policy.dsl` through `PROTECT_SPLIT`.
+The future lattice DB should index immutable
 runtime/fact files for faster queries; runtime remains the producer of durable
 evidence files. Runtime manifests and exposure facts carry
 `config_bundle_id`, `config_receipt_id`, `component_spawn_registry_id`,
@@ -886,7 +887,7 @@ Lattice Hero agent runbook:
    evaluation also returns `warning_summary`, which aggregates warning-result
    count, triggered-warning count, unavailable-warning count, clear measured
    warnings, blocking and non-blocking warning counts,
-   `all_warnings_non_blocking`, the compatibility `warning_count` alias, and
+   `all_warnings_non_blocking`, the public `warning_count` alias, and
    threshold-relation counts without requiring clients to recount
    `warning_results`.
    Each evaluation also returns a `proof_certificate` with target/split
@@ -964,7 +965,7 @@ Lattice Hero agent runbook:
    are repeated in live `derived_query_results` so clients can compare
    explain/evaluate/plan surfaces without recomputing the canonical text.
    `derived_query_projection_semantics_vocabulary` defines the allowed
-   projection-scope, quantifier, empty-policy, and compatibility-alias values
+   projection-scope, quantifier, empty-policy, and public-alias values
    used by rule and result rows.
    `evaluate.target` and `evaluate.deficit` also include
    `derived_query_results`, a read-only projection of those relation truth
@@ -1024,7 +1025,7 @@ Lattice Hero agent runbook:
    `rule_projection_quantifier` for the declared relation shape, plus
    `result_projection_scope` and `result_projection_quantifier` for the emitted
    compact projection. `projection_scope` and `projection_quantifier` remain
-   compatibility aliases for the result fields. Compact rows also expose
+   public aliases for the result fields. Compact rows also expose
    `rule_empty_projection_policy`, `result_empty_projection_policy`,
    `empty_projection_policy`, `projection_row_source`,
    `projection_row_count`, `projection_true_count`, and
@@ -1196,7 +1197,7 @@ Lattice Hero agent runbook:
    node-support imbalance, source-key audit issue counts, unresolved-lineage
    count, deficit-count, warning-result count, triggered-warning count, and
    unavailable-warning count dimensions.
-   `warning_count` remains the compatibility alias for triggered warnings. Do
+   `warning_count` remains the public alias for triggered warnings. Do
    not treat the vector as a scalar score; the warning dimensions are projected
    from `warning_summary`, and two clean evaluations can be
    incomparable across these dimensions. Selection-signal leakage excludes a
@@ -1209,7 +1210,7 @@ Lattice Hero agent runbook:
    includes the relation vocabulary, dimension-order polarity, and
    `dimension_vocabulary` beside the vector for agent reporting. The vocabulary
    comes from the same C++ source as the comparator, and `warning_count`
-   remains a compatibility alias while comparison uses
+   remains a public alias while comparison uses
    `triggered_warning_count`. Repeated cursor-load only strengthens the vector
    as clean load; if it comes with more
    warnings, the relation remains

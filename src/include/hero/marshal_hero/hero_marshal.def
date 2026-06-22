@@ -20,9 +20,9 @@ HERO_MARSHAL_TOOL(
     "hero.marshal.prepare.train",
     "Prepare train-target movement for one dispatchable Lattice target using "
     "a Marshal prepare profile. Replay uses rollout, artifact-readiness "
-    "routes to inspect, and policy-training uses Runtime contract paths until "
-    "Marshal has a dedicated policy-training handoff. Marshal derives "
-    "Lattice/Runtime evidence at call time.",
+    "routes to inspect, and policy-training dry-run materializes a "
+    "Marshal-owned Runtime execution lock for handoff-backed execute. Marshal "
+    "derives Lattice/Runtime evidence at call time.",
     R"({
       "type": "object",
       "properties": {

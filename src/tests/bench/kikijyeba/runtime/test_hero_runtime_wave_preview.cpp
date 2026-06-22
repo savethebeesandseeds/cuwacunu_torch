@@ -16,6 +16,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -1372,6 +1373,62 @@ cursor_catalog_text(const std::string &cursor_id,
   return cursor.str();
 }
 
+std::string source_split_catalog_text(
+    const std::string &split_id = "train_core", const std::string &begin = "7",
+    const std::string &end = "11", const std::string &role = "train") {
+  std::ostringstream split;
+  split << "UJCAMEI_SOURCE_SPLIT_CATALOG {\n"
+        << "  CATALOG_ID = graph_anchor_splits_v1;\n"
+        << "  CURSOR_DOMAIN = ujcamei.graph_anchor;\n"
+        << "};\n"
+        << "UJCAMEI_SOURCE_SPLIT {\n"
+        << "  SPLIT_ID = " << split_id << ";\n"
+        << "  ROLE = " << role << ";\n"
+        << "  ANCHOR_INDEX_BEGIN = " << begin << ";\n"
+        << "  ANCHOR_INDEX_END = " << end << ";\n"
+        << "};\n";
+  return split.str();
+}
+
+std::string fractional_source_split_catalog_text() {
+  return "UJCAMEI_SOURCE_SPLIT_CATALOG {\n"
+         "  CATALOG_ID = graph_anchor_splits_v1;\n"
+         "  CURSOR_DOMAIN = ujcamei.graph_anchor;\n"
+         "};\n"
+         "UJCAMEI_SOURCE_SPLIT {\n"
+         "  SPLIT_ID = train_core;\n"
+         "  ROLE = train;\n"
+         "  SELECTOR = fraction_range;\n"
+         "  BEGIN_FRACTION = 0/1;\n"
+         "  END_FRACTION = 65/100;\n"
+         "  MIN_COUNT = 1;\n"
+         "};\n"
+         "UJCAMEI_SOURCE_SPLIT {\n"
+         "  SPLIT_ID = validation_holdout;\n"
+         "  ROLE = validation;\n"
+         "  SELECTOR = fraction_range;\n"
+         "  BEGIN_FRACTION = 80/100;\n"
+         "  END_FRACTION = 92/100;\n"
+         "  MIN_COUNT = 1;\n"
+         "};\n";
+}
+
+struct test_graph_anchor_cursor_report_t {
+  std::size_t accepted_anchor_count{0};
+  std::vector<std::int64_t> anchor_keys{};
+  std::optional<std::int64_t> reference_key_step{1};
+};
+
+test_graph_anchor_cursor_report_t make_test_cursor_report(std::size_t count) {
+  test_graph_anchor_cursor_report_t out{};
+  out.accepted_anchor_count = count;
+  out.anchor_keys.reserve(count);
+  for (std::size_t i = 0; i < count; ++i) {
+    out.anchor_keys.push_back(static_cast<std::int64_t>(i));
+  }
+  return out;
+}
+
 std::string run_wave_preview(const std::string &target, const std::string &mode,
                              const std::string &source_order = {},
                              const std::string &protocol_text = {},
@@ -1493,10 +1550,7 @@ void test_multi_wave_catalog_selection() {
   protocol.representation_family =
       "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
   const std::string cursor_text = cursor_catalog_text("all_cursor", "all");
-  const std::string catalog = "WAVE_SELECTION {\n"
-                              "  ACTIVE_WAVE_ID = eval_wave;\n"
-                              "};\n"
-                              "WAVE_SETTINGS {\n"
+  const std::string catalog = "WAVE_SETTINGS {\n"
                               "  WAVE_ID = eval_wave;\n"
                               "  PROTOCOL = cwu_02v;\n"
                               "  TARGET = wikimyei.inference.expected_value;\n"
@@ -1511,13 +1565,6 @@ void test_multi_wave_catalog_selection() {
                               "  SOURCE_CURSOR_ID = all_cursor;\n"
                               "  SOURCE_ORDER = random_per_epoch;\n"
                               "};\n";
-  const auto fallback = wave_settings::decode_wave_settings_from_dsl(
-      catalog, {}, protocol, cursor_text);
-  check(fallback.wave_id == "eval_wave",
-        "WAVE_SELECTION should select the default wave");
-  check(fallback.action == wave_settings::wave_action_t::run,
-        "selected fallback wave should be the eval/run profile");
-
   const auto selected = wave_settings::decode_wave_settings_from_dsl(
       catalog, "train_wave", protocol, cursor_text);
   check(selected.wave_id == "train_wave",
@@ -1550,6 +1597,21 @@ void test_multi_wave_catalog_selection() {
   }
   check(refused_missing_selection,
         "multiple WAVE_SETTINGS blocks must require explicit selection");
+
+  bool refused_wave_selection = false;
+  try {
+    (void)wave_settings::decode_wave_settings_from_dsl(
+        "WAVE_SELECTION {\n"
+        "  ACTIVE_WAVE_ID = eval_wave;\n"
+        "};\n" +
+            catalog,
+        "eval_wave", protocol, cursor_text);
+  } catch (const std::exception &ex) {
+    refused_wave_selection =
+        std::string(ex.what()).find("WAVE_SELECTION is retired") !=
+        std::string::npos;
+  }
+  check(refused_wave_selection, "WAVE_SELECTION should be retired");
 
   const auto dir = make_tmp_dir("multi_wave_catalog_selection");
   const auto wave_path = dir / "hero.runtime.wave.dsl";
@@ -1594,6 +1656,212 @@ void test_multi_wave_catalog_selection() {
                    "Runtime inspect should expose selected wave target");
 
   std::filesystem::remove_all(dir);
+}
+
+void test_source_split_wave_derives_cursor_from_ujcamei_source_splits() {
+  wave_settings::wave_protocol_bindings_t protocol{};
+  protocol.protocol_id = "cwu_02v";
+  protocol.representation_family =
+      "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
+  const std::string split_text = source_split_catalog_text();
+  const auto decoded = wave_settings::decode_wave_settings_from_dsl(
+      "WAVE_SETTINGS {\n"
+      "  WAVE_ID = split_train_wave;\n"
+      "  PROTOCOL = cwu_02v;\n"
+      "  TARGET = wikimyei.representation.encoding;\n"
+      "  MODE = train;\n"
+      "  SOURCE_SPLIT = train_core;\n"
+      "};\n",
+      {}, protocol, "", split_text);
+  check(decoded.source_cursor_id == "split:train_core",
+        "SOURCE_SPLIT should derive a stable split cursor id");
+  check(decoded.source_split_id == "train_core",
+        "SOURCE_SPLIT should remain visible on decoded wave settings");
+  check(decoded.source_range_policy ==
+            wave_settings::wave_source_range_policy_t::anchor_index,
+        "SOURCE_SPLIT should derive anchor_index source range");
+  check(decoded.anchor_index_begin.has_value() &&
+            *decoded.anchor_index_begin == 7U,
+        "SOURCE_SPLIT should derive begin anchor from Ujcamei source split");
+  check(decoded.anchor_index_end.has_value() &&
+            *decoded.anchor_index_end == 11U,
+        "SOURCE_SPLIT should derive end anchor from Ujcamei source split");
+
+  bool refused_unknown_split = false;
+  try {
+    (void)wave_settings::decode_wave_settings_from_dsl(
+        "WAVE_SETTINGS {\n"
+        "  WAVE_ID = split_train_wave;\n"
+        "  PROTOCOL = cwu_02v;\n"
+        "  TARGET = wikimyei.representation.encoding;\n"
+        "  MODE = train;\n"
+        "  SOURCE_SPLIT = missing_split;\n"
+        "};\n",
+        {}, protocol, "", split_text);
+  } catch (const std::exception &ex) {
+    refused_unknown_split = std::string(ex.what()).find(
+                                "SOURCE_SPLIT not found") != std::string::npos;
+  }
+  check(refused_unknown_split,
+        "SOURCE_SPLIT must fail closed when the split catalog lacks the id");
+
+  const auto dir = make_tmp_dir("source_split_wave");
+  const auto wave_path = dir / "hero.runtime.wave.dsl";
+  const auto protocol_path = dir / "kikijyeba.protocol.dsl";
+  const auto cursor_path = dir / "ujcamei.source.cursor.dsl";
+  const auto splits_path = dir / "ujcamei.source.splits.dsl";
+  const auto config_path = dir / ".config";
+  write_text(wave_path, "WAVE_SETTINGS {\n"
+                        "  WAVE_ID = split_train_wave;\n"
+                        "  PROTOCOL = cwu_02v;\n"
+                        "  TARGET = wikimyei.representation.encoding;\n"
+                        "  MODE = train;\n"
+                        "  SOURCE_SPLIT = train_core;\n"
+                        "};\n");
+  write_text(protocol_path, cwu02_mtf_protocol_text());
+  write_text(cursor_path, "");
+  write_text(splits_path, split_text);
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "ujcamei_source_splits_dsl_path = " +
+                              splits_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_wave_dsl_path = " +
+                              wave_path.string() + "\n");
+  hero_runtime::runtime_context_t ctx{};
+  ctx.global_config_path = config_path;
+  std::string result;
+  std::string error;
+  check(
+      execute_runtime_inspect_json("{\"subject\":\"wave\",\"config_path\":\"" +
+                                       config_path.string() + "\"}",
+                                   &ctx, &result, &error),
+      "split-backed wave inspect failed: " + error);
+  check(!hero_runtime::tool_result_is_error(result),
+        "split-backed wave inspect returned error: " + result);
+  require_contains(result, "\"source_cursor_id\":\"split:train_core\"",
+                   "inspect should report derived split cursor id");
+  require_contains(result, "\"source_split_id\":\"train_core\"",
+                   "inspect should report source split id");
+  require_contains(result, "\"source_range\":\"anchor_index\"",
+                   "inspect should report split-derived source range");
+  require_contains(result, "\"anchor_index_begin\":\"7\"",
+                   "inspect should report split-derived begin anchor");
+  require_contains(result, "\"anchor_index_end\":\"11\"",
+                   "inspect should report split-derived end anchor");
+  std::filesystem::remove_all(dir);
+}
+
+void test_fraction_source_split_materializes_at_runtime_boundaries() {
+  namespace source_split = cuwacunu::ujcamei::source::splits;
+  namespace lattice_split = cuwacunu::hero::lattice::split;
+
+  wave_settings::wave_protocol_bindings_t protocol{};
+  protocol.protocol_id = "cwu_02v";
+  protocol.representation_family =
+      "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
+  const std::string split_text = fractional_source_split_catalog_text();
+  const auto catalog =
+      source_split::decode_source_split_catalog_from_dsl(split_text);
+  const auto *train_split = catalog.find_split("train_core");
+  check(train_split != nullptr, "fraction catalog should contain train_core");
+  const auto direct_range =
+      source_split::materialize_source_split_range(*train_split, 1200);
+  check(direct_range.begin == 0 && direct_range.end == 780,
+        "train_core 65 percent split should materialize to [0,780) for 1200 "
+        "accepted anchors");
+
+  const auto decoded = wave_settings::decode_wave_settings_from_dsl(
+      "WAVE_SETTINGS {\n"
+      "  WAVE_ID = split_train_wave;\n"
+      "  PROTOCOL = cwu_02v;\n"
+      "  TARGET = wikimyei.representation.encoding;\n"
+      "  MODE = train;\n"
+      "  SOURCE_SPLIT = train_core;\n"
+      "};\n",
+      {}, protocol, "", split_text);
+  check(decoded.source_cursor_id == "split:train_core",
+        "fraction SOURCE_SPLIT should derive a stable split cursor id");
+  check(decoded.source_range_policy ==
+            wave_settings::wave_source_range_policy_t::fraction_range,
+        "fraction SOURCE_SPLIT should defer concrete anchor bounds");
+  check(!decoded.anchor_index_begin.has_value() &&
+            !decoded.anchor_index_end.has_value(),
+        "fraction SOURCE_SPLIT should not decode static anchor bounds");
+  const auto resolved = wave_settings::resolve_source_range_to_anchor_indices(
+      decoded, make_test_cursor_report(1200));
+  check(resolved.anchor_index_begin == 0 && resolved.anchor_index_end == 780,
+        "Runtime should materialize fraction split from accepted anchor count");
+
+  const auto policy = lattice_split::decode_lattice_split_policy_from_dsl(
+      "LATTICE_SPLIT_POLICY {\n"
+      "  POLICY_ID = graph_anchor_holdout_v1;\n"
+      "  SOURCE_SPLIT_CATALOG_ID = graph_anchor_splits_v1;\n"
+      "};\n"
+      "LATTICE_SPLIT_PROTECTION {\n"
+      "  SPLIT_ID = validation_holdout;\n"
+      "  ALLOW_USES = evaluation_metric;\n"
+      "  PROTECT_FROM_USES = "
+      "observed_input|target_supervision|selection_signal;\n"
+      "};\n",
+      catalog);
+  const auto *validation_split = policy.find_split("validation_holdout");
+  check(validation_split != nullptr,
+        "split policy should bind validation_holdout");
+  check(
+      !validation_split->anchor_range_materialized,
+      "fractional Lattice split should remain semantic before materialization");
+  const auto materialized_validation =
+      lattice_split::materialize_lattice_split(*validation_split, 1200);
+  check(materialized_validation.anchor_range.begin == 960 &&
+            materialized_validation.anchor_range.end == 1104,
+        "Lattice should materialize validation fraction over accepted anchors");
+
+  lattice_target::lattice_target_spec_t target{};
+  target.target_id = "fraction_target";
+  target.train_split = "validation_holdout";
+  const auto resolved_target =
+      lattice_target::lattice_target_eval_detail::resolve_split_references(
+          target, policy, 1200);
+  check(resolved_target.source_range == "anchor_index" &&
+            resolved_target.anchor_index_begin.has_value() &&
+            *resolved_target.anchor_index_begin == 960 &&
+            resolved_target.anchor_index_end.has_value() &&
+            *resolved_target.anchor_index_end == 1104,
+        "Lattice target split reference should resolve to materialized range");
+}
+
+void test_synthetic_benchmark_config_uses_shared_fraction_splits() {
+  const std::filesystem::path config_path =
+      "/cuwacunu/src/config/benchmarks/synthetic_continuous_graph_v1/"
+      "synthetic_benchmark.config";
+  hero_runtime::runtime_context_t ctx{};
+  ctx.global_config_path = config_path;
+
+  std::string result;
+  std::string error;
+  check(
+      execute_runtime_inspect_json("{\"subject\":\"wave\",\"config_path\":\"" +
+                                       config_path.string() + "\"}",
+                                   &ctx, &result, &error),
+      "synthetic benchmark wave inspect failed: " + error);
+  check(!hero_runtime::tool_result_is_error(result),
+        "synthetic benchmark wave inspect returned error: " + result);
+  require_contains(result, "\"selected_wave_id\":\"policy_training_ppo_v0\"",
+                   "benchmark inspect should select shared policy-training "
+                   "wave");
+  require_contains(result, "\"source_split_id\":\"train_core\"",
+                   "benchmark policy wave should use shared train_core split");
+  require_contains(result, "\"source_range\":\"fraction_range\"",
+                   "benchmark policy wave should use shared fractional split "
+                   "intent");
 }
 
 void test_runtime_policy_profiles() {
@@ -1919,7 +2187,62 @@ void test_execute_expected_wave_binding() {
                    "runtime_handoff execute should pass concrete handoff "
                    "digest");
 
-  const std::string stale_hash_handoff_args =
+  auto handoff_with_required_replace =
+      [](std::string source, const std::string &from, const std::string &to,
+         const std::string &label) {
+        check(source.find(from) != std::string::npos,
+              "runtime_handoff fixture missing replacement marker: " + label);
+        replace_all(source, from, to);
+        return source;
+      };
+
+  const std::string base_config_hash_handoff_args =
+      handoff_with_required_replace(
+          handoff_args,
+          "\"base_config\":{\"path\":\"" + config_path.string() +
+              "\",\"digest\":\"" + config_digest + "\"}",
+          "\"base_config\":{\"path\":\"" + config_path.string() +
+              "\",\"hash\":\"" + config_digest + "\"}",
+          "base_config.digest");
+  check(base_config_hash_handoff_args.find(
+            "\"base_config\":{\"path\":\"" + config_path.string() +
+            "\",\"hash\":\"") != std::string::npos,
+        "runtime_handoff fixture should contain retired base_config.hash");
+  result.clear();
+  error.clear();
+  const bool base_config_hash_ok = execute_runtime_run_json(
+      base_config_hash_handoff_args, &ctx, &result, &error);
+  check(!base_config_hash_ok,
+        "runtime_handoff base_config.hash should fail before execution: "
+        "result=" +
+            result + " error=" + error);
+  check(error.find("base_config.hash is retired") != std::string::npos,
+        "runtime_handoff base_config.hash should report retired field");
+
+  const std::string runtime_policy_hash_handoff_args =
+      handoff_with_required_replace(
+          handoff_args,
+          "\"runtime_policy\":{\"path\":\"" + policy_path.string() +
+              "\",\"digest\":\"" + policy_digest + "\"}",
+          "\"runtime_policy\":{\"path\":\"" + policy_path.string() +
+              "\",\"hash\":\"" + policy_digest + "\"}",
+          "runtime_policy.digest");
+  check(runtime_policy_hash_handoff_args.find(
+            "\"runtime_policy\":{\"path\":\"" + policy_path.string() +
+            "\",\"hash\":\"") != std::string::npos,
+        "runtime_handoff fixture should contain retired runtime_policy.hash");
+  result.clear();
+  error.clear();
+  const bool runtime_policy_hash_ok = execute_runtime_run_json(
+      runtime_policy_hash_handoff_args, &ctx, &result, &error);
+  check(!runtime_policy_hash_ok,
+        "runtime_handoff runtime_policy.hash should fail before execution: "
+        "result=" +
+            result + " error=" + error);
+  check(error.find("runtime_policy.hash is retired") != std::string::npos,
+        "runtime_handoff runtime_policy.hash should report retired field");
+
+  const std::string stale_digest_handoff_args =
       "{\"subject\":\"wave\",\"mode\":\"dry_run\","
       "\"config_path\":\"" +
       config_path.string() +
@@ -1961,10 +2284,10 @@ void test_execute_expected_wave_binding() {
       "\"unresolved_symbols\":[]}}";
   result.clear();
   error.clear();
-  const bool stale_hash_ok =
-      execute_runtime_run_json(stale_hash_handoff_args, &ctx, &result, &error);
+  const bool stale_digest_ok = execute_runtime_run_json(
+      stale_digest_handoff_args, &ctx, &result, &error);
   check(
-      !stale_hash_ok,
+      !stale_digest_ok,
       "runtime_handoff stale base config digest should fail before execution: "
       "result=" +
           result + " error=" + error);
@@ -3302,6 +3625,8 @@ std::string valid_policy_training_args(
          "\"execution_profile_digest\":\"execution_profile_digest_v1\",";
   if (policy_kind.find("ppo") != std::string::npos ||
       policy_kind.find("PPO") != std::string::npos) {
+    const auto no_lookahead_contract_digest =
+        protocol_fixture::canonical_cwu_02v_no_lookahead_contract_digest();
     out << "\"policy_dsl_digest\":\"policy_dsl_digest_v1\","
            "\"policy_net_digest\":\"policy_net_digest_v1\","
            "\"policy_input_feature_manifest_digest\":\"policy_input_manifest_"
@@ -3309,12 +3634,14 @@ std::string valid_policy_training_args(
            "\"policy_jkimyei_digest\":\"policy_jkimyei_digest_v1\","
            "\"policy_jkimyei_no_lookahead_contract_id\":\"cwu_02v_"
            "no_lookahead_artifact_provenance.anchor_v1\","
-           "\"policy_jkimyei_no_lookahead_contract_digest\":\"cwu_02v_"
-           "no_lookahead_artifact_provenance.anchor_v1\","
+           "\"policy_jkimyei_no_lookahead_contract_digest\":\""
+        << no_lookahead_contract_digest
+        << "\","
            "\"policy_jkimyei_component_order_contract_id\":\"cwu_02v_"
            "no_lookahead_artifact_provenance.anchor_v1\","
-           "\"policy_jkimyei_component_order_contract_digest\":\"cwu_02v_"
-           "no_lookahead_artifact_provenance.anchor_v1\","
+           "\"policy_jkimyei_component_order_contract_digest\":\""
+        << no_lookahead_contract_digest
+        << "\","
            "\"target_node_universe_digest\":\"target_node_universe_digest_v1\","
            "\"action_distribution_config_digest\":\"action_distribution_config_"
            "digest_v1\","
@@ -3397,6 +3724,43 @@ void test_policy_training_contract_and_ppo_execute() {
   require_contains(result,
                    "\"normalization_fit_range_digest\":\"range_train_digest\"",
                    "policy-training dry-run binds normalization fit range");
+  const std::string baseline_policy_training_result = result;
+  std::string fractional_args = valid_policy_training_args(
+      "dry_run", "ppo", "unused", {}, true, "split_policy_1",
+      "policy_training_range_train_fraction_0_1_65_100_min_1_v1",
+      "policy_training_range_validation_fraction_80_100_92_100_min_1_v1",
+      "policy_training_range_test_fraction_93_100_1_1_min_1_v1");
+  replace_all(fractional_args, "\"source_cursor_token\":\"cursor_1\"",
+              "\"source_cursor_token\":\"version=1|accepted=1000\"");
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(fractional_args, &ctx, &result, &error),
+        "fractional policy-training dry-run failed: " + error);
+  const std::string fractional_contract_text =
+      json_unescaped_string_field(result, "contract_text");
+  require_contains(fractional_contract_text,
+                   "policy_execution_target_anchor_begin=800",
+                   "fractional validation digest should materialize target "
+                   "begin from accepted anchors");
+  require_contains(fractional_contract_text,
+                   "policy_execution_target_anchor_end_exclusive=920",
+                   "fractional validation digest should materialize target end "
+                   "from accepted anchors");
+
+  std::string overlapping_fractional_args = fractional_args;
+  replace_all(overlapping_fractional_args,
+              "policy_training_range_validation_fraction_80_100_92_100_min_1_v1",
+              "policy_training_range_validation_fraction_65_100_1_1_min_1_v1");
+  result.clear();
+  error.clear();
+  check(!execute_runtime_run_json(overlapping_fractional_args, &ctx, &result,
+                                  &error),
+        "fractional policy-training dry-run should reject validation/test "
+        "overlap");
+  require_contains(error, "validation_test_range_overlap",
+                   "fractional overlap rejection should name the split pair");
+  result = baseline_policy_training_result;
+  error.clear();
   require_contains(result,
                    "\"training_schedule_mode\":\"causal_walk_forward_"
                    "training.v1\"",
@@ -3537,15 +3901,15 @@ void test_policy_training_contract_and_ppo_execute() {
       "wikimyei.policy.portfolio.graph_node_allocation.jkimyei");
   const auto cursor_path = wave_defaults_root / "ujcamei.source.cursor.dsl";
   const auto environment_path = wave_defaults_root / "hero.environment.dsl";
-  const auto splits_path = wave_defaults_root / "hero.lattice.splits.dsl";
+  const auto source_splits_path =
+      wave_defaults_root / "ujcamei.source.splits.dsl";
+  const auto split_policy_path =
+      wave_defaults_root / "hero.lattice.split_policy.dsl";
   const auto replay_environment_path =
       wave_defaults_root / "kikijyeba.environment.replay.dsl";
   const auto config_path = wave_defaults_root / ".config";
   const auto runtime_policy_path = wave_defaults_root / "hero.runtime.dsl";
   write_text(wave_path,
-             "WAVE_SELECTION {\n"
-             "  ACTIVE_WAVE_ID = policy_training_ppo_v0;\n"
-             "};\n"
              "WAVE_SETTINGS {\n"
              "  WAVE_ID = eval_wave;\n"
              "  PROTOCOL = cwu_02v;\n"
@@ -3559,25 +3923,11 @@ void test_policy_training_contract_and_ppo_execute() {
              "  TARGET = wikimyei.policy.portfolio;\n"
              "  MODE = train;\n"
              "  JOB_KIND = policy_training;\n"
-             "  POLICY_ID = "
-             "wikimyei.policy.portfolio.graph_node_allocation.ppo_v0;\n"
-             "  POLICY_KIND = ppo_policy_adapter.v1;\n"
-             "  TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1;\n"
-             "  CAUSAL_SCHEDULE_DIGEST = "
-             "policy_training_causal_walk_forward_all_v1;\n"
-             "  SNAPSHOT_FAMILY_DIGEST = "
-             "policy_training_causal_snapshots.cwu_02v.graph_anchor.v1;\n"
-             "  EARLY_STOPPING_POLICY_DIGEST = "
-             "validation_only_patience_ppo_v0_v1;\n"
-             "  HYPERPARAMETER_SELECTION_POLICY_DIGEST = "
-             "validation_only_grid_ppo_v0_v1;\n"
-             "  SELECTOR_POLICY_DIGEST = "
-             "validation_selector_no_test_access_ppo_v0_v1;\n"
              "  TRAIN_SPLIT = train_core;\n"
              "  VALIDATION_SPLIT = certified_replay_expansion_eval;\n"
              "  TEST_SPLIT = test_holdout;\n"
              "  LIVE_EXECUTION_ALLOWED = false;\n"
-             "  SOURCE_CURSOR_ID = policy_cursor;\n"
+             "  SOURCE_SPLIT = train_core;\n"
              "  SOURCE_ORDER = random_per_epoch;\n"
              "};\n");
   write_text(protocol_path, cwu02_mtf_protocol_text());
@@ -3684,50 +4034,64 @@ void test_policy_training_contract_and_ppo_execute() {
              "  LIVE_CAPITAL_ALLOWED = false;\n"
              "};\n");
   write_text(cursor_path, cursor_catalog_text("policy_cursor", "all"));
-  write_text(splits_path,
-             "LATTICE_SPLIT_POLICY {\n"
-             "  POLICY_ID = graph_anchor_holdout_v1;\n"
+  write_text(source_splits_path,
+             "UJCAMEI_SOURCE_SPLIT_CATALOG {\n"
+             "  CATALOG_ID = graph_anchor_splits_v1;\n"
              "  CURSOR_DOMAIN = ujcamei.graph_anchor;\n"
-             "  PURGE_LEFT_CONTEXT = auto_from_Hx;\n"
-             "  PURGE_RIGHT_FUTURE = auto_from_Hf;\n"
              "};\n"
-             "LATTICE_SPLIT {\n"
+             "UJCAMEI_SOURCE_SPLIT {\n"
              "  SPLIT_ID = train_core;\n"
              "  ROLE = train;\n"
              "  ANCHOR_INDEX_BEGIN = 0;\n"
              "  ANCHOR_INDEX_END = 1600;\n"
              "};\n"
-             "LATTICE_SPLIT {\n"
+             "UJCAMEI_SOURCE_SPLIT {\n"
              "  SPLIT_ID = acceptance_smoke;\n"
              "  ROLE = train;\n"
              "  ANCHOR_INDEX_BEGIN = 29;\n"
              "  ANCHOR_INDEX_END = 31;\n"
              "};\n"
-             "LATTICE_SPLIT {\n"
+             "UJCAMEI_SOURCE_SPLIT {\n"
              "  SPLIT_ID = validation_holdout;\n"
              "  ROLE = validation;\n"
              "  ANCHOR_INDEX_BEGIN = 1800;\n"
              "  ANCHOR_INDEX_END = 2050;\n"
-             "  ALLOW_USES = evaluation_metric;\n"
-             "  PROTECT_FROM_USES = "
-             "observed_input|target_supervision|selection_signal;\n"
-             "  PROTECT_REQUIRES_MUTATED_COMPONENT = true;\n"
              "};\n"
-             "LATTICE_SPLIT {\n"
+             "UJCAMEI_SOURCE_SPLIT {\n"
              "  SPLIT_ID = certified_replay_expansion_eval;\n"
              "  ROLE = validation;\n"
              "  ANCHOR_INDEX_BEGIN = 1630;\n"
-             "  ANCHOR_INDEX_END = 2247;\n"
-             "  ALLOW_USES = evaluation_metric;\n"
-             "  PROTECT_FROM_USES = "
-             "observed_input|target_supervision|selection_signal;\n"
-             "  PROTECT_REQUIRES_MUTATED_COMPONENT = true;\n"
+             "  ANCHOR_INDEX_END = 2100;\n"
              "};\n"
-             "LATTICE_SPLIT {\n"
+             "UJCAMEI_SOURCE_SPLIT {\n"
              "  SPLIT_ID = test_holdout;\n"
              "  ROLE = test;\n"
              "  ANCHOR_INDEX_BEGIN = 2100;\n"
              "  ANCHOR_INDEX_END = 2247;\n"
+             "};\n");
+  write_text(split_policy_path,
+             "LATTICE_SPLIT_POLICY {\n"
+             "  POLICY_ID = graph_anchor_holdout_v1;\n"
+             "  SOURCE_SPLIT_CATALOG_ID = graph_anchor_splits_v1;\n"
+             "  PURGE_LEFT_CONTEXT = auto_from_Hx;\n"
+             "  PURGE_RIGHT_FUTURE = auto_from_Hf;\n"
+             "};\n"
+             "LATTICE_SPLIT_PROTECTION {\n"
+             "  SPLIT_ID = validation_holdout;\n"
+             "  ALLOW_USES = evaluation_metric;\n"
+             "  PROTECT_FROM_USES = "
+             "observed_input|target_supervision|selection_signal;\n"
+             "  PROTECT_REQUIRES_MUTATED_COMPONENT = true;\n"
+             "};\n"
+             "LATTICE_SPLIT_PROTECTION {\n"
+             "  SPLIT_ID = certified_replay_expansion_eval;\n"
+             "  ALLOW_USES = evaluation_metric;\n"
+             "  PROTECT_FROM_USES = "
+             "observed_input|target_supervision|selection_signal;\n"
+             "  PROTECT_REQUIRES_MUTATED_COMPONENT = true;\n"
+             "};\n"
+             "LATTICE_SPLIT_PROTECTION {\n"
+             "  SPLIT_ID = test_holdout;\n"
              "  ALLOW_USES = evaluation_metric;\n"
              "  PROTECT_FROM_USES = "
              "observed_input|target_supervision|selection_signal;\n"
@@ -3750,6 +4114,12 @@ void test_policy_training_contract_and_ppo_execute() {
                           "ujcamei.source.cursor.dsl.bnf\n"
                           "ujcamei_source_cursor_dsl_path = " +
                               cursor_path.string() +
+                              "\n"
+                              "ujcamei_source_splits_dsl_bnf_path = "
+                              "/cuwacunu/src/config/grammar/"
+                              "ujcamei.source.splits.dsl.bnf\n"
+                              "ujcamei_source_splits_dsl_path = " +
+                              source_splits_path.string() +
                               "\n"
                               "[ACCOUNTING]\n"
                               "accounting_numeraire_node_id = USDT\n"
@@ -3901,11 +4271,11 @@ void test_policy_training_contract_and_ppo_execute() {
                               "runtime_wave_dsl_path = " +
                               wave_path.string() +
                               "\n"
-                              "lattice_splits_dsl_bnf_path = "
+                              "lattice_split_policy_dsl_bnf_path = "
                               "/cuwacunu/src/config/grammar/"
-                              "hero.lattice.splits.dsl.bnf\n"
-                              "lattice_splits_dsl_path = " +
-                              splits_path.string() +
+                              "hero.lattice.split_policy.dsl.bnf\n"
+                              "lattice_split_policy_dsl_path = " +
+                              split_policy_path.string() +
                               "\n"
                               "environment_hero_dsl_path = " +
                               environment_path.string() +
@@ -3917,14 +4287,14 @@ void test_policy_training_contract_and_ppo_execute() {
       wave_defaults_root / "components" /
       "wikimyei.inference.expected_value.mdn" / "spawns" / "fixture" / "jobs" /
       "run" /
-      "cwu_02v_channel_validation_eval_mdn_1630_2247.run."
+      "cwu_02v_ad_hoc_validation_eval_mdn_late.run."
       "channel_inference_mdn.attempt_000002";
   const auto policy_wave_replay_artifact_dir =
       policy_wave_replay_job_dir / "artifacts" /
       "kikijyeba.environment.replay.v1";
   std::filesystem::create_directories(policy_wave_replay_artifact_dir);
   write_text(policy_wave_replay_job_dir / "job.manifest",
-             "job_id=cwu_02v_channel_validation_eval_mdn_1630_2247.run."
+             "job_id=cwu_02v_ad_hoc_validation_eval_mdn_late.run."
              "channel_inference_mdn.attempt_000002\n"
              "job_attempt_index=2\n"
              "protocol_id=cwu_02v\n"
@@ -3938,7 +4308,7 @@ void test_policy_training_contract_and_ppo_execute() {
              "mdn\n"
              "wave_action=run\n"
              "resolved_anchor_index_begin=1630\n"
-             "resolved_anchor_index_end=2247\n"
+             "resolved_anchor_index_end=2100\n"
              "source_cursor_token=replay_cursor_token_v1\n");
   write_text(policy_wave_replay_job_dir / "lattice.forecast_eval.fact",
              "source_cursor_token=replay_cursor_token_v1\n"
@@ -3959,7 +4329,7 @@ void test_policy_training_contract_and_ppo_execute() {
              "schema=kikijyeba.environment.replay.runtime_batch_index.v1\n"
              "entry_count=1\n"
              "entry_0_begin_anchor_index=1630\n"
-             "entry_0_end_anchor_index=2247\n");
+             "entry_0_end_anchor_index=2100\n");
   const std::string policy_wave_replay_report_text =
       "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
       "artifact.v1\n"
@@ -4057,10 +4427,12 @@ void test_policy_training_contract_and_ppo_execute() {
       error, "E_RUNTIME_POLICY_COMPONENT_DRIVER_MATERIALIZED_CONTRACT_REQUIRED",
       "policy component wave execute keeps materialized proof contract "
       "requirement");
+  const std::string expected_wave_split_policy_fingerprint = "91b9e859d7bcae91";
   std::string wave_policy_training_args = valid_policy_training_args(
       "dry_run", "ppo", "unused", config_path.string(), false,
-      "b3c817006238874d", "policy_training_range_train_anchor_0_1600_v1",
-      "policy_training_range_validation_anchor_1630_2247_v1",
+      expected_wave_split_policy_fingerprint,
+      "policy_training_range_train_anchor_0_1600_v1",
+      "policy_training_range_validation_anchor_1630_2100_v1",
       "policy_training_range_test_anchor_2100_2247_v1");
   replace_all(wave_policy_training_args,
               "\"policy_architecture_digest\":\"arch_digest_v0\",", "");
@@ -4148,10 +4520,11 @@ void test_policy_training_contract_and_ppo_execute() {
   require_contains(result,
                    "\"policy_id\":\"wikimyei.policy.portfolio.graph_node_"
                    "allocation.ppo_v0\"",
-                   "policy-training contract should take policy_id from wave");
+                   "policy-training contract should derive policy_id from "
+                   "policy sources");
   require_contains(
       result, "\"policy_kind\":\"ppo_policy_adapter.v1\"",
-      "policy-training contract should take policy_kind from wave");
+      "policy-training contract should derive policy_kind from policy sources");
   require_contains(result, "\"accounting_numeraire_node_id\":\"USDT\"",
                    "policy-training contract should derive accounting "
                    "numeraire from config");
@@ -4252,33 +4625,38 @@ void test_policy_training_contract_and_ppo_execute() {
   require_contains(result,
                    "\"training_schedule_mode\":\"causal_walk_forward_"
                    "training.v1\"",
-                   "policy-training contract should take schedule mode from "
-                   "wave");
+                   "policy-training contract should derive schedule mode from "
+                   "policy sources");
   require_contains(
       result,
       "\"causal_schedule_digest\":\"policy_training_causal_walk_forward_all_"
       "v1\"",
-      "policy-training contract should take causal schedule digest from wave");
+      "policy-training contract should derive causal schedule digest from "
+      "Runtime policy-training defaults");
   require_contains(
       result,
       "\"snapshot_family_digest\":\"policy_training_causal_snapshots.cwu_02v."
       "graph_anchor.v1\"",
-      "policy-training contract should take snapshot family digest from wave");
+      "policy-training contract should derive snapshot family digest from "
+      "protocol identity");
   require_contains(
       result,
       "\"early_stopping_policy_digest\":\"validation_only_patience_ppo_v0_"
       "v1\"",
-      "policy-training contract should take early-stopping policy from wave");
+      "policy-training contract should derive early-stopping policy from "
+      "Runtime policy-training defaults");
   require_contains(
       result,
       "\"hyperparameter_selection_policy_digest\":\"validation_only_grid_ppo_"
       "v0_v1\"",
-      "policy-training contract should take hyperparameter selector from wave");
+      "policy-training contract should derive hyperparameter selector from "
+      "Runtime policy-training defaults");
   require_contains(
       result,
       "\"selector_policy_digest\":\"validation_selector_no_test_access_ppo_v0_"
       "v1\"",
-      "policy-training contract should take selector policy from wave");
+      "policy-training contract should derive selector policy from Runtime "
+      "policy-training defaults");
   const auto policy_wave_contract_path =
       wave_defaults_root / "policy_training.contract";
   const std::string policy_wave_contract_digest =
@@ -4333,14 +4711,16 @@ void test_policy_training_contract_and_ppo_execute() {
         "mirror");
   auto omitted_split_range_contract_text = policy_wave_contract_text;
   replace_all(omitted_split_range_contract_text,
-              "split_policy_fingerprint=b3c817006238874d\n", "");
+              "split_policy_fingerprint=" +
+                  expected_wave_split_policy_fingerprint + "\n",
+              "");
   replace_all(omitted_split_range_contract_text,
               "training_range_digest="
               "policy_training_range_train_anchor_0_1600_v1\n",
               "");
   replace_all(omitted_split_range_contract_text,
               "validation_range_digest="
-              "policy_training_range_validation_anchor_1630_2247_v1\n",
+              "policy_training_range_validation_anchor_1630_2100_v1\n",
               "");
   replace_all(omitted_split_range_contract_text,
               "test_range_digest="
@@ -4359,7 +4739,9 @@ void test_policy_training_contract_and_ppo_execute() {
         "policy contract should derive omitted split fingerprint and ranges "
         "from Runtime wave plus Lattice splits: " +
             error);
-  require_contains(result, "\"split_policy_fingerprint\":\"b3c817006238874d\"",
+  require_contains(result,
+                   "\"split_policy_fingerprint\":\"" +
+                       expected_wave_split_policy_fingerprint + "\"",
                    "contract file should regain Lattice split policy "
                    "fingerprint");
   require_contains(
@@ -4370,7 +4752,7 @@ void test_policy_training_contract_and_ppo_execute() {
   require_contains(
       result,
       "\"validation_range_digest\":\"policy_training_range_validation_anchor_"
-      "1630_2247_v1\"",
+      "1630_2100_v1\"",
       "contract file should regain validation split range digest");
   require_contains(
       result,
@@ -4398,7 +4780,8 @@ void test_policy_training_contract_and_ppo_execute() {
                    "split owners");
   auto bad_split_fingerprint_contract_text = policy_wave_contract_text;
   replace_all(bad_split_fingerprint_contract_text,
-              "split_policy_fingerprint=b3c817006238874d\n",
+              "split_policy_fingerprint=" +
+                  expected_wave_split_policy_fingerprint + "\n",
               "split_policy_fingerprint=stale_split_policy\n");
   const auto bad_split_fingerprint_contract_path =
       wave_defaults_root / "policy_training.bad_split_fingerprint.contract";
@@ -5074,44 +5457,44 @@ void test_policy_training_contract_and_ppo_execute() {
              omitted_wave_identity_contract_text);
   result.clear();
   error.clear();
-  check(
-      execute_runtime_run_json(
-          "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
-              omitted_wave_identity_contract_path.string() + "\"}",
-          &wave_ctx, &result, &error),
-      "policy contract should derive omitted wave identity from active wave: " +
-          error);
+  check(execute_runtime_run_json(
+            "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
+                omitted_wave_identity_contract_path.string() + "\"}",
+            &wave_ctx, &result, &error),
+        "policy contract should derive omitted policy identity from canonical "
+        "policy sources: " +
+            error);
   require_contains(result,
                    "\"policy_id\":\"wikimyei.policy.portfolio.graph_node_"
                    "allocation.ppo_v0\"",
-                   "contract file should regain wave-owned policy id");
+                   "contract file should regain derived policy id");
   require_contains(result, "\"policy_kind\":\"ppo_policy_adapter.v1\"",
-                   "contract file should regain wave-owned policy kind");
+                   "contract file should regain derived policy kind");
   require_contains(result,
                    "\"training_schedule_mode\":\"causal_walk_forward_"
                    "training.v1\"",
-                   "contract file should regain wave-owned training schedule");
+                   "contract file should regain derived training schedule");
   auto omitted_wave_schedule_contract_text = policy_wave_contract_text;
   check(omitted_wave_schedule_contract_text.find(
             "causal_schedule_digest=policy_training_causal_walk_forward_all_"
             "v1\n") != std::string::npos,
-        "test fixture should contain wave-owned causal schedule digest");
+        "test fixture should contain derived causal schedule digest");
   check(omitted_wave_schedule_contract_text.find(
             "snapshot_family_digest=policy_training_causal_snapshots.cwu_02v."
             "graph_anchor.v1\n") != std::string::npos,
-        "test fixture should contain wave-owned snapshot family digest");
+        "test fixture should contain derived snapshot family digest");
   check(omitted_wave_schedule_contract_text.find(
             "early_stopping_policy_digest=validation_only_patience_ppo_v0_"
             "v1\n") != std::string::npos,
-        "test fixture should contain wave-owned early-stopping policy");
+        "test fixture should contain derived early-stopping policy");
   check(omitted_wave_schedule_contract_text.find(
             "hyperparameter_selection_policy_digest=validation_only_grid_ppo_"
             "v0_v1\n") != std::string::npos,
-        "test fixture should contain wave-owned hyperparameter selector");
+        "test fixture should contain derived hyperparameter selector");
   check(omitted_wave_schedule_contract_text.find(
             "selector_policy_digest=validation_selector_no_test_access_ppo_v0_"
             "v1\n") != std::string::npos,
-        "test fixture should contain wave-owned selector policy");
+        "test fixture should contain derived selector policy");
   replace_all(omitted_wave_schedule_contract_text,
               "causal_schedule_digest=policy_training_causal_walk_forward_all_"
               "v1\n",
@@ -5143,33 +5526,33 @@ void test_policy_training_contract_and_ppo_execute() {
                 omitted_wave_schedule_contract_path.string() + "\"}",
             &wave_ctx, &result, &error),
         "policy contract should derive omitted schedule selectors from active "
-        "wave: " +
+        "policy sources: " +
             error);
   require_contains(
       result,
       "\"causal_schedule_digest\":\"policy_training_causal_walk_forward_all_"
       "v1\"",
-      "contract file should regain wave-owned causal schedule digest");
+      "contract file should regain derived causal schedule digest");
   require_contains(
       result,
       "\"snapshot_family_digest\":\"policy_training_causal_snapshots.cwu_02v."
       "graph_anchor.v1\"",
-      "contract file should regain wave-owned snapshot family digest");
+      "contract file should regain derived snapshot family digest");
   require_contains(
       result,
       "\"early_stopping_policy_digest\":\"validation_only_patience_ppo_v0_"
       "v1\"",
-      "contract file should regain wave-owned early-stopping policy");
+      "contract file should regain derived early-stopping policy");
   require_contains(
       result,
       "\"hyperparameter_selection_policy_digest\":\"validation_only_grid_ppo_"
       "v0_v1\"",
-      "contract file should regain wave-owned hyperparameter selector");
+      "contract file should regain derived hyperparameter selector");
   require_contains(
       result,
       "\"selector_policy_digest\":\"validation_selector_no_test_access_ppo_v0_"
       "v1\"",
-      "contract file should regain wave-owned selector policy");
+      "contract file should regain derived selector policy");
   const auto non_policy_config_path =
       wave_defaults_root / ".config.inference_active";
   auto non_policy_config_text = read_text(config_path);
@@ -5223,7 +5606,7 @@ void test_policy_training_contract_and_ppo_execute() {
             &wave_ctx, &result, &error),
         "policy contract should reject wave identity drift from config");
   require_contains(error, "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_MISMATCH",
-                   "wave identity mismatch should name canonical wave owner");
+                   "policy identity mismatch should name canonical owner");
   auto bad_wave_schedule_contract_text = policy_wave_contract_text;
   replace_all(bad_wave_schedule_contract_text,
               "snapshot_family_digest=policy_training_causal_snapshots.cwu_02v."
@@ -5238,9 +5621,9 @@ void test_policy_training_contract_and_ppo_execute() {
             "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_path\":\"" +
                 bad_wave_schedule_contract_path.string() + "\"}",
             &wave_ctx, &result, &error),
-        "policy contract should reject wave-owned schedule selector drift");
+        "policy contract should reject derived schedule selector drift");
   require_contains(error, "E_RUNTIME_POLICY_TRAINING_WAVE_DEFAULT_MISMATCH",
-                   "wave schedule mismatch should name canonical wave owner");
+                   "schedule mismatch should name canonical owner");
   auto omitted_numeraire_contract_text = policy_wave_contract_text;
   replace_all(omitted_numeraire_contract_text,
               "accounting_numeraire_node_id=USDT\n", "");
@@ -5595,8 +5978,8 @@ void test_policy_training_contract_and_ppo_execute() {
   replace_all(bad_range_mirrors_contract_text,
               "normalization_fit_range_digest="
               "policy_training_range_train_anchor_0_1600_v1\n",
-              "normalization_fit_range_digest="
-              "policy_training_range_validation_anchor_1630_2247_v1\n");
+	              "normalization_fit_range_digest="
+	              "policy_training_range_validation_anchor_1630_2100_v1\n");
   const auto bad_range_mirrors_contract_path =
       wave_defaults_root / "policy_training.bad_range_mirror.contract";
   write_text(bad_range_mirrors_contract_path, bad_range_mirrors_contract_text);
@@ -5638,9 +6021,9 @@ void test_policy_training_contract_and_ppo_execute() {
       "policy_execution_target_anchor_begin=1630",
       "contract text should persist validation-range-derived target begin");
   require_contains(
-      derived_target_range_contract_text,
-      "policy_execution_target_anchor_end_exclusive=2247",
-      "contract text should persist validation-range-derived target end");
+	      derived_target_range_contract_text,
+	      "policy_execution_target_anchor_end_exclusive=2100",
+	      "contract text should persist validation-range-derived target end");
   auto bad_target_range_contract_text = omitted_target_range_contract_text;
   bad_target_range_contract_text +=
       "policy_execution_target_anchor_begin=1600\n";
@@ -5692,9 +6075,9 @@ void test_policy_training_contract_and_ppo_execute() {
       "embargo_purged_window_anchor_begin=1630",
       "contract text should persist target-range-derived embargo begin");
   require_contains(
-      derived_embargo_window_contract_text,
-      "embargo_purged_window_anchor_end_exclusive=2247",
-      "contract text should persist target-range-derived embargo end");
+	      derived_embargo_window_contract_text,
+	      "embargo_purged_window_anchor_end_exclusive=2100",
+	      "contract text should persist target-range-derived embargo end");
   require_contains(
       derived_embargo_window_contract_text,
       "embargo_purged_window_anchor_range_bound=true",
@@ -6198,10 +6581,10 @@ void test_policy_training_contract_and_ppo_execute() {
             "policy_execution_target_anchor_begin_bound=true\n") !=
             std::string::npos,
         "test fixture should contain policy-execution target begin bound slot");
-  check(omitted_output_anchor_mirror_contract_text.find(
-            "policy_execution_target_anchor_end_exclusive=2247\n") !=
-            std::string::npos,
-        "test fixture should contain policy-execution target end slot");
+	  check(omitted_output_anchor_mirror_contract_text.find(
+	            "policy_execution_target_anchor_end_exclusive=2100\n") !=
+	            std::string::npos,
+	        "test fixture should contain policy-execution target end slot");
   check(omitted_output_anchor_mirror_contract_text.find(
             "policy_execution_target_anchor_end_exclusive_bound=true\n") !=
             std::string::npos,
@@ -6209,23 +6592,23 @@ void test_policy_training_contract_and_ppo_execute() {
   check(omitted_output_anchor_mirror_contract_text.find(
             "policy_output_fit_anchor_begin=1630\n") != std::string::npos,
         "test fixture should contain policy output fit begin slot");
-  check(omitted_output_anchor_mirror_contract_text.find(
-            "policy_output_fit_anchor_end_exclusive=2247\n") !=
-            std::string::npos,
-        "test fixture should contain policy output fit end slot");
-  check(omitted_output_anchor_mirror_contract_text.find(
-            "policy_output_valid_from_anchor=2247\n") != std::string::npos,
-        "test fixture should contain policy output valid-from slot");
+	  check(omitted_output_anchor_mirror_contract_text.find(
+	            "policy_output_fit_anchor_end_exclusive=2100\n") !=
+	            std::string::npos,
+	        "test fixture should contain policy output fit end slot");
+	  check(omitted_output_anchor_mirror_contract_text.find(
+	            "policy_output_valid_from_anchor=2100\n") != std::string::npos,
+	        "test fixture should contain policy output valid-from slot");
   replace_all(omitted_output_anchor_mirror_contract_text,
               "policy_output_fit_anchor_begin=1630\n", "");
   replace_all(omitted_output_anchor_mirror_contract_text,
               "policy_output_fit_anchor_begin_bound=true\n", "");
-  replace_all(omitted_output_anchor_mirror_contract_text,
-              "policy_output_fit_anchor_end_exclusive=2247\n", "");
+	  replace_all(omitted_output_anchor_mirror_contract_text,
+	              "policy_output_fit_anchor_end_exclusive=2100\n", "");
   replace_all(omitted_output_anchor_mirror_contract_text,
               "policy_output_fit_anchor_end_exclusive_bound=true\n", "");
-  replace_all(omitted_output_anchor_mirror_contract_text,
-              "policy_output_valid_from_anchor=2247\n", "");
+	  replace_all(omitted_output_anchor_mirror_contract_text,
+	              "policy_output_valid_from_anchor=2100\n", "");
   replace_all(omitted_output_anchor_mirror_contract_text,
               "policy_output_valid_from_anchor_bound=true\n", "");
   const auto omitted_output_anchor_mirror_contract_path =
@@ -6251,17 +6634,17 @@ void test_policy_training_contract_and_ppo_execute() {
   require_contains(derived_output_anchor_mirror_contract_text,
                    "policy_output_fit_anchor_begin_bound=true",
                    "contract text should bind derived output fit begin");
-  require_contains(derived_output_anchor_mirror_contract_text,
-                   "policy_output_fit_anchor_end_exclusive=2247",
-                   "contract text should persist output fit end from "
-                   "policy-execution target end");
+	  require_contains(derived_output_anchor_mirror_contract_text,
+	                   "policy_output_fit_anchor_end_exclusive=2100",
+	                   "contract text should persist output fit end from "
+	                   "policy-execution target end");
   require_contains(derived_output_anchor_mirror_contract_text,
                    "policy_output_fit_anchor_end_exclusive_bound=true",
                    "contract text should bind derived output fit end");
-  require_contains(derived_output_anchor_mirror_contract_text,
-                   "policy_output_valid_from_anchor=2247",
-                   "contract text should persist output valid-from from "
-                   "policy-execution target end");
+	  require_contains(derived_output_anchor_mirror_contract_text,
+	                   "policy_output_valid_from_anchor=2100",
+	                   "contract text should persist output valid-from from "
+	                   "policy-execution target end");
   require_contains(derived_output_anchor_mirror_contract_text,
                    "policy_output_valid_from_anchor_bound=true",
                    "contract text should bind derived output valid-from");
@@ -7855,7 +8238,12 @@ void test_policy_training_contract_and_ppo_execute() {
                  "\n"
                  "parent_forecast_artifact_digest=" +
                  ppo_parent_replay.parent_forecast_artifact_digest + "\n");
-  std::string ppo_on_policy_args = valid_policy_training_args("execute");
+  std::string ppo_on_policy_args = valid_policy_training_args(
+      "execute", "ppo",
+      "wikimyei.policy.portfolio.graph_node_allocation.ppo_v0", {}, true,
+      "split_policy_1", "policy_training_range_train_anchor_10_20_v1",
+      "policy_training_range_validation_anchor_0_10_v1",
+      "policy_training_range_test_anchor_20_30_v1");
   replace_all(ppo_on_policy_args,
               "\"parent_forecast_eval_fact_digest\":\"forecast_eval_fact_"
               "digest\"",
@@ -9585,6 +9973,9 @@ int main() {
     test_runtime_reset_backup_snapshot();
     test_wave_settings_train_defaults_to_random_source_order();
     test_multi_wave_catalog_selection();
+    test_source_split_wave_derives_cursor_from_ujcamei_source_splits();
+    test_fraction_source_split_materializes_at_runtime_boundaries();
+    test_synthetic_benchmark_config_uses_shared_fraction_splits();
     test_source_key_wave_preview_reports_key_bounds();
     test_mdn_wave_preview_reads_jkimyei_model_state_inputs();
     test_policy_training_causal_schedule_contract();

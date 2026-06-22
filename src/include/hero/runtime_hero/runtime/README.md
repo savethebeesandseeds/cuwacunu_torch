@@ -84,15 +84,17 @@ component and runs upstream dependencies frozen.
 `wave_settings.h` decodes the selected block from the
 `hero.runtime.wave.dsl` catalog. The selected wave declares the exact
 `PROTOCOL`, a broad protocol-level `TARGET`, mode flags such as `run | debug`,
-and `SOURCE_CURSOR_ID`. The cursor id is resolved from
-`ujcamei.source.cursor.dsl`, where protocol-neutral source ranges and Ujcamei
-cursor families are defined for runtime `.lls` reports. A cursor range is larger
-than a batch: the stream generator yields graph-anchor batches until the
+and either `SOURCE_CURSOR_ID` or `SOURCE_SPLIT`. Cursor ids are resolved from
+`ujcamei.source.cursor.dsl`, where protocol-neutral full-domain and ad hoc
+source windows are defined for runtime `.lls` reports. `SOURCE_SPLIT` resolves a
+named train/validation/test selector from `ujcamei.source.splits.dsl`; absolute
+selectors provide bounds at decode time, while fraction selectors materialize
+against the active accepted-anchor domain during wave planning. A cursor range is
+larger than a batch: the stream generator yields graph-anchor batches until the
 requested range is exhausted. `SOURCE_RANGE=source_key` is the stable cursor
 authoring form for key-valued sources; it resolves to the accepted graph-anchor
 index domain before execution while preserving requested source-key bounds in
-runtime
-evidence.
+runtime evidence.
 
 `TARGET` is the focal component family, not the whole execution chain. For
 example, `TARGET=wikimyei.inference.expected_value` still runs NodeLift and the
@@ -150,14 +152,19 @@ not require copying those materialized paths back into static `.jkimyei` files.
 
 Reusable wave profiles live as multiple `WAVE_SETTINGS` blocks in the single
 `hero.runtime.wave.dsl` catalog. Operator configs select the active block
-with `[HERO].runtime_wave_id`; the file-level `WAVE_SELECTION` is only the
-checked-in fallback. Profiles should keep protocol/target/mode/cursor/source
-order intent stable. Cursor definitions live in `ujcamei.source.cursor.dsl` and
-intentionally avoid protocol names because the source cursor catalog is data
-identity, not protocol identity. Concrete launch range overrides belong in the
-runtime handoff artifact, or may be supplied directly to `cuwacunu_exec` with
-`--source-range`, `--anchor-index-begin/end`, or `--source-key-begin/end` for
-developer recovery. Runtime applies the handoff overlay in memory, validates the
+with `[HERO].runtime_wave_id`; the canonical multi-wave catalog does not carry
+a file-level `WAVE_SELECTION` fallback. Profiles should keep protocol, target, mode,
+cursor-or-split, and source-order intent stable. Full-domain and ad hoc cursor
+definitions live in `ujcamei.source.cursor.dsl`; named train/validation/test
+split intent lives in `ujcamei.source.splits.dsl` and is selected with
+`SOURCE_SPLIT`. Lattice split proof/protection policy lives separately in
+`hero.lattice.split_policy.dsl`. Cursor definitions intentionally avoid protocol
+names because the source cursor catalog is data identity, not protocol identity.
+Concrete launch range overrides belong
+in the runtime handoff artifact, or may be supplied directly to `cuwacunu_exec`
+with `--source-range`, `--anchor-index-begin/end`, or
+`--source-key-begin/end` for developer recovery. Runtime applies the handoff
+overlay in memory, validates the
 effective wave, and records the resolved range in the manifest/state sidecars
 without editing the profile.
 
@@ -190,10 +197,10 @@ reading Runtime artifacts, and Marshal uses these facts as the preferred
 operator-report surface with raw reports as fallback.
 Runtime terminal facts use explicit digest/id names on operator-visible fields:
 `source_report_digest`, `config_bundle_id`, `runtime_policy_digest`, and
-`checkpoint_artifact_digest`. Runtime still accepts historical Marshal handoff
+`checkpoint_artifact_digest`. Runtime rejects historical Marshal handoff
 objects that use `base_config.hash` or `runtime_policy.hash`, and Lattice
-readers still recognize historical `checkpoint_artifact_hash` sidecars when
-older Runtime jobs are inspected.
+readers require `checkpoint_artifact_digest` rather than historical
+`checkpoint_artifact_hash` sidecars.
 The Runtime-emitted `lattice.source_analytics.fact` is deliberately narrow:
 it binds source cursor, graph order, split/window, parent exposure digest,
 anchor acceptance fraction, missingness fraction, duplicate-anchor count, and a
@@ -280,7 +287,9 @@ policy-training packet for an active policy component wave from the selected
 wave, split policy, configured policy profile, and completed compatible replay
 artifacts under the Runtime root; the same `hero.runtime.run` surface with
 `contract_path` and optional `contract_digest` runs a materialized proof
-contract. The selected policy-training `WAVE_SETTINGS` block
+contract. A Marshal handoff may also carry `policy_training_execution_lock`,
+which Runtime expands to the same internal contract path/digest before
+execution. The selected policy-training `WAVE_SETTINGS` block
 may bind `POLICY_ID`, `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and
 `LIVE_EXECUTION_ALLOWED`; if the active config wave is not policy training,
 Runtime uses the unique policy-training block in the same catalog and rejects an
@@ -395,12 +404,15 @@ and policy-training `max_steps` from the configured graph-node allocation
 configured Environment rollout profile, derives `initial_equity_numeraire`,
 `max_node_weight`, and `max_turnover_l1` from the configured Environment replay
 contract,
+derives the policy id/kind and training-schedule mode from protocol
+`POLICY_COMPONENT` plus the configured graph-node allocation `.jkimyei` task,
 derives the causal schedule digest, snapshot-family digest, and selector policy
-digests from the selected policy-training Runtime wave, derives the split-policy
-fingerprint and
+digests from Runtime policy-training defaults and active protocol identity,
+derives the split-policy fingerprint and
 training/validation/test range digests from the wave's
 `TRAIN_SPLIT`/`VALIDATION_SPLIT`/`TEST_SPLIT` bindings plus
-`[HERO].lattice_splits_dsl_path`,
+`[UJCAMEI].ujcamei_source_splits_dsl_path` bound to
+`[HERO].lattice_split_policy_dsl_path`,
 derives the PPO advantage-normalization policy from the Runtime PPO update
 semantics, derives the Runtime-owned purged-embargo policy fingerprint, derives
 the policy-execution target anchor range from `validation_range_digest`,

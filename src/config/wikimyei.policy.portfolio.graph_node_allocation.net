@@ -11,9 +11,6 @@ GRAPH_NODE_ALLOCATION_NET {
   VERSION = wikimyei.policy.portfolio.graph_node_allocation.net.v1;
   POLICY_INPUT_SCHEMA = kikijyeba.environment.policy_input.v1;
   POLICY_INPUT_FEATURE_MANIFEST = wikimyei.policy.portfolio.graph_node_allocation.features.v1;
-  INPUT_NODE_FEATURE_DIM = 28;
-  INPUT_GLOBAL_FEATURE_DIM = 6;
-  INPUT_RISK_FEATURE_DIM = 10;
   NODE_ENCODER_LAYERS = 2;
   NODE_ENCODER_HIDDEN_DIM = 128;
   GLOBAL_ENCODER_LAYERS = 2;

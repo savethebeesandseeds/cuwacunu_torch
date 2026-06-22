@@ -183,6 +183,16 @@ inline void require_same_size(const std::vector<std::string> &left,
   }
 }
 
+inline void
+reject_retired_key(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
+                   const char *key, const char *context) {
+  if (block.values.find(key) != block.values.end()) {
+    throw std::runtime_error(std::string(context) + " " + key +
+                             " is retired; derive dimensions from feature "
+                             "names instead");
+  }
+}
+
 [[nodiscard]] inline bool
 contains_string(const std::vector<std::string> &values,
                 const std::string &needle) {
@@ -462,12 +472,12 @@ decode_graph_node_allocation_net_spec_from_dsl(const std::string &net_text) {
   spec.policy_input_schema = kv::required(block, "POLICY_INPUT_SCHEMA");
   spec.policy_input_feature_manifest =
       kv::required(block, "POLICY_INPUT_FEATURE_MANIFEST");
-  spec.input_node_feature_dim =
-      kv::parse_i64(kv::required(block, "INPUT_NODE_FEATURE_DIM"));
-  spec.input_global_feature_dim =
-      kv::parse_i64(kv::required(block, "INPUT_GLOBAL_FEATURE_DIM"));
-  spec.input_risk_feature_dim =
-      kv::parse_i64(kv::required(block, "INPUT_RISK_FEATURE_DIM"));
+  reject_retired_key(block, "INPUT_NODE_FEATURE_DIM",
+                     "[graph_node_allocation_net_spec]");
+  reject_retired_key(block, "INPUT_GLOBAL_FEATURE_DIM",
+                     "[graph_node_allocation_net_spec]");
+  reject_retired_key(block, "INPUT_RISK_FEATURE_DIM",
+                     "[graph_node_allocation_net_spec]");
   spec.node_encoder_layers =
       kv::parse_i64(kv::required(block, "NODE_ENCODER_LAYERS"));
   spec.node_encoder_hidden_dim =
@@ -536,20 +546,26 @@ decode_graph_node_allocation_feature_manifest_from_dsl(
   graph_node_allocation_feature_manifest_spec_t spec{};
   spec.version_token = kv::required(block, "VERSION");
   spec.policy_input_schema = kv::required(block, "POLICY_INPUT_SCHEMA");
-  spec.node_feature_dim =
-      kv::parse_i64(kv::required(block, "NODE_FEATURE_DIM"));
+  reject_retired_key(block, "NODE_FEATURE_DIM",
+                     "[graph_node_allocation_feature_manifest_spec]");
+  reject_retired_key(block, "GLOBAL_FEATURE_DIM",
+                     "[graph_node_allocation_feature_manifest_spec]");
+  reject_retired_key(block, "RISK_FEATURE_DIM",
+                     "[graph_node_allocation_feature_manifest_spec]");
   spec.node_feature_names =
       kv::parse_list(kv::required(block, "NODE_FEATURE_NAMES"));
+  spec.node_feature_dim =
+      static_cast<std::int64_t>(spec.node_feature_names.size());
   spec.node_feature_transforms =
       kv::parse_list(kv::required(block, "NODE_FEATURE_TRANSFORMS"));
   spec.node_feature_default_policy =
       kv::required(block, "NODE_FEATURE_DEFAULT_POLICY");
   spec.node_feature_clipping_policy =
       kv::required(block, "NODE_FEATURE_CLIPPING_POLICY");
-  spec.global_feature_dim =
-      kv::parse_i64(kv::required(block, "GLOBAL_FEATURE_DIM"));
   spec.global_feature_names =
       kv::parse_list(kv::required(block, "GLOBAL_FEATURE_NAMES"));
+  spec.global_feature_dim =
+      static_cast<std::int64_t>(spec.global_feature_names.size());
   spec.global_feature_transforms =
       kv::parse_list(kv::required(block, "GLOBAL_FEATURE_TRANSFORMS"));
   spec.global_feature_default_policy =
@@ -557,10 +573,10 @@ decode_graph_node_allocation_feature_manifest_from_dsl(
   spec.global_feature_clipping_policy =
       kv::required(block, "GLOBAL_FEATURE_CLIPPING_POLICY");
   spec.risk_feature_block = kv::required(block, "RISK_FEATURE_BLOCK");
-  spec.risk_feature_dim =
-      kv::parse_i64(kv::required(block, "RISK_FEATURE_DIM"));
   spec.risk_feature_names =
       kv::parse_list(kv::required(block, "RISK_FEATURE_NAMES"));
+  spec.risk_feature_dim =
+      static_cast<std::int64_t>(spec.risk_feature_names.size());
   spec.risk_feature_transforms =
       kv::parse_list(kv::required(block, "RISK_FEATURE_TRANSFORMS"));
   spec.risk_feature_default_policy =
