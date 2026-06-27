@@ -9,8 +9,8 @@
 
   Runtime wave settings do not define topology, model architecture, observer
   identity, allocation-policy identity, source cursor ranges, or replay/paper
-  execution policy. Those live in protocol, Wikimyei policy, Ujcamei cursor, or
-  Marshal/Runtime rollout contracts.
+  execution policy. Runtime probes live in hero.runtime.probes.dsl; attaching an
+  enabled probe still requires this wave's MODE to include debug.
 */
 WAVE_SETTINGS {
   WAVE_ID = cwu_02v_validation_holdout_eval_mdn;
@@ -91,7 +91,7 @@ WAVE_SETTINGS {
   WAVE_ID = policy_training_ppo_v0;
   PROTOCOL = cwu_02v;
   TARGET = wikimyei.policy.portfolio;
-  MODE = train;
+  MODE = train|debug;
   JOB_KIND = policy_training;
   TRAIN_SPLIT = train_core;
   VALIDATION_SPLIT = certified_replay_expansion_eval;

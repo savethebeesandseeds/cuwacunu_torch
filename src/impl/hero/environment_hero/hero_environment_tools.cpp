@@ -1016,11 +1016,17 @@ object_fields_no_duplicates(const std::string &json, std::string_view label) {
     marshal::marshal_rollout_request_t request{};
     request.requested_mode =
         environment_requested_mode == "replay" ? "execute" : "plan";
-    request.config_path =
-        policy_path_or(ctx->policy, "default_config_path",
-                       ctx->global_config_path.empty()
-                           ? config_paths::default_global_config_path()
-                           : ctx->global_config_path);
+    const auto explicit_config_path =
+        trim_ascii(md::optional_string(args, "config_path"));
+    if (!explicit_config_path.empty()) {
+      request.config_path = fs::path(explicit_config_path);
+    } else if (!ctx->global_config_path.empty()) {
+      request.config_path = ctx->global_config_path;
+    } else {
+      request.config_path =
+          policy_path_or(ctx->policy, "default_config_path",
+                         config_paths::default_global_config_path());
+    }
     request.runtime_job_dir =
         fs::path(md::optional_string(args, "runtime_job_dir"));
     request.rollout_id = md::optional_string(args, "rollout_id");
@@ -1028,6 +1034,8 @@ object_fields_no_duplicates(const std::string &json, std::string_view label) {
         md::optional_string(args, "rollout_attempt_id");
     request.idempotency_key = request.rollout_attempt_id;
     request.experiment_id = request.rollout_id;
+    request.accounting_numeraire_node_id =
+        trim_ascii(md::optional_string(args, "accounting_numeraire_node_id"));
     request.target_node_ids =
         md::optional_string_array(args, "target_node_ids");
     request.policy_tokens = md::split_assignment_string_list(
@@ -3815,7 +3823,8 @@ handle_rollout(const std::map<std::string, std::string> &args,
   }
   md::validate_fields(args,
                       {"mode", "runtime_job_dir", "rollout_id",
-                       "rollout_attempt_id", "target_node_ids",
+                       "rollout_attempt_id", "config_path",
+                       "accounting_numeraire_node_id", "target_node_ids",
                        "include_machine_payload"},
                       {"mode", "runtime_job_dir", "rollout_id",
                        "rollout_attempt_id", "target_node_ids"},
@@ -3870,9 +3879,11 @@ handle_rollout(const std::map<std::string, std::string> &args,
     runtime_result_digest = marshal::marshal_digest_for_text(
         "kikijyeba.environment.rollout.runtime_replay_result.v1",
         runtime_result_json);
+    const bool replay_report_written = fs::exists(plan.expected_report_path);
     runtime_replay_ok =
         runtime_executor_call_ok && !runtime_executor_result_error &&
-        runtime_result_json.find("\"ok\":true") != std::string::npos;
+        (runtime_result_json.find("\"ok\":true") != std::string::npos ||
+         replay_report_written);
   }
   rollout_allocation_sidecar_result_t allocation_sidecar{};
   if (runtime_replay_ok || fs::exists(plan.expected_report_path)) {

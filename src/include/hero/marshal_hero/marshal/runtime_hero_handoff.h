@@ -612,10 +612,12 @@ materialize_policy_training_execution_lock_from_runtime_dry_run(
       request.source_key_begin.has_value() &&
       request.source_key_end.has_value() &&
       *request.source_key_begin < *request.source_key_end;
-  const bool reusable_all_profile =
-      json_has_string_field_value(wave_json, "source_range", "all") &&
+  const bool reusable_overlay_profile =
+      (json_has_string_field_value(wave_json, "source_range", "all") ||
+       json_has_string_field_value(wave_json, "source_range",
+                                   "fraction_range")) &&
       (overlay_anchor_range || overlay_source_key_range);
-  if (!exact_source_range && !reusable_all_profile) {
+  if (!exact_source_range && !reusable_overlay_profile) {
     return false;
   }
   if (!request.source_order.empty() &&
@@ -623,23 +625,23 @@ materialize_policy_training_execution_lock_from_runtime_dry_run(
                                    request.source_order)) {
     return false;
   }
-  if (!reusable_all_profile && request.anchor_index_begin.has_value() &&
+  if (!reusable_overlay_profile && request.anchor_index_begin.has_value() &&
       !json_has_string_field_value(
           wave_json, "anchor_index_begin",
           std::to_string(*request.anchor_index_begin))) {
     return false;
   }
-  if (!reusable_all_profile && request.anchor_index_end.has_value() &&
+  if (!reusable_overlay_profile && request.anchor_index_end.has_value() &&
       !json_has_string_field_value(wave_json, "anchor_index_end",
                                    std::to_string(*request.anchor_index_end))) {
     return false;
   }
-  if (!reusable_all_profile && request.source_key_begin.has_value() &&
+  if (!reusable_overlay_profile && request.source_key_begin.has_value() &&
       !json_has_string_field_value(wave_json, "source_key_begin",
                                    std::to_string(*request.source_key_begin))) {
     return false;
   }
-  if (!reusable_all_profile && request.source_key_end.has_value() &&
+  if (!reusable_overlay_profile && request.source_key_end.has_value() &&
       !json_has_string_field_value(wave_json, "source_key_end",
                                    std::to_string(*request.source_key_end))) {
     return false;
@@ -697,6 +699,8 @@ materialize_policy_training_execution_lock_from_runtime_dry_run(
                             request.model_state_inputs);
   detail::append_string_map(out, "lattice_certificate_refs",
                             request.lattice_certificate_refs);
+  detail::append_string_map(out, "policy_execution_input_lock_fields",
+                            request.policy_execution_input_lock_fields);
   detail::append_kv(out, "target_driver_run_id", request.target_driver_run_id);
   detail::append_kv(out, "runtime_policy_path",
                     detail::normalize_path_text(policy_path.string()));
@@ -798,6 +802,9 @@ materialize_policy_training_execution_lock_from_runtime_dry_run(
   out << ",\"checkpoint_artifact_digests\":{}"
       << ",\"lattice_certificate_refs\":";
   detail::append_json_string_map(out, request.lattice_certificate_refs);
+  out << ",\"policy_execution_input_lock_fields\":";
+  detail::append_json_string_map(out,
+                                 request.policy_execution_input_lock_fields);
   out << ",\"runtime_policy\":{\"path\":"
       << detail::json_quote(runtime_policy_path)
       << ",\"digest\":" << detail::json_quote(runtime_policy_digest) << "}"

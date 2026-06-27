@@ -42,6 +42,34 @@ path_is_under_root_child(const std::filesystem::path &path,
   return it != relative.end() && it->string() == child_name;
 }
 
+[[nodiscard]] inline bool
+path_is_under_src_config_child(const std::filesystem::path &path,
+                               std::string_view child_name) {
+  const auto normalized = normalize_path(path);
+  const auto root = normalized.root_path();
+  if (root.empty()) {
+    return false;
+  }
+  const auto relative = normalized.lexically_relative(root);
+  auto it = relative.begin();
+  while (it != relative.end()) {
+    if (it->string() != "src") {
+      ++it;
+      continue;
+    }
+    auto config_it = it;
+    ++config_it;
+    if (config_it == relative.end() || config_it->string() != "config") {
+      ++it;
+      continue;
+    }
+    auto child_it = config_it;
+    ++child_it;
+    return child_it != relative.end() && child_it->string() == child_name;
+  }
+  return false;
+}
+
 [[nodiscard]] inline std::filesystem::path
 first_config_beside_anchor(const std::filesystem::path &anchor) {
   static constexpr std::array<std::string_view, 4> kRelativeCandidates{
@@ -121,7 +149,8 @@ default_config_sibling_path(const std::filesystem::path &global_config_path,
   const auto candidate = default_config_sibling_path(
       global_config_path, "../../.runtime/cuwacunu_exec");
   if (!global_config_path.empty() &&
-      detail::path_is_under_root_child(candidate, ".runtime")) {
+      (detail::path_is_under_root_child(candidate, ".runtime") ||
+       detail::path_is_under_src_config_child(candidate, ".runtime"))) {
     return default_config_sibling_path(default_global_config_path(),
                                        "../../.runtime/cuwacunu_exec");
   }
@@ -133,7 +162,8 @@ default_config_sibling_path(const std::filesystem::path &global_config_path,
   const auto candidate = default_config_sibling_path(
       global_config_path, "../../.build/exec/cuwacunu_exec");
   if (!global_config_path.empty() &&
-      detail::path_is_under_root_child(candidate, ".build")) {
+      (detail::path_is_under_root_child(candidate, ".build") ||
+       detail::path_is_under_src_config_child(candidate, ".build"))) {
     return default_config_sibling_path(default_global_config_path(),
                                        "../../.build/exec/cuwacunu_exec");
   }

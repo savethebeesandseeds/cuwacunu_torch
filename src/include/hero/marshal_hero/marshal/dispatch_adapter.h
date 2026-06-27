@@ -60,6 +60,7 @@ struct marshal_runtime_dry_run_request_t {
   std::optional<std::int64_t> source_key_end{std::nullopt};
   std::map<std::string, std::string> model_state_inputs{};
   std::map<std::string, std::string> lattice_certificate_refs{};
+  std::map<std::string, std::string> policy_execution_input_lock_fields{};
   std::string target_driver_run_id{};
 };
 
@@ -124,10 +125,117 @@ inline void add_derivation(marshal_dispatch_decision_t &decision,
                             request.model_state_inputs);
   detail::append_string_map(out, "lattice_certificate_refs",
                             request.lattice_certificate_refs);
+  detail::append_string_map(out, "policy_execution_input_lock_fields",
+                            request.policy_execution_input_lock_fields);
   detail::append_kv(out, "target_driver_run_id", request.target_driver_run_id);
   detail::append_kv(out, "non_authority_statement",
                     k_marshal_dispatch_non_authority_statement);
   return out.str();
+}
+
+[[nodiscard]] inline std::string
+csv_from_strings(const std::vector<std::string> &values) {
+  std::ostringstream out;
+  bool first = true;
+  for (const auto &value : values) {
+    if (value.empty()) {
+      continue;
+    }
+    if (!first) {
+      out << ",";
+    }
+    first = false;
+    out << value;
+  }
+  return out.str();
+}
+
+inline void maybe_put(std::map<std::string, std::string> &fields,
+                      const std::string &key, const std::string &value) {
+  if (!value.empty()) {
+    fields[key] = value;
+  }
+}
+
+inline void maybe_put_bool(std::map<std::string, std::string> &fields,
+                           const std::string &key, bool value) {
+  fields[key] = value ? "true" : "false";
+}
+
+template <class Int>
+inline void maybe_put_int(std::map<std::string, std::string> &fields,
+                          const std::string &key, const Int &value) {
+  fields[key] = std::to_string(value);
+}
+
+[[nodiscard]] inline std::map<std::string, std::string>
+policy_execution_input_lock_fields_from_certificate_state(
+    const marshal_lattice_certificate_state_t &state) {
+  std::map<std::string, std::string> fields;
+  if (!state.present ||
+      state.schema != k_marshal_no_lookahead_certificate_schema_v1) {
+    return fields;
+  }
+
+  maybe_put(fields, "policy_execution_no_lookahead_certificate_schema",
+            state.schema);
+  maybe_put(fields, "policy_execution_no_lookahead_certificate_digest",
+            state.certificate_digest);
+  maybe_put(fields, "policy_execution_evidence_snapshot_digest",
+            state.evidence_snapshot_digest);
+  maybe_put(fields, "policy_execution_provenance_closure_digest",
+            state.provenance_closure_digest);
+  maybe_put(fields, "policy_execution_target_id", state.target_id);
+  if (state.target_anchor_index_begin.has_value()) {
+    maybe_put_int(fields, "policy_execution_target_anchor_begin",
+                  *state.target_anchor_index_begin);
+  }
+  if (state.target_anchor_index_end.has_value()) {
+    maybe_put_int(fields, "policy_execution_target_anchor_end_exclusive",
+                  *state.target_anchor_index_end);
+  }
+  maybe_put(fields, "policy_execution_no_lookahead_contract_digest",
+            state.no_lookahead_contract_digest);
+  maybe_put(fields, "embargo_policy_fingerprint",
+            state.embargo_policy_fingerprint);
+  if (state.embargo_purged_window_anchor_range_bound) {
+    maybe_put_int(fields, "embargo_purged_window_anchor_begin",
+                  state.embargo_purged_window_anchor_begin);
+    maybe_put_int(fields, "embargo_purged_window_anchor_end_exclusive",
+                  state.embargo_purged_window_anchor_end_exclusive);
+    maybe_put_bool(fields, "embargo_purged_window_anchor_range_bound", true);
+  }
+
+  maybe_put(fields, "policy_execution_consumed_artifact_digests",
+            csv_from_strings(state.consumed_artifact_digests));
+  maybe_put(fields, "policy_execution_consumed_checkpoint_digests",
+            csv_from_strings(state.consumed_checkpoint_digests));
+  maybe_put(fields, "policy_execution_consumed_generation_vector_digests",
+            csv_from_strings(state.consumed_generation_vector_digests));
+
+  maybe_put(fields, "causal_provenance_schema",
+            state.causal_provenance_certificate_schema);
+  maybe_put(fields, "causal_atom_schema", state.causal_atom_schema);
+  maybe_put(fields, "causal_interval_set_schema",
+            state.causal_interval_set_schema);
+  maybe_put(fields, "causal_label_reward_horizon_policy_fingerprint",
+            state.causal_label_reward_horizon_policy_fingerprint);
+  maybe_put(fields, "causal_fold_policy_fingerprint",
+            state.causal_fold_policy_fingerprint);
+  maybe_put(fields, "causal_purged_embargo_policy_fingerprint",
+            state.causal_purged_embargo_policy_fingerprint);
+  maybe_put(fields, "causal_artifact_production_schema",
+            state.causal_artifact_production_schema);
+  maybe_put(fields, "causal_artifact_production_closure_digest",
+            state.causal_artifact_production_closure_digest);
+  maybe_put(fields, "causal_interface_stability_contract_digest",
+            state.causal_interface_stability_contract_digest);
+  maybe_put(fields, "causal_provenance_closure_digest",
+            state.causal_provenance_closure_digest.empty()
+                ? state.provenance_closure_digest
+                : state.causal_provenance_closure_digest);
+
+  return fields;
 }
 
 [[nodiscard]] inline std::string runtime_dry_run_request_digest(
@@ -214,7 +322,8 @@ runtime_wave_snapshot_digest(const marshal_runtime_wave_snapshot_t &wave) {
 wave_matches_advice_range(const marshal_runtime_wave_snapshot_t &wave,
                           const marshal_suggested_wave_t &suggested_wave) {
   const bool launch_overlay_profile =
-      wave.source_range == "all" && !wave.anchor_index_begin.has_value() &&
+      (wave.source_range == "all" || wave.source_range == "fraction_range") &&
+      !wave.anchor_index_begin.has_value() &&
       !wave.anchor_index_end.has_value() &&
       !wave.source_key_begin.has_value() && !wave.source_key_end.has_value();
   const bool advised_concrete_overlay =
@@ -273,6 +382,13 @@ build_runtime_dry_run_dispatch_preview(
       advice.suggested_wave.plan_inputs;
   decision.runtime_request.lattice_certificate_refs =
       request.lattice_certificate_refs;
+  if (const auto state_it = advice.lattice_certificate_states.find(
+          k_marshal_no_lookahead_certificate_schema_v1);
+      state_it != advice.lattice_certificate_states.end()) {
+    decision.runtime_request.policy_execution_input_lock_fields =
+        policy_execution_input_lock_fields_from_certificate_state(
+            state_it->second);
+  }
   decision.runtime_request.target_driver_run_id = request.target_driver_run_id;
 
   add_derivation(decision, "config_path", "advice.config_path");
@@ -294,6 +410,8 @@ build_runtime_dry_run_dispatch_preview(
                  "advice.suggested_wave.source_key_end");
   add_derivation(decision, "model_state_inputs",
                  "advice.suggested_wave.plan_inputs");
+  add_derivation(decision, "policy_execution_input_lock_fields",
+                 "advice.lattice_certificate_states");
 
   for (const auto &reason : decision.advice_validation.refusal_reasons) {
     add_refusal(decision, reason,

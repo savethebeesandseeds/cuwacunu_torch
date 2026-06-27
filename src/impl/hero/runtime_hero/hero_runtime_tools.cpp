@@ -1634,6 +1634,29 @@ append_handoff_derived_run_fields(const std::string &handoff_json,
   if (!append_handoff_wave_overlay(handoff_json, out, first, err)) {
     return false;
   }
+  std::string policy_execution_lock_fields_raw;
+  if (extract_json_raw_field(handoff_json, "policy_execution_input_lock_fields",
+                             &policy_execution_lock_fields_raw)) {
+    std::unordered_map<std::string, std::string> policy_execution_lock_fields;
+    if (!extract_json_string_object(policy_execution_lock_fields_raw,
+                                    &policy_execution_lock_fields)) {
+      if (err) {
+        *err = "E_RUNTIME_HANDOFF_INVALID: "
+               "policy_execution_input_lock_fields must be a string object";
+      }
+      return false;
+    }
+    std::vector<std::string> keys;
+    keys.reserve(policy_execution_lock_fields.size());
+    for (const auto &[key, _] : policy_execution_lock_fields) {
+      keys.push_back(key);
+    }
+    std::sort(keys.begin(), keys.end());
+    for (const auto &key : keys) {
+      append_string_json_field(out, key, policy_execution_lock_fields[key],
+                               first);
+    }
+  }
   std::string policy_training_lock_raw;
   if (extract_json_raw_field(handoff_json, "policy_training_execution_lock",
                              &policy_training_lock_raw)) {
@@ -2096,12 +2119,42 @@ configured_policy_source_path(const fs::path &config_path,
 }
 
 struct policy_training_environment_rollout_defaults_t {
+  std::string environment_profile_id;
   std::optional<double> linear_transaction_cost_rate;
   std::optional<std::int64_t> max_parallel_jobs;
   std::optional<double> initial_equity_numeraire;
   std::optional<double> max_node_weight;
   std::optional<double> max_turnover_l1;
 };
+
+[[nodiscard]] std::string policy_training_execution_profile_digest(
+    const policy_training_environment_rollout_defaults_t &defaults) {
+  std::ostringstream out;
+  out << "kikijyeba.runtime.policy_training.execution_profile.v1\n";
+  out << "environment_profile_id="
+      << trim_ascii(defaults.environment_profile_id) << "\n";
+  if (defaults.linear_transaction_cost_rate.has_value()) {
+    out << "linear_transaction_cost_rate=" << std::setprecision(17)
+        << *defaults.linear_transaction_cost_rate << "\n";
+  }
+  if (defaults.max_parallel_jobs.has_value()) {
+    out << "max_parallel_jobs=" << *defaults.max_parallel_jobs << "\n";
+  }
+  if (defaults.initial_equity_numeraire.has_value()) {
+    out << "initial_equity_numeraire=" << std::setprecision(17)
+        << *defaults.initial_equity_numeraire << "\n";
+  }
+  if (defaults.max_node_weight.has_value()) {
+    out << "max_node_weight=" << std::setprecision(17)
+        << *defaults.max_node_weight << "\n";
+  }
+  if (defaults.max_turnover_l1.has_value()) {
+    out << "max_turnover_l1=" << std::setprecision(17)
+        << *defaults.max_turnover_l1 << "\n";
+  }
+  return cuwacunu::hero::marshal::marshal_digest_for_text(
+      "kikijyeba.runtime.policy_training.execution_profile.v1", out.str());
+}
 
 [[nodiscard]] bool configured_environment_rollout_defaults(
     const fs::path &config_path,
@@ -2158,6 +2211,7 @@ struct policy_training_environment_rollout_defaults_t {
   if (selected_profile.empty()) {
     selected_profile = "operator_default";
   }
+  out->environment_profile_id = selected_profile;
   if (!valid_runtime_profile_id(selected_profile)) {
     if (err != nullptr) {
       *err = "E_RUNTIME_POLICY_TRAINING_ENVIRONMENT_DEFAULT_DECODE_FAILED: "
@@ -3059,7 +3113,8 @@ policy_training_accepted_anchor_count_from_kv(
   for (std::size_t i = 0; i < candidates.size(); ++i) {
     if (i < 2) {
       const auto accepted =
-          policy_training_accepted_anchor_count_from_cursor_token(candidates[i]);
+          policy_training_accepted_anchor_count_from_cursor_token(
+              candidates[i]);
       if (accepted.has_value()) {
         return accepted;
       }
@@ -3073,9 +3128,9 @@ policy_training_accepted_anchor_count_from_kv(
   return std::nullopt;
 }
 
-[[nodiscard]] bool policy_training_fraction_less(
-    const source_split::source_fraction_t &lhs,
-    const source_split::source_fraction_t &rhs) {
+[[nodiscard]] bool
+policy_training_fraction_less(const source_split::source_fraction_t &lhs,
+                              const source_split::source_fraction_t &rhs) {
   const auto left = static_cast<__int128>(lhs.numerator) *
                     static_cast<__int128>(rhs.denominator);
   const auto right = static_cast<__int128>(rhs.numerator) *
@@ -3084,8 +3139,8 @@ policy_training_accepted_anchor_count_from_kv(
 }
 
 [[nodiscard]] bool validate_policy_training_fraction(
-    const source_split::source_fraction_t &fraction, std::string_view field_name,
-    std::string *err) {
+    const source_split::source_fraction_t &fraction,
+    std::string_view field_name, std::string *err) {
   if (fraction.numerator < 0 || fraction.denominator <= 0 ||
       fraction.numerator > fraction.denominator) {
     if (err != nullptr) {
@@ -3140,7 +3195,8 @@ policy_training_accepted_anchor_count_from_kv(
   source_split::source_split_t split{};
   split.split_id =
       "policy_training_" + std::string(split_role) + "_fraction_range";
-  split.selector_kind = source_split::source_split_selector_kind_t::fraction_range;
+  split.selector_kind =
+      source_split::source_split_selector_kind_t::fraction_range;
   if (!parse_int64(tokens[0], &split.fraction_range.begin.numerator) ||
       !parse_int64(tokens[1], &split.fraction_range.begin.denominator) ||
       !parse_int64(tokens[2], &split.fraction_range.end.numerator) ||
@@ -3148,7 +3204,8 @@ policy_training_accepted_anchor_count_from_kv(
       !parse_int64(tokens[5], &split.min_count) || split.min_count <= 0 ||
       !validate_policy_training_fraction(split.fraction_range.begin, "begin",
                                          err) ||
-      !validate_policy_training_fraction(split.fraction_range.end, "end", err) ||
+      !validate_policy_training_fraction(split.fraction_range.end, "end",
+                                         err) ||
       !policy_training_fraction_less(split.fraction_range.begin,
                                      split.fraction_range.end)) {
     if (err != nullptr && err->empty()) {
@@ -3208,7 +3265,8 @@ policy_training_accepted_anchor_count_from_kv(
 [[nodiscard]] bool policy_training_ranges_disjoint(
     const policy_training_anchor_range_resolution_t &lhs,
     const policy_training_anchor_range_resolution_t &rhs) {
-  return lhs.bound && rhs.bound && (lhs.end <= rhs.begin || rhs.end <= lhs.begin);
+  return lhs.bound && rhs.bound &&
+         (lhs.end <= rhs.begin || rhs.end <= lhs.begin);
 }
 
 [[nodiscard]] bool policy_training_contract_range_resolution(
@@ -3316,8 +3374,8 @@ policy_training_accepted_anchor_count_from_kv(
          assign_or_confirm_policy_training_anchor_mirror(
              &contract->policy_execution_target_anchor_end_exclusive,
              &contract->policy_execution_target_anchor_end_exclusive_bound,
-             "policy_execution_target_anchor_end_exclusive", validation_range.end,
-             "validation_range_digest", err);
+             "policy_execution_target_anchor_end_exclusive",
+             validation_range.end, "validation_range_digest", err);
 }
 
 [[nodiscard]] bool
@@ -4919,6 +4977,11 @@ assign_or_confirm_policy_training_environment_replay_double_default(
           fs::path(config_path_text), &defaults, err)) {
     return false;
   }
+  if (!assign_or_confirm_policy_training_runtime_default(
+          &contract->execution_profile_digest, "execution_profile_digest",
+          policy_training_execution_profile_digest(defaults), err)) {
+    return false;
+  }
   if (defaults.linear_transaction_cost_rate.has_value() &&
       !assign_or_confirm_policy_training_environment_double_default(
           &contract->linear_transaction_cost_rate,
@@ -6141,6 +6204,7 @@ inline void populate_wave_info_values(
   info->values["AUTHORED_TARGET"] = settings.authored_target;
   info->values["TARGET"] = wave_settings::wave_target_name(settings.target);
   info->values["MODE"] = settings.mode_text;
+  info->values.erase("OBSERVER_SIDECAR");
   info->values["SOURCE_CURSOR_ID"] = settings.source_cursor_id;
   if (!settings.source_split_id.empty()) {
     info->values["SOURCE_SPLIT"] = settings.source_split_id;
@@ -13108,8 +13172,8 @@ policy_training_lattice_identity_from_source_job(
       &range_resolution_error);
   range_resolution_error.clear();
   const bool validation_range_ok = policy_training_contract_range_resolution(
-      contract, contract.validation_range_digest, "validation", &validation_range,
-      &range_resolution_error);
+      contract, contract.validation_range_digest, "validation",
+      &validation_range, &range_resolution_error);
   range_resolution_error.clear();
   const bool test_range_ok = policy_training_contract_range_resolution(
       contract, contract.test_range_digest, "test", &test_range,
@@ -16075,14 +16139,26 @@ struct runtime_handoff_binding_t {
     }
   }
 
+  const std::string actual_source_range = canonical_source_range(
+      wave.values.count("SOURCE_RANGE") != 0 ? wave.values.at("SOURCE_RANGE")
+                                             : std::string{"all"});
+  const bool active_overlay_profile =
+      (actual_source_range == "all" ||
+       actual_source_range == "fraction_range") &&
+      wave.values.count("ANCHOR_INDEX_BEGIN") == 0 &&
+      wave.values.count("ANCHOR_INDEX_END") == 0 &&
+      wave.values.count("SOURCE_KEY_BEGIN") == 0 &&
+      wave.values.count("SOURCE_KEY_END") == 0;
+
   std::string expected_source_range;
   if (extract_json_string_field(expected_raw, "source_range",
                                 &expected_source_range)) {
     expected_source_range = canonical_source_range(expected_source_range);
-    const std::string actual_source_range = canonical_source_range(
-        wave.values.count("SOURCE_RANGE") != 0 ? wave.values.at("SOURCE_RANGE")
-                                               : std::string{"all"});
-    if (expected_source_range != actual_source_range) {
+    const bool concrete_overlay_request =
+        expected_source_range == "anchor_index" ||
+        expected_source_range == "source_key";
+    if (expected_source_range != actual_source_range &&
+        !(active_overlay_profile && concrete_overlay_request)) {
       if (err) {
         *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: source_range differs";
       }
@@ -16114,7 +16190,8 @@ struct runtime_handoff_binding_t {
         wave.values.count("ANCHOR_INDEX_BEGIN") != 0
             ? wave.values.at("ANCHOR_INDEX_BEGIN")
             : std::string{};
-    if (expected_begin != actual_begin) {
+    if (!(active_overlay_profile && expected_source_range == "anchor_index") &&
+        expected_begin != actual_begin) {
       if (err) {
         *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: anchor_index_begin differs";
       }
@@ -16128,7 +16205,8 @@ struct runtime_handoff_binding_t {
     const std::string actual_end = wave.values.count("ANCHOR_INDEX_END") != 0
                                        ? wave.values.at("ANCHOR_INDEX_END")
                                        : std::string{};
-    if (expected_end != actual_end) {
+    if (!(active_overlay_profile && expected_source_range == "anchor_index") &&
+        expected_end != actual_end) {
       if (err) {
         *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: anchor_index_end differs";
       }
@@ -16142,7 +16220,8 @@ struct runtime_handoff_binding_t {
     const std::string actual_begin = wave.values.count("SOURCE_KEY_BEGIN") != 0
                                          ? wave.values.at("SOURCE_KEY_BEGIN")
                                          : std::string{};
-    if (expected_source_key_begin != actual_begin) {
+    if (!(active_overlay_profile && expected_source_range == "source_key") &&
+        expected_source_key_begin != actual_begin) {
       if (err) {
         *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: source_key_begin differs";
       }
@@ -16156,7 +16235,8 @@ struct runtime_handoff_binding_t {
     const std::string actual_end = wave.values.count("SOURCE_KEY_END") != 0
                                        ? wave.values.at("SOURCE_KEY_END")
                                        : std::string{};
-    if (expected_source_key_end != actual_end) {
+    if (!(active_overlay_profile && expected_source_range == "source_key") &&
+        expected_source_key_end != actual_end) {
       if (err) {
         *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: source_key_end differs";
       }
@@ -18114,6 +18194,42 @@ struct policy_training_replay_source_candidate_t {
     return false;
   }
   fields["replay_job_dir"] = replay_job_dir.string();
+  {
+    const auto copy_optional_string = [&](const char *key) {
+      std::string value;
+      if (extract_json_string_field(run_args, key, &value) &&
+          !trim_ascii(value).empty()) {
+        fields[key] = trim_ascii(value);
+      }
+    };
+    for (const char *key :
+         {"policy_execution_no_lookahead_certificate_schema",
+          "policy_execution_no_lookahead_certificate_digest",
+          "policy_execution_evidence_snapshot_digest",
+          "policy_execution_provenance_closure_digest",
+          "policy_execution_no_lookahead_contract_digest",
+          "policy_execution_target_anchor_begin",
+          "policy_execution_target_anchor_end_exclusive",
+          "embargo_policy_fingerprint",
+          "embargo_purged_window_anchor_begin",
+          "embargo_purged_window_anchor_end_exclusive",
+          "embargo_purged_window_anchor_range_bound",
+          "policy_execution_consumed_artifact_digests",
+          "policy_execution_consumed_checkpoint_digests",
+          "policy_execution_consumed_generation_vector_digests",
+          "causal_provenance_schema",
+          "causal_atom_schema",
+          "causal_interval_set_schema",
+          "causal_label_reward_horizon_policy_fingerprint",
+          "causal_fold_policy_fingerprint",
+          "causal_purged_embargo_policy_fingerprint",
+          "causal_artifact_production_schema",
+          "causal_artifact_production_closure_digest",
+          "causal_interface_stability_contract_digest",
+          "causal_provenance_closure_digest"}) {
+      copy_optional_string(key);
+    }
+  }
 
   cuwacunu::hero::runtime::policy_training_job_contract_t contract{};
   if (!policy_training_contract_from_kv(fields, &contract, err)) {

@@ -190,6 +190,50 @@ lattice.source_analytics.fact
 lattice.checkpoint.fact     # when a checkpoint exists
 ```
 
+When the active config explicitly declares `runtime_probes_dsl_path` and that
+catalog enables the `job_events` probe, or a direct runner caller
+enables probe records, Runtime can append `runtime.job_events.probe` in the
+same job directory. Configs without `runtime_probes_dsl_path` do not inherit
+the canonical probe catalog. Attachment requires the selected wave `MODE` to
+include `debug`; non-debug waves fail closed before a job directory is written.
+The stream uses
+`kikijyeba.runtime.job_events.probe_record.v1` assignment blocks for lifecycle
+events, first-phase delegate progress, scalar counters/losses, report metrics
+when available, and publication milestones for Runtime, Lattice, replay, report,
+and checkpoint artifacts. It is visibility only: every event records
+`authority=visibility_only`,
+`proof_authority=false`, `dispatch_authority=false`, and `lattice_fact=false`.
+Probe records make jobs easier to tail and chart, but they do not replace
+reports, checkpoints, Runtime terminal facts, Marshal handoffs, or Lattice
+proofs.
+
+For synthetic learning diagnostics, Runtime also emits classified probe records
+from job-state progress counters and component reports. Graph-first
+representation and MDN launchers push report snapshots at their configured
+`REPORT_EVERY` cadence into the same append-only `job_events` probe stream, so
+loss and forecast/oracle metrics can be plotted across `step` without scraping an
+overwritten report file. These records keep the single `job_events` probe stream
+but use plot-friendly `event_kind` values such as
+`representation.training.metric`, `representation.augmentation.metric`,
+`forecast.training.metric`, `forecast.oracle.metric`,
+`policy.training.metric`, and `policy.oracle.metric` when the relevant report
+keys are present. Each classified metric carries
+`metric_source=learning_diagnostics`, a stable `series_id`, `component_id`,
+`split_role` when known, `step`, and accepted-anchor bounds. In v1, policy/PPO
+learning diagnostics are still report-derived when those policy report keys are
+present; dense policy loop streaming is a separate follow-up.
+
+When probe artifact emission is enabled for a graph-first MDN job, Runtime also
+writes job-local edge feature probe artifacts. `representation_edge_features.probe`
+contains edge-level rows built from the frozen representation vectors actually
+supplied to the MDN, plus the projected close edge-return target.
+`mdn_edge_context_features.probe` is emitted for non-training MDN debug runs and
+contains the post-backbone/channel-adapter base, quote, and base-minus-quote
+context features used by the direct edge-return readout. These artifacts are for
+benchmark diagnostics such as `synthetic_direct_edge_return_supervised_probe.v1`
+and `synthetic_signal_path_isolation.v1`; they are not Lattice facts or proof
+inputs.
+
 These facts normalize the end-of-job result, checkpoint I/O, and model-health
 measurements from `job.manifest`, `job.state`, and the component report. They
 are Runtime evidence, not Lattice proof authority; Lattice still proves by
@@ -289,7 +333,12 @@ artifacts under the Runtime root; the same `hero.runtime.run` surface with
 `contract_path` and optional `contract_digest` runs a materialized proof
 contract. A Marshal handoff may also carry `policy_training_execution_lock`,
 which Runtime expands to the same internal contract path/digest before
-execution. The selected policy-training `WAVE_SETTINGS` block
+execution. Marshal handoffs may also carry
+`policy_execution_input_lock_fields`; Runtime imports those fields into the
+contract parser and still refuses replay-backed PPO execution unless the
+no-lookahead certificate digest, evidence snapshot, provenance closure, target
+range, contract digest, and replay identity are complete and consistent. The
+selected policy-training `WAVE_SETTINGS` block
 may bind `POLICY_ID`, `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and
 `LIVE_EXECUTION_ALLOWED`; if the active config wave is not policy training,
 Runtime uses the unique policy-training block in the same catalog and rejects an

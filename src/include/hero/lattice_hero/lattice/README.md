@@ -1294,6 +1294,34 @@ evidence_catalog_artifact`, `dispatchable_target = false`,
 `target_kind_effective = none`, so the internal default enum cannot masquerade
 as a declared `TARGET_KIND`.
 
+The synthetic continuous-chart benchmark uses one narrow diagnostic target
+class, `TARGET_CLASS = synthetic_forecast_oracle_gate`. It is also
+non-dispatchable and kindless. It must bind `SUBJECT_FACT_FAMILY =
+forecast_eval` with `PROOF_KIND =
+synthetic_forecast_oracle_accuracy_bound`, first proving the clean
+forecast-eval artifact path and then checking finite benchmark oracle metrics
+against feature-aware thresholds: `MAX_ORACLE_PRICE_EV_MAE`,
+`MAX_ORACLE_PRICE_EV_RMSE`, `MAX_ORACLE_ACTIVITY_EV_MAE`,
+`MAX_ORACLE_ACTIVITY_EV_RMSE`, and
+`MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY`. Missing feature-aware oracle metrics
+produce `missing_report` / inconclusive rather than success; finite metrics
+produce a normal benchmark pass/fail decision. The legacy aggregate oracle
+fields remain parseable for compatibility, but the synthetic benchmark decision
+is based on price/activity magnitude and close-return direction rather than one
+aggregate directional score. This is a benchmark diagnostic gate, not a general
+policy gate or deployment-readiness decision.
+
+The benchmark also defines
+`TARGET_CLASS = synthetic_edge_return_projection_oracle_gate` for the
+tradable-edge projection diagnostic. It remains non-dispatchable and kindless,
+uses `SUBJECT_FACT_FAMILY = forecast_eval`, and requires
+`PROOF_KIND = synthetic_edge_return_projection_oracle_bound`. After the clean
+forecast-eval artifact and no-lookahead checks pass, it evaluates base-minus-
+quote close-return projection metrics: edge MAE/RMSE, directional accuracy,
+pairwise rank accuracy, best-asset agreement, and correlation. Missing
+edge-projection fields produce `missing_report` / inconclusive rather than
+success.
+
 Decision policies remain separate. `TARGET_CLASS = policy_gate`,
 `TARGET_CLASS = performance_acceptance`, `TARGET_CLASS =
 validation_performance`, `TARGET_CLASS = market_readiness`, and

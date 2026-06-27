@@ -8727,6 +8727,10 @@ load_marshal_policy(const std::filesystem::path &policy_path,
         std::map<std::string, std::string> environment_args;
         environment_args["mode"] =
             request.requested_mode == "execute" ? "\"replay\"" : "\"validate\"";
+        environment_args["config_path"] =
+            detail::json_quote(request.config_path.string());
+        environment_args["accounting_numeraire_node_id"] =
+            detail::json_quote(request.accounting_numeraire_node_id);
         environment_args["runtime_job_dir"] =
             detail::json_quote(request.runtime_job_dir.string());
         environment_args["rollout_id"] = detail::json_quote(request.rollout_id);
@@ -8757,12 +8761,15 @@ load_marshal_policy(const std::filesystem::path &policy_path,
             environment_result_json);
         const std::string environment_structured =
             tool_detail::structured_content_json(environment_result_json);
-        environment_rollout_ok =
+        const bool environment_tool_structured_ok =
             environment_tool_call_ok && !environment_tool_result_error &&
             environment_structured.find("\"ok\":true") != std::string::npos;
-        if (environment_rollout_ok) {
+        std::string environment_dispatch_state{};
+        if (environment_tool_structured_ok) {
           const auto environment_fields =
               tool_detail::object_fields(environment_structured);
+          environment_dispatch_state = tool_detail::optional_string(
+              environment_fields, "dispatch_state");
           if (const auto replay_raw = tool_detail::optional_raw(
                   environment_fields, "runtime_replay")) {
             runtime_replay_json = *replay_raw;
@@ -8790,6 +8797,9 @@ load_marshal_policy(const std::filesystem::path &policy_path,
                 replay_fields, "executor_result_json");
           }
         }
+        environment_rollout_ok = environment_tool_structured_ok &&
+                                 (request.requested_mode != "execute" ||
+                                  environment_dispatch_state == "replayed");
       }
       const std::string dispatch_state =
           !plan.accepted
@@ -8877,8 +8887,7 @@ load_marshal_policy(const std::filesystem::path &policy_path,
       structured << "}";
     } else if (prepare_route.has_value()) {
       tool_detail::validate_fields(
-          args,
-          {"target_id", "mode", "profile", "include_machine_payload"},
+          args, {"target_id", "mode", "profile", "include_machine_payload"},
           {"target_id", "mode"}, tool_name);
       if (tool_detail::optional_string(args, "target_id").empty()) {
         throw std::runtime_error(tool_name + " requires target_id");

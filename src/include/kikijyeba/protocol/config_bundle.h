@@ -475,6 +475,31 @@ inline void append_training_contract_fields(
   out << prefix << "_max_steps=" << training.max_steps << "\n";
   out << prefix << "_batch_size=" << training.batch_size << "\n";
   out << prefix << "_grad_clip_norm=" << training.grad_clip_norm << "\n";
+  if (training.task == cuwacunu::jkimyei::training::training_task_t::
+                           mdn_expected_value_inference) {
+    out << prefix << "_mdn_edge_return_auxiliary_loss_weight="
+        << training.mdn_edge_return_auxiliary_loss_weight << "\n";
+    out << prefix << "_mdn_edge_return_auxiliary_direction_weight="
+        << training.mdn_edge_return_auxiliary_direction_weight << "\n";
+    out << prefix << "_mdn_edge_return_auxiliary_rank_weight="
+        << training.mdn_edge_return_auxiliary_rank_weight << "\n";
+    out << prefix << "_mdn_edge_return_auxiliary_huber_beta="
+        << training.mdn_edge_return_auxiliary_huber_beta << "\n";
+    out << prefix << "_mdn_edge_return_auxiliary_logit_scale="
+        << training.mdn_edge_return_auxiliary_logit_scale << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_enabled="
+        << training.mdn_direct_edge_return_readout_enabled << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_loss_weight="
+        << training.mdn_direct_edge_return_readout_loss_weight << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_direction_weight="
+        << training.mdn_direct_edge_return_readout_direction_weight << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_rank_weight="
+        << training.mdn_direct_edge_return_readout_rank_weight << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_huber_beta="
+        << training.mdn_direct_edge_return_readout_huber_beta << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_logit_scale="
+        << training.mdn_direct_edge_return_readout_logit_scale << "\n";
+  }
   out << prefix << "_checkpoint_every=" << training.checkpoint_every << "\n";
   out << prefix << "_report_every=" << training.report_every << "\n";
   out << prefix << "_validation_every=" << training.validation_every << "\n";
@@ -498,6 +523,157 @@ inline void append_training_contract_fields(
   out << prefix
       << "_artifact_provenance_policy=" << training.artifact_provenance_policy
       << "\n";
+  if (training.mtf_jepa_mae_vicreg.configured) {
+    const auto &mtf = training.mtf_jepa_mae_vicreg;
+    out << prefix << "_mtf_augmentation_profile=" << mtf.augmentation_profile
+        << "\n";
+    out << prefix << "_mtf_dropout=" << mtf.dropout << "\n";
+    out << prefix << "_mtf_mask_ratio_time=" << mtf.mask_ratio_time << "\n";
+    out << prefix << "_mtf_mask_ratio_frequency=" << mtf.mask_ratio_frequency
+        << "\n";
+    out << prefix << "_mtf_mask_ratio_channel=" << mtf.mask_ratio_channel
+        << "\n";
+    out << prefix << "_mtf_min_context_ratio=" << mtf.min_context_ratio << "\n";
+    out << prefix << "_mtf_lambda_jepa=" << mtf.lambda_jepa << "\n";
+    out << prefix << "_mtf_lambda_mae=" << mtf.lambda_mae << "\n";
+    out << prefix << "_mtf_lambda_tf_align=" << mtf.lambda_tf_align << "\n";
+    out << prefix << "_mtf_lambda_vicreg=" << mtf.lambda_vicreg << "\n";
+    out << prefix << "_mtf_lambda_global_vicreg=" << mtf.lambda_global_vicreg
+        << "\n";
+    out << prefix << "_mtf_lambda_channel_vicreg=" << mtf.lambda_channel_vicreg
+        << "\n";
+    out << prefix << "_mtf_vicreg_sim_weight=" << mtf.vicreg_sim_weight << "\n";
+    out << prefix << "_mtf_vicreg_var_weight=" << mtf.vicreg_var_weight << "\n";
+    out << prefix << "_mtf_vicreg_cov_weight=" << mtf.vicreg_cov_weight << "\n";
+    out << prefix << "_mtf_vicreg_variance_floor=" << mtf.vicreg_variance_floor
+        << "\n";
+    out << prefix
+        << "_mtf_vicreg_variance_epsilon=" << mtf.vicreg_variance_epsilon
+        << "\n";
+    out << prefix << "_mtf_target_ema_tau=" << mtf.target_ema_tau << "\n";
+    out << prefix << "_mtf_use_target_ema=" << mtf.use_target_ema << "\n";
+    out << prefix << "_mtf_stop_gradient_target=" << mtf.stop_gradient_target
+        << "\n";
+    out << prefix << "_mtf_return_diagnostics=" << mtf.return_diagnostics
+        << "\n";
+    out << prefix << "_mtf_use_mae_decoder=" << mtf.use_mae_decoder << "\n";
+    out << prefix << "_mtf_use_jepa_loss=" << mtf.use_jepa_loss << "\n";
+    out << prefix << "_mtf_use_tf_align_loss=" << mtf.use_tf_align_loss << "\n";
+    out << prefix << "_mtf_use_vicreg_loss=" << mtf.use_vicreg_loss << "\n";
+    out << prefix << "_mtf_use_global_vicreg=" << mtf.use_global_vicreg << "\n";
+    out << prefix << "_mtf_use_channel_vicreg=" << mtf.use_channel_vicreg
+        << "\n";
+    out << prefix << "_mtf_use_raw_reconstruction_targets="
+        << mtf.use_raw_reconstruction_targets << "\n";
+    out << prefix << "_mtf_strict_finite_loss=" << mtf.strict_finite_loss
+        << "\n";
+    out << prefix << "_mtf_couple_time_frequency_masks="
+        << mtf.couple_time_frequency_masks << "\n";
+    out << prefix << "_mtf_mask_same_window_across_domains="
+        << mtf.mask_same_window_across_domains << "\n";
+    out << prefix
+        << "_mtf_mask_same_channel_block=" << mtf.mask_same_channel_block
+        << "\n";
+    out << prefix << "_mtf_max_context_target_time_overlap="
+        << mtf.max_context_target_time_overlap << "\n";
+    out << prefix << "_mtf_gaussian_jitter_std=" << mtf.gaussian_jitter_std
+        << "\n";
+    out << prefix << "_mtf_feature_dropout_prob=" << mtf.feature_dropout_prob
+        << "\n";
+    out << prefix << "_mtf_history_dropout_prob=" << mtf.history_dropout_prob
+        << "\n";
+    out << prefix << "_mtf_time_crop_jitter_max=" << mtf.time_crop_jitter_max
+        << "\n";
+    out << prefix << "_mtf_time_dilation_min=" << mtf.time_dilation_min << "\n";
+    out << prefix << "_mtf_time_dilation_max=" << mtf.time_dilation_max << "\n";
+    out << prefix << "_mtf_time_warp_max=" << mtf.time_warp_max << "\n";
+    out << prefix << "_mtf_amplitude_scale_min=" << mtf.amplitude_scale_min
+        << "\n";
+    out << prefix << "_mtf_amplitude_scale_max=" << mtf.amplitude_scale_max
+        << "\n";
+    out << prefix << "_mtf_amplitude_shift_std=" << mtf.amplitude_shift_std
+        << "\n";
+    out << prefix << "_mtf_frequency_mask_ratio=" << mtf.frequency_mask_ratio
+        << "\n";
+    out << prefix << "_mtf_frequency_jitter_std=" << mtf.frequency_jitter_std
+        << "\n";
+    out << prefix << "_mtf_phase_jitter_max=" << mtf.phase_jitter_max << "\n";
+    out << prefix << "_mtf_channel_dropout_prob=" << mtf.channel_dropout_prob
+        << "\n";
+    out << prefix
+        << "_mtf_cross_channel_dropout_prob=" << mtf.cross_channel_dropout_prob
+        << "\n";
+    out << prefix << "_mtf_node_dropout_prob=" << mtf.node_dropout_prob << "\n";
+    out << prefix << "_mtf_edge_dropout_prob=" << mtf.edge_dropout_prob << "\n";
+    out << prefix << "_mtf_magnitude_normalization_noise_std="
+        << mtf.magnitude_normalization_noise_std << "\n";
+  }
+}
+
+inline void apply_mtf_jepa_mae_vicreg_training_options(
+    const cuwacunu::jkimyei::training::training_run_spec_t &training,
+    cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
+        mtf_jepa_mae_vicreg_config_t &config) {
+  if (!training.mtf_jepa_mae_vicreg.configured) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] MTF-JEPA-MAE-VICReg .jkimyei training "
+        "options are required");
+  }
+  const auto &mtf = training.mtf_jepa_mae_vicreg;
+  config.augmentation_profile = mtf.augmentation_profile;
+  config.dropout = mtf.dropout;
+  config.mask_ratio_time = mtf.mask_ratio_time;
+  config.mask_ratio_frequency = mtf.mask_ratio_frequency;
+  config.mask_ratio_channel = mtf.mask_ratio_channel;
+  config.min_context_ratio = mtf.min_context_ratio;
+  config.lambda_jepa = mtf.lambda_jepa;
+  config.lambda_mae = mtf.lambda_mae;
+  config.lambda_tf_align = mtf.lambda_tf_align;
+  config.lambda_vicreg = mtf.lambda_vicreg;
+  config.lambda_global_vicreg = mtf.lambda_global_vicreg;
+  config.lambda_channel_vicreg = mtf.lambda_channel_vicreg;
+  config.vicreg_sim_weight = mtf.vicreg_sim_weight;
+  config.vicreg_var_weight = mtf.vicreg_var_weight;
+  config.vicreg_cov_weight = mtf.vicreg_cov_weight;
+  config.vicreg_variance_floor = mtf.vicreg_variance_floor;
+  config.vicreg_variance_epsilon = mtf.vicreg_variance_epsilon;
+  config.target_ema_tau = mtf.target_ema_tau;
+  config.use_target_ema = mtf.use_target_ema;
+  config.stop_gradient_target = mtf.stop_gradient_target;
+  config.return_diagnostics = mtf.return_diagnostics;
+  config.use_mae_decoder = mtf.use_mae_decoder;
+  config.use_jepa_loss = mtf.use_jepa_loss;
+  config.use_tf_align_loss = mtf.use_tf_align_loss;
+  config.use_vicreg_loss = mtf.use_vicreg_loss;
+  config.use_global_vicreg = mtf.use_global_vicreg;
+  config.use_channel_vicreg = mtf.use_channel_vicreg;
+  config.use_raw_reconstruction_targets = mtf.use_raw_reconstruction_targets;
+  config.strict_finite_loss = mtf.strict_finite_loss;
+  config.couple_time_frequency_masks = mtf.couple_time_frequency_masks;
+  config.mask_same_window_across_domains = mtf.mask_same_window_across_domains;
+  config.mask_same_channel_block = mtf.mask_same_channel_block;
+  config.max_context_target_time_overlap = mtf.max_context_target_time_overlap;
+  config.gaussian_jitter_std = mtf.gaussian_jitter_std;
+  config.feature_dropout_prob = mtf.feature_dropout_prob;
+  config.history_dropout_prob = mtf.history_dropout_prob;
+  config.time_crop_jitter_max = mtf.time_crop_jitter_max;
+  config.time_dilation_min = mtf.time_dilation_min;
+  config.time_dilation_max = mtf.time_dilation_max;
+  config.time_warp_max = mtf.time_warp_max;
+  config.amplitude_scale_min = mtf.amplitude_scale_min;
+  config.amplitude_scale_max = mtf.amplitude_scale_max;
+  config.amplitude_shift_std = mtf.amplitude_shift_std;
+  config.frequency_mask_ratio = mtf.frequency_mask_ratio;
+  config.frequency_jitter_std = mtf.frequency_jitter_std;
+  config.phase_jitter_max = mtf.phase_jitter_max;
+  config.channel_dropout_prob = mtf.channel_dropout_prob;
+  config.cross_channel_dropout_prob = mtf.cross_channel_dropout_prob;
+  config.node_dropout_prob = mtf.node_dropout_prob;
+  config.edge_dropout_prob = mtf.edge_dropout_prob;
+  config.magnitude_normalization_noise_std =
+      mtf.magnitude_normalization_noise_std;
+  cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::detail::
+      validate_config(config);
 }
 
 [[nodiscard]] inline cuwacunu::jkimyei::training::training_contract_defaults_t
@@ -2039,6 +2215,8 @@ load_channel_graph_first_protocol_contract_from_config(
           config_bundle_detail::training_contract_defaults_for_component(
               out.protocol_variant,
               out.mtf_jepa_mae_vicreg.component_assembly_id));
+  config_bundle_detail::apply_mtf_jepa_mae_vicreg_training_options(
+      out.mtf_jepa_mae_vicreg_training, out.mtf_jepa_mae_vicreg.config);
   out.channel_mdn_training =
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(

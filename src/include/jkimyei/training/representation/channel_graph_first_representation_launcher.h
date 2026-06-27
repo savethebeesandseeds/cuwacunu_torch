@@ -6,21 +6,23 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include <torch/torch.h>
 
 #include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
+#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
-#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/representation/encoding/vicreg/channel_node_stream_adapter.h"
@@ -35,6 +37,7 @@ struct channel_graph_first_representation_launcher_options_t {
   bool train_target{true};
   bool write_report{false};
   std::filesystem::path report_path{};
+  std::function<void(std::string_view)> learning_probe_report_sink{};
   cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
       runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
                               runtime_report_mode_t::normal};
@@ -407,8 +410,7 @@ inline double scalar_or_nan(const torch::Tensor &tensor) {
 }
 
 inline void append_finite_double(
-    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t
-        &document,
+    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t &document,
     std::string key, double value, std::string domain = "(-inf,+inf)") {
   if (std::isfinite(value)) {
     document.entries.push_back(
@@ -464,8 +466,7 @@ inline std::string join_double_list(const std::vector<double> &values) {
 }
 
 inline void append_string_list_entry(
-    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t
-        &document,
+    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t &document,
     const std::string &key, const std::string &value) {
   namespace lls = cuwacunu::hero::lattice::runtime_report;
   if (!value.empty()) {
@@ -1301,21 +1302,25 @@ public:
     };
 
     auto write_report = [&]() {
-      if (!options_.write_report) {
-        return;
-      }
       refresh_running_report();
-      report.report_written = true;
-      ++report.report_write_count;
       report.last_report_attempted_step = report.steps_attempted;
-      report.report_path = options_.report_path.string();
-      channel_graph_first_representation_launcher_detail::write_report_file(
-          options_.report_path, report);
-      if (report.runtime_lls_emitted) {
+      if (!options_.report_path.empty()) {
+        report.report_path = options_.report_path.string();
+      }
+      if (options_.write_report) {
+        report.report_written = true;
+        ++report.report_write_count;
+        channel_graph_first_representation_launcher_detail::write_report_file(
+            options_.report_path, report);
+      }
+      if (options_.write_report && report.runtime_lls_emitted) {
         channel_graph_first_representation_launcher_detail::
             write_runtime_lls_sidecars(
                 options_.report_path, report.nodelift_runtime_lls,
                 report.representation_training_runtime_lls);
+      }
+      if (options_.learning_probe_report_sink) {
+        options_.learning_probe_report_sink(report.to_text());
       }
     };
 

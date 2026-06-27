@@ -103,6 +103,32 @@ struct lattice_target_spec_t {
   double min_observed_input_coverage{0.0};
   double min_target_supervision_coverage{0.0};
   double min_evaluation_metric_coverage{0.0};
+  double synthetic_oracle_max_ev_mae{std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_max_ev_rmse{std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_min_directional_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_max_price_ev_mae{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_max_price_ev_rmse{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_max_activity_ev_mae{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_max_activity_ev_rmse{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_min_close_directional_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_max_edge_return_ev_mae{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_max_edge_return_ev_rmse{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_min_edge_return_directional_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_min_edge_return_pairwise_rank_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_min_edge_return_best_asset_agreement{
+      std::numeric_limits<double>::quiet_NaN()};
+  double synthetic_oracle_min_edge_return_correlation{
+      std::numeric_limits<double>::quiet_NaN()};
   std::string forbid_split{};
   std::optional<std::size_t> forbid_exposure_anchor_index_begin{std::nullopt};
   std::optional<std::size_t> forbid_exposure_anchor_index_end{std::nullopt};
@@ -5030,6 +5056,65 @@ lattice_target_numeric_dimension_vocabulary() {
       {"LATTICE_TARGET", "MIN_EVALUATION_METRIC_COVERAGE", "coverage_fraction",
        "closed_unit_interval", true, 0.0, true, 1.0, false, "minimum",
        "evaluation-metric coverage is a non-mutating cursor-coverage fraction"},
+      {"LATTICE_TARGET", "MAX_ORACLE_EV_MAE", "forecast_error",
+       "non_negative_real", true, 0.0, false, 0.0, false, "maximum",
+       "synthetic forecast oracle MAE thresholds are non-negative finite "
+       "errors"},
+      {"LATTICE_TARGET", "MAX_ORACLE_EV_RMSE", "forecast_error",
+       "non_negative_real", true, 0.0, false, 0.0, false, "maximum",
+       "synthetic forecast oracle RMSE thresholds are non-negative finite "
+       "errors"},
+      {"LATTICE_TARGET", "MIN_ORACLE_DIRECTIONAL_ACCURACY", "fraction",
+       "closed_unit_interval", true, 0.0, true, 1.0, false, "minimum",
+       "synthetic forecast oracle directional accuracy thresholds are "
+       "fractions in [0,1]"},
+      {"LATTICE_TARGET", "MAX_ORACLE_PRICE_EV_MAE", "forecast_error",
+       "non_negative_real", true, 0.0, false, 0.0, false, "maximum",
+       "synthetic forecast oracle price-feature MAE thresholds are "
+       "non-negative finite errors"},
+      {"LATTICE_TARGET", "MAX_ORACLE_PRICE_EV_RMSE", "forecast_error",
+       "non_negative_real", true, 0.0, false, 0.0, false, "maximum",
+       "synthetic forecast oracle price-feature RMSE thresholds are "
+       "non-negative finite errors"},
+      {"LATTICE_TARGET", "MAX_ORACLE_ACTIVITY_EV_MAE", "forecast_error",
+       "non_negative_real", true, 0.0, false, 0.0, false, "maximum",
+       "synthetic forecast oracle activity-feature MAE thresholds are "
+       "non-negative finite errors"},
+      {"LATTICE_TARGET", "MAX_ORACLE_ACTIVITY_EV_RMSE", "forecast_error",
+       "non_negative_real", true, 0.0, false, 0.0, false, "maximum",
+       "synthetic forecast oracle activity-feature RMSE thresholds are "
+       "non-negative finite errors"},
+      {"LATTICE_TARGET", "MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY", "fraction",
+       "closed_unit_interval", true, 0.0, true, 1.0, false, "minimum",
+       "synthetic forecast oracle close-return directional accuracy thresholds "
+       "are fractions in [0,1]"},
+      {"LATTICE_TARGET", "MAX_ORACLE_EDGE_RETURN_EV_MAE", "forecast_error",
+       "non_negative_real", true, 0.0, false, 0.0, false, "maximum",
+       "synthetic edge-return projection oracle MAE thresholds are "
+       "non-negative finite errors"},
+      {"LATTICE_TARGET", "MAX_ORACLE_EDGE_RETURN_EV_RMSE", "forecast_error",
+       "non_negative_real", true, 0.0, false, 0.0, false, "maximum",
+       "synthetic edge-return projection oracle RMSE thresholds are "
+       "non-negative finite errors"},
+      {"LATTICE_TARGET", "MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY",
+       "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "minimum",
+       "synthetic edge-return projection directional accuracy thresholds are "
+       "fractions in [0,1]"},
+      {"LATTICE_TARGET", "MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY",
+       "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "minimum",
+       "synthetic edge-return projection pairwise rank thresholds are "
+       "fractions in [0,1]"},
+      {"LATTICE_TARGET", "MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT",
+       "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "minimum",
+       "synthetic edge-return projection best-asset thresholds are fractions "
+       "in [0,1]"},
+      {"LATTICE_TARGET", "MIN_ORACLE_EDGE_RETURN_CORRELATION", "correlation",
+       "closed_unit_interval", true, -1.0, true, 1.0, false, "minimum",
+       "synthetic edge-return projection correlation thresholds are finite "
+       "correlations in [-1,1]"},
       {"LATTICE_TARGET", "MAX_WAVES", "count", "non_negative_integer", true,
        0.0, false, 0.0, true, "planning_budget",
        "planning budgets are non-negative integral counts and do not execute"},
@@ -5223,6 +5308,7 @@ struct lattice_target_numeric_dimension_summary_t {
   std::int64_t integral_count{0};
   std::int64_t bounded_unit_interval_count{0};
   std::int64_t minimum_direction_count{0};
+  std::int64_t maximum_direction_count{0};
   std::int64_t above_direction_count{0};
   std::int64_t below_direction_count{0};
   std::int64_t metric_declared_direction_count{0};
@@ -5327,6 +5413,9 @@ lattice_target_numeric_dimension_summary() {
 
     if (entry.threshold_direction == "minimum") {
       ++out.minimum_direction_count;
+      ++known_threshold_direction_count;
+    } else if (entry.threshold_direction == "maximum") {
+      ++out.maximum_direction_count;
       ++known_threshold_direction_count;
     } else if (entry.threshold_direction == "above") {
       ++out.above_direction_count;
@@ -5445,17 +5534,17 @@ lattice_target_numeric_dimension_summary() {
       coverage->unit != repeated_load->unit &&
       coverage->numeric_kind != repeated_load->numeric_kind;
 
-  if (out.dimension_count != 37) {
+  if (out.dimension_count != 55) {
     out.summary_issues.push_back(
-        "target numeric dimension vocabulary must contain 37 V1 rows");
+        "target numeric dimension vocabulary must contain 55 V1 rows");
   }
-  if (out.unit_count != 9) {
+  if (out.unit_count != 11) {
     out.summary_issues.push_back(
-        "target numeric dimension vocabulary must expose 9 unit families");
+        "target numeric dimension vocabulary must expose 11 unit families");
   }
-  if (out.numeric_kind_count != 4) {
+  if (out.numeric_kind_count != 5) {
     out.summary_issues.push_back(
-        "target numeric dimension vocabulary must expose 4 numeric kinds");
+        "target numeric dimension vocabulary must expose 5 numeric kinds");
   }
   if (!out.all_dimensions_have_units) {
     out.summary_issues.push_back("every numeric dimension must declare a unit");
@@ -5484,9 +5573,9 @@ lattice_target_numeric_dimension_summary() {
     out.summary_issues.push_back(
         "numeric dimension threshold directions must be known");
   }
-  if (out.minimum_direction_count != 10 || out.above_direction_count != 9 ||
-      out.below_direction_count != 4 ||
-      out.metric_declared_direction_count != 13 ||
+  if (out.minimum_direction_count != 12 || out.maximum_direction_count != 6 ||
+      out.above_direction_count != 9 || out.below_direction_count != 4 ||
+      out.metric_declared_direction_count != 23 ||
       out.planning_budget_direction_count != 1) {
     out.summary_issues.push_back(
         "numeric dimension threshold-direction counts must match lattice "
@@ -9158,7 +9247,10 @@ inline void validate_lattice_target_class(const std::string &target_class,
                                           const std::string &target_id) {
   if (target_class.empty() || target_class == "readiness" ||
       target_class == "evaluation_readiness" ||
-      target_class == "leakage_guard" || target_class == "artifact_readiness") {
+      target_class == "leakage_guard" || target_class == "artifact_readiness" ||
+      target_class == "policy_execution_input_handoff" ||
+      target_class == "synthetic_forecast_oracle_gate" ||
+      target_class == "synthetic_edge_return_projection_oracle_gate") {
     return;
   }
   if (target_class == "policy_gate" ||
@@ -9193,17 +9285,48 @@ is_artifact_readiness_target_class(const std::string &target_class) {
   return kv::lowercase(kv::trim(target_class)) == "artifact_readiness";
 }
 
+[[nodiscard]] inline bool is_policy_execution_input_handoff_target_class(
+    const std::string &target_class) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  return kv::lowercase(kv::trim(target_class)) ==
+         "policy_execution_input_handoff";
+}
+
+[[nodiscard]] inline bool is_synthetic_forecast_oracle_gate_target_class(
+    const std::string &target_class) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  return kv::lowercase(kv::trim(target_class)) ==
+         "synthetic_forecast_oracle_gate";
+}
+
+[[nodiscard]] inline bool
+is_synthetic_edge_return_projection_oracle_gate_target_class(
+    const std::string &target_class) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  return kv::lowercase(kv::trim(target_class)) ==
+         "synthetic_edge_return_projection_oracle_gate";
+}
+
+[[nodiscard]] inline bool
+is_kindless_lattice_target_class(const std::string &target_class) {
+  return is_artifact_readiness_target_class(target_class) ||
+         is_policy_execution_input_handoff_target_class(target_class) ||
+         is_synthetic_forecast_oracle_gate_target_class(target_class) ||
+         is_synthetic_edge_return_projection_oracle_gate_target_class(
+             target_class);
+}
+
 [[nodiscard]] inline bool
 lattice_target_kind_applicable(const lattice_target_spec_t &spec) {
   return spec.target_kind_applicable &&
-         !is_artifact_readiness_target_class(spec.target_class) &&
+         !is_kindless_lattice_target_class(spec.target_class) &&
          spec.kind != lattice_target_kind_t::not_applicable;
 }
 
 [[nodiscard]] inline bool
 lattice_target_kind_applicable(const lattice_target_evaluation_t &evaluation) {
   return evaluation.target_kind_applicable &&
-         !is_artifact_readiness_target_class(evaluation.target_class) &&
+         !is_kindless_lattice_target_class(evaluation.target_class) &&
          evaluation.kind != lattice_target_kind_t::not_applicable;
 }
 
@@ -9269,6 +9392,11 @@ lattice_artifact_readiness_proof_templates() {
            "bounded reset/step evidence, time-law cleanliness, projection "
            "coverage, Cajtucu execution traces, execution profile binding, and "
            "policy-set binding"},
+          {"replay_environment", "policy_execution_input_handoff_bound",
+           "policy execution handoff replay-source identity, inherited "
+           "no-lookahead provenance, replay job-dir digest, parent forecast/"
+           "observer/allocation closure, checkpoint and generation-vector "
+           "binding, and non-dispatch/non-readiness authority denials"},
           {"policy_training", "policy_training_artifact_bound",
            "policy training artifact identity, checkpoint lineage, train/"
            "validation/test range separation, training-only normalization and "
@@ -9311,15 +9439,34 @@ artifact_readiness_proof_template_for_subject_fact_family(
   return nullptr;
 }
 
+[[nodiscard]] inline const lattice_artifact_readiness_proof_template_t *
+artifact_readiness_proof_template_for_subject_fact_family_and_kind(
+    const std::string &fact_family, const std::string &proof_kind) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto normalized_family = kv::lowercase(kv::trim(fact_family));
+  const auto normalized_proof = kv::lowercase(kv::trim(proof_kind));
+  for (const auto &proof_template :
+       lattice_artifact_readiness_proof_templates()) {
+    if (proof_template.subject_fact_family == normalized_family &&
+        proof_template.proof_kind == normalized_proof) {
+      return &proof_template;
+    }
+  }
+  return nullptr;
+}
+
 inline void validate_artifact_readiness_proof_template(
     const std::string &subject_fact_family, const std::string &proof_kind,
     const std::string &target_id) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   const auto family = kv::lowercase(kv::trim(subject_fact_family));
   const auto proof = kv::lowercase(kv::trim(proof_kind));
-  const auto *proof_template =
+  const auto *default_proof_template =
       artifact_readiness_proof_template_for_subject_fact_family(family);
-  if (proof_template == nullptr) {
+  const auto *proof_template =
+      artifact_readiness_proof_template_for_subject_fact_family_and_kind(family,
+                                                                         proof);
+  if (default_proof_template == nullptr) {
     throw std::runtime_error(
         "[lattice_target] TARGET_CLASS=artifact_readiness SUBJECT_FACT_FAMILY "
         "" +
@@ -9327,11 +9474,12 @@ inline void validate_artifact_readiness_proof_template(
         "; add a first-class proof template before promoting fact-family "
         "evidence to target proof");
   }
-  if (proof != proof_template->proof_kind) {
+  if (proof_template == nullptr) {
     throw std::runtime_error(
         "[lattice_target] TARGET_CLASS=artifact_readiness PROOF_KIND " + proof +
         " does not match SUBJECT_FACT_FAMILY " + family + " for " + target_id +
-        "; expected " + proof_template->proof_kind);
+        "; expected " + default_proof_template->proof_kind +
+        " or another first-class proof template for that fact family");
   }
 }
 
@@ -10117,14 +10265,31 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   validate_lattice_target_class(out.target_class, out.target_id);
   const bool artifact_readiness =
       is_artifact_readiness_target_class(out.target_class);
-  if (artifact_readiness) {
+  const bool policy_execution_input_handoff =
+      is_policy_execution_input_handoff_target_class(out.target_class);
+  const bool synthetic_forecast_oracle_gate =
+      is_synthetic_forecast_oracle_gate_target_class(out.target_class);
+  const bool synthetic_edge_return_projection_oracle_gate =
+      is_synthetic_edge_return_projection_oracle_gate_target_class(
+          out.target_class);
+  const bool kindless_target = artifact_readiness ||
+                               policy_execution_input_handoff ||
+                               synthetic_forecast_oracle_gate ||
+                               synthetic_edge_return_projection_oracle_gate;
+  if (kindless_target) {
     out.target_kind_applicable = false;
     out.checkpoint_source = "none";
-    out.plan_mode = "none";
+    out.plan_mode = (artifact_readiness || synthetic_forecast_oracle_gate ||
+                     synthetic_edge_return_projection_oracle_gate)
+                        ? "none"
+                        : out.plan_mode;
     out.require_component_match = false;
     out.require_checkpoint_exists = false;
     out.require_finite_loss = false;
-    out.max_waves = 0;
+    if (artifact_readiness || synthetic_forecast_oracle_gate ||
+        synthetic_edge_return_projection_oracle_gate) {
+      out.max_waves = 0;
+    }
   }
   const auto target_kind_raw = kv::optional(
       block, "TARGET_KIND",
@@ -10136,14 +10301,15 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
                                       leakage_guard_scope_raw, out.target_id);
   }
   if (kv::trim(target_kind_raw).empty()) {
-    if (!artifact_readiness) {
+    if (!kindless_target) {
       throw std::runtime_error("[lattice_target] TARGET_KIND is required for " +
                                out.target_id);
     }
   } else {
-    if (artifact_readiness) {
+    if (kindless_target) {
       throw std::runtime_error(
-          "[lattice_target] TARGET_CLASS=artifact_readiness cannot declare "
+          "[lattice_target] TARGET_CLASS=" + out.target_class +
+          " cannot declare "
           "TARGET_KIND for " +
           out.target_id);
     }
@@ -10155,23 +10321,37 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
       optional_alias(block, "FACT_FAMILY", "SUBJECT_FACT_FAMILY", "",
                      out.language_warnings, out.target_id),
       out.target_id);
-  if (artifact_readiness && out.subject_fact_family.empty()) {
+  if (policy_execution_input_handoff && out.subject_fact_family.empty()) {
+    out.subject_fact_family = "replay_environment";
+  }
+  if ((synthetic_forecast_oracle_gate ||
+       synthetic_edge_return_projection_oracle_gate) &&
+      out.subject_fact_family.empty()) {
+    out.subject_fact_family = "forecast_eval";
+  }
+  if (kindless_target && out.subject_fact_family.empty()) {
     throw std::runtime_error(
-        "[lattice_target] TARGET_CLASS=artifact_readiness requires "
+        "[lattice_target] TARGET_CLASS=" + out.target_class +
+        " requires "
         "SUBJECT_FACT_FAMILY for " +
         out.target_id);
   }
-  if (artifact_readiness && out.proof_kind.empty()) {
-    out.proof_kind =
-        default_proof_kind_for_subject_fact_family(out.subject_fact_family);
+  if (kindless_target && out.proof_kind.empty()) {
+    out.proof_kind = synthetic_forecast_oracle_gate
+                         ? "synthetic_forecast_oracle_accuracy_bound"
+                     : synthetic_edge_return_projection_oracle_gate
+                         ? "synthetic_edge_return_projection_oracle_bound"
+                         : default_proof_kind_for_subject_fact_family(
+                               out.subject_fact_family);
     if (out.proof_kind.empty()) {
       throw std::runtime_error(
-          "[lattice_target] TARGET_CLASS=artifact_readiness has no default "
+          "[lattice_target] TARGET_CLASS=" + out.target_class +
+          " has no default "
           "PROOF_KIND for SUBJECT_FACT_FAMILY " +
           out.subject_fact_family + " on " + out.target_id);
     }
   }
-  if (artifact_readiness) {
+  if (artifact_readiness || policy_execution_input_handoff) {
     validate_artifact_readiness_proof_template(out.subject_fact_family,
                                                out.proof_kind, out.target_id);
   }
@@ -10206,7 +10386,7 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   }
   out.protocol_id = kv::optional(block, "PROTOCOL_ID", protocol_id_default);
   const auto component_default =
-      artifact_readiness ? ""
+      kindless_target ? ""
       : leakage_guard_scope.has_value()
           ? leakage_guard_scope->component
           : default_component_for_target_kind(out.kind);
@@ -10267,13 +10447,12 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   out.require_contract_match =
       kv::parse_bool(kv::optional(block, "REQUIRE_CONTRACT_MATCH", "true"));
   out.require_component_match = kv::parse_bool(kv::optional(
-      block, "REQUIRE_COMPONENT_MATCH", artifact_readiness ? "false" : "true"));
-  out.require_checkpoint_exists =
-      kv::parse_bool(kv::optional(block, "REQUIRE_CHECKPOINT_EXISTS",
-                                  artifact_readiness ? "false" : "true"));
+      block, "REQUIRE_COMPONENT_MATCH", kindless_target ? "false" : "true"));
+  out.require_checkpoint_exists = kv::parse_bool(kv::optional(
+      block, "REQUIRE_CHECKPOINT_EXISTS", kindless_target ? "false" : "true"));
   out.require_finite_loss =
       kv::parse_bool(kv::optional(block, "REQUIRE_FINITE_LOSS",
-                                  artifact_readiness ? "false"
+                                  kindless_target ? "false"
                                   : leakage_guard_scope.has_value()
                                       ? leakage_guard_scope->require_finite_loss
                                       : "true"));
@@ -10299,6 +10478,124 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
       kv::optional(block, "MIN_TARGET_SUPERVISION_COVERAGE", "0"));
   out.min_evaluation_metric_coverage = kv::parse_double(
       kv::optional(block, "MIN_EVALUATION_METRIC_COVERAGE", "0"));
+  const auto synthetic_oracle_max_ev_mae_raw =
+      kv::optional(block, "MAX_ORACLE_EV_MAE", "");
+  if (!kv::trim(synthetic_oracle_max_ev_mae_raw).empty()) {
+    out.synthetic_oracle_max_ev_mae =
+        kv::parse_double(synthetic_oracle_max_ev_mae_raw);
+  } else if (synthetic_forecast_oracle_gate) {
+    out.synthetic_oracle_max_ev_mae = 0.05;
+  }
+  const auto synthetic_oracle_max_ev_rmse_raw =
+      kv::optional(block, "MAX_ORACLE_EV_RMSE", "");
+  if (!kv::trim(synthetic_oracle_max_ev_rmse_raw).empty()) {
+    out.synthetic_oracle_max_ev_rmse =
+        kv::parse_double(synthetic_oracle_max_ev_rmse_raw);
+  } else if (synthetic_forecast_oracle_gate) {
+    out.synthetic_oracle_max_ev_rmse = 0.075;
+  }
+  const auto synthetic_oracle_min_directional_accuracy_raw =
+      kv::optional(block, "MIN_ORACLE_DIRECTIONAL_ACCURACY", "");
+  if (!kv::trim(synthetic_oracle_min_directional_accuracy_raw).empty()) {
+    out.synthetic_oracle_min_directional_accuracy =
+        kv::parse_double(synthetic_oracle_min_directional_accuracy_raw);
+  } else if (synthetic_forecast_oracle_gate) {
+    out.synthetic_oracle_min_directional_accuracy = 0.95;
+  }
+  const auto synthetic_oracle_max_price_ev_mae_raw =
+      kv::optional(block, "MAX_ORACLE_PRICE_EV_MAE", "");
+  if (!kv::trim(synthetic_oracle_max_price_ev_mae_raw).empty()) {
+    out.synthetic_oracle_max_price_ev_mae =
+        kv::parse_double(synthetic_oracle_max_price_ev_mae_raw);
+  } else if (synthetic_forecast_oracle_gate) {
+    out.synthetic_oracle_max_price_ev_mae = 0.05;
+  }
+  const auto synthetic_oracle_max_price_ev_rmse_raw =
+      kv::optional(block, "MAX_ORACLE_PRICE_EV_RMSE", "");
+  if (!kv::trim(synthetic_oracle_max_price_ev_rmse_raw).empty()) {
+    out.synthetic_oracle_max_price_ev_rmse =
+        kv::parse_double(synthetic_oracle_max_price_ev_rmse_raw);
+  } else if (synthetic_forecast_oracle_gate) {
+    out.synthetic_oracle_max_price_ev_rmse = 0.075;
+  }
+  const auto synthetic_oracle_max_activity_ev_mae_raw =
+      kv::optional(block, "MAX_ORACLE_ACTIVITY_EV_MAE", "");
+  if (!kv::trim(synthetic_oracle_max_activity_ev_mae_raw).empty()) {
+    out.synthetic_oracle_max_activity_ev_mae =
+        kv::parse_double(synthetic_oracle_max_activity_ev_mae_raw);
+  } else if (synthetic_forecast_oracle_gate) {
+    out.synthetic_oracle_max_activity_ev_mae = 0.075;
+  }
+  const auto synthetic_oracle_max_activity_ev_rmse_raw =
+      kv::optional(block, "MAX_ORACLE_ACTIVITY_EV_RMSE", "");
+  if (!kv::trim(synthetic_oracle_max_activity_ev_rmse_raw).empty()) {
+    out.synthetic_oracle_max_activity_ev_rmse =
+        kv::parse_double(synthetic_oracle_max_activity_ev_rmse_raw);
+  } else if (synthetic_forecast_oracle_gate) {
+    out.synthetic_oracle_max_activity_ev_rmse = 0.10;
+  }
+  const auto synthetic_oracle_min_close_directional_accuracy_raw =
+      kv::optional(block, "MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY", "");
+  if (!kv::trim(synthetic_oracle_min_close_directional_accuracy_raw).empty()) {
+    out.synthetic_oracle_min_close_directional_accuracy =
+        kv::parse_double(synthetic_oracle_min_close_directional_accuracy_raw);
+  } else if (synthetic_forecast_oracle_gate) {
+    out.synthetic_oracle_min_close_directional_accuracy = 0.95;
+  }
+  const auto synthetic_oracle_max_edge_return_ev_mae_raw =
+      kv::optional(block, "MAX_ORACLE_EDGE_RETURN_EV_MAE", "");
+  if (!kv::trim(synthetic_oracle_max_edge_return_ev_mae_raw).empty()) {
+    out.synthetic_oracle_max_edge_return_ev_mae =
+        kv::parse_double(synthetic_oracle_max_edge_return_ev_mae_raw);
+  } else if (synthetic_edge_return_projection_oracle_gate) {
+    out.synthetic_oracle_max_edge_return_ev_mae = 0.05;
+  }
+  const auto synthetic_oracle_max_edge_return_ev_rmse_raw =
+      kv::optional(block, "MAX_ORACLE_EDGE_RETURN_EV_RMSE", "");
+  if (!kv::trim(synthetic_oracle_max_edge_return_ev_rmse_raw).empty()) {
+    out.synthetic_oracle_max_edge_return_ev_rmse =
+        kv::parse_double(synthetic_oracle_max_edge_return_ev_rmse_raw);
+  } else if (synthetic_edge_return_projection_oracle_gate) {
+    out.synthetic_oracle_max_edge_return_ev_rmse = 0.075;
+  }
+  const auto synthetic_oracle_min_edge_return_directional_accuracy_raw =
+      kv::optional(block, "MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY", "");
+  if (!kv::trim(synthetic_oracle_min_edge_return_directional_accuracy_raw)
+           .empty()) {
+    out.synthetic_oracle_min_edge_return_directional_accuracy =
+        kv::parse_double(
+            synthetic_oracle_min_edge_return_directional_accuracy_raw);
+  } else if (synthetic_edge_return_projection_oracle_gate) {
+    out.synthetic_oracle_min_edge_return_directional_accuracy = 0.75;
+  }
+  const auto synthetic_oracle_min_edge_return_pairwise_rank_accuracy_raw =
+      kv::optional(block, "MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY", "");
+  if (!kv::trim(synthetic_oracle_min_edge_return_pairwise_rank_accuracy_raw)
+           .empty()) {
+    out.synthetic_oracle_min_edge_return_pairwise_rank_accuracy =
+        kv::parse_double(
+            synthetic_oracle_min_edge_return_pairwise_rank_accuracy_raw);
+  } else if (synthetic_edge_return_projection_oracle_gate) {
+    out.synthetic_oracle_min_edge_return_pairwise_rank_accuracy = 0.75;
+  }
+  const auto synthetic_oracle_min_edge_return_best_asset_agreement_raw =
+      kv::optional(block, "MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT", "");
+  if (!kv::trim(synthetic_oracle_min_edge_return_best_asset_agreement_raw)
+           .empty()) {
+    out.synthetic_oracle_min_edge_return_best_asset_agreement =
+        kv::parse_double(
+            synthetic_oracle_min_edge_return_best_asset_agreement_raw);
+  } else if (synthetic_edge_return_projection_oracle_gate) {
+    out.synthetic_oracle_min_edge_return_best_asset_agreement = 0.60;
+  }
+  const auto synthetic_oracle_min_edge_return_correlation_raw =
+      kv::optional(block, "MIN_ORACLE_EDGE_RETURN_CORRELATION", "");
+  if (!kv::trim(synthetic_oracle_min_edge_return_correlation_raw).empty()) {
+    out.synthetic_oracle_min_edge_return_correlation =
+        kv::parse_double(synthetic_oracle_min_edge_return_correlation_raw);
+  } else if (synthetic_edge_return_projection_oracle_gate) {
+    out.synthetic_oracle_min_edge_return_correlation = 0.25;
+  }
   auto protect_split_default =
       leakage_guard_scope.has_value() ? leakage_guard_scope->protect_split : "";
   const bool has_explicit_protect_split =
@@ -10390,10 +10687,12 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
       kv::optional(block, "PLAN_INPUT_MDN_CHECKPOINT", "");
   out.plan_input_representation_checkpoint =
       kv::optional(block, "PLAN_INPUT_REPRESENTATION_CHECKPOINT", "");
-  const auto max_waves_default = artifact_readiness ? "0"
-                                 : leakage_guard_scope.has_value()
-                                     ? leakage_guard_scope->max_waves
-                                     : "1";
+  const auto max_waves_default =
+      (artifact_readiness || synthetic_forecast_oracle_gate ||
+       synthetic_edge_return_projection_oracle_gate)
+          ? "0"
+      : leakage_guard_scope.has_value() ? leakage_guard_scope->max_waves
+                                        : "1";
   out.max_waves = optional_i64_alias(block, "MAX_WAVES", "PLAN_MAX_ATTEMPTS",
                                      max_waves_default, out.language_warnings,
                                      out.target_id);
@@ -10412,7 +10711,7 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
     throw std::runtime_error(
         "[lattice_target] PROTOCOL_ID must be trimmed for " + out.target_id);
   }
-  if (!artifact_readiness &&
+  if (!kindless_target &&
       out.component != default_component_for_target_kind(out.kind)) {
     throw std::runtime_error(
         "[lattice_target] COMPONENT does not match TARGET_KIND for " +
@@ -10423,20 +10722,20 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   const auto checkpoint_source =
       kv::lowercase(kv::trim(std::string(out.checkpoint_source)));
   const std::string latest_prefix = "latest_satisfying:";
-  if (artifact_readiness && checkpoint_source != "none") {
-    throw std::runtime_error(
-        "[lattice_target] artifact_readiness targets must use "
-        "CHECKPOINT_SOURCE=none for " +
-        out.target_id);
+  if (kindless_target && checkpoint_source != "none") {
+    throw std::runtime_error("[lattice_target] " + out.target_class +
+                             " targets must use "
+                             "CHECKPOINT_SOURCE=none for " +
+                             out.target_id);
   }
-  if (!artifact_readiness && checkpoint_source != "output_checkpoint" &&
+  if (!kindless_target && checkpoint_source != "output_checkpoint" &&
       checkpoint_source.rfind(latest_prefix, 0) != 0) {
     throw std::runtime_error(
         "[lattice_target] CHECKPOINT_SOURCE must be output_checkpoint or "
         "latest_satisfying:<target_id> for " +
         out.target_id);
   }
-  if (!artifact_readiness && checkpoint_source.rfind(latest_prefix, 0) == 0 &&
+  if (!kindless_target && checkpoint_source.rfind(latest_prefix, 0) == 0 &&
       kv::trim(out.checkpoint_source.substr(latest_prefix.size())).empty()) {
     throw std::runtime_error(
         "[lattice_target] CHECKPOINT_SOURCE latest_satisfying requires a "
@@ -10462,25 +10761,50 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
                                out.target_id);
     }
   };
-  if (artifact_readiness) {
+  if (artifact_readiness || synthetic_forecast_oracle_gate ||
+      synthetic_edge_return_projection_oracle_gate) {
+    const std::string non_dispatch_class =
+        artifact_readiness ? "artifact_readiness" : out.target_class;
     if (kv::lowercase(kv::trim(out.plan_mode)) != "none") {
-      throw std::runtime_error(
-          "[lattice_target] artifact_readiness targets must use "
-          "WAVE_MODE=none for " +
-          out.target_id);
+      throw std::runtime_error("[lattice_target] " + non_dispatch_class +
+                               " targets must use "
+                               "WAVE_MODE=none for " +
+                               out.target_id);
     }
     if (out.max_waves != 0) {
+      throw std::runtime_error("[lattice_target] " + non_dispatch_class +
+                               " targets must use "
+                               "PLAN_MAX_ATTEMPTS=0 for " +
+                               out.target_id);
+    }
+    if (!kv::trim(out.evaluated_checkpoint_source).empty() ||
+        !kv::trim(out.plan_input_mdn_checkpoint).empty() ||
+        !kv::trim(out.plan_input_representation_checkpoint).empty()) {
       throw std::runtime_error(
-          "[lattice_target] artifact_readiness targets must use "
-          "PLAN_MAX_ATTEMPTS=0 for " +
+          "[lattice_target] " + non_dispatch_class +
+          " targets cannot declare "
+          "checkpoint source or plan checkpoint inputs for " +
+          out.target_id);
+    }
+  } else if (policy_execution_input_handoff) {
+    if (kv::lowercase(kv::trim(out.plan_mode)) == "none") {
+      throw std::runtime_error(
+          "[lattice_target] policy_execution_input_handoff targets must "
+          "declare a dispatchable WAVE_MODE for " +
+          out.target_id);
+    }
+    if (out.max_waves <= 0) {
+      throw std::runtime_error(
+          "[lattice_target] policy_execution_input_handoff targets must "
+          "declare PLAN_MAX_ATTEMPTS greater than zero for " +
           out.target_id);
     }
     if (!kv::trim(out.evaluated_checkpoint_source).empty() ||
         !kv::trim(out.plan_input_mdn_checkpoint).empty() ||
         !kv::trim(out.plan_input_representation_checkpoint).empty()) {
       throw std::runtime_error(
-          "[lattice_target] artifact_readiness targets cannot declare "
-          "checkpoint source or plan checkpoint inputs for " +
+          "[lattice_target] policy_execution_input_handoff targets cannot "
+          "declare checkpoint source or plan checkpoint inputs for " +
           out.target_id);
     }
   } else {
@@ -10781,7 +11105,9 @@ default_exposure_coverage_use_for_target(const lattice_target_spec_t &spec) {
   if (target_class == "evaluation_readiness") {
     return exposure::exposure_use_t::evaluation_metric;
   }
-  if (target_class == "artifact_readiness" || target_class == "leakage_guard") {
+  if (target_class == "artifact_readiness" ||
+      target_class == "policy_execution_input_handoff" ||
+      target_class == "leakage_guard") {
     return std::nullopt;
   }
   if (spec.kind == lattice_target_kind_t::vicreg_ready ||
@@ -12211,6 +12537,17 @@ validate_lattice_target_spec_lowered(const lattice_target_spec_t &spec) {
                                 spec.target_id);
   const bool artifact_readiness =
       is_artifact_readiness_target_class(spec.target_class);
+  const bool policy_execution_input_handoff =
+      is_policy_execution_input_handoff_target_class(spec.target_class);
+  const bool synthetic_forecast_oracle_gate =
+      is_synthetic_forecast_oracle_gate_target_class(spec.target_class);
+  const bool synthetic_edge_return_projection_oracle_gate =
+      is_synthetic_edge_return_projection_oracle_gate_target_class(
+          spec.target_class);
+  const bool kindless_target = artifact_readiness ||
+                               policy_execution_input_handoff ||
+                               synthetic_forecast_oracle_gate ||
+                               synthetic_edge_return_projection_oracle_gate;
   if (artifact_readiness) {
     if (spec.target_kind_applicable) {
       throw std::runtime_error(
@@ -12250,6 +12587,120 @@ validate_lattice_target_spec_lowered(const lattice_target_spec_t &spec) {
           "PLAN_MAX_ATTEMPTS=0 for " +
           spec.target_id);
     }
+  } else if (policy_execution_input_handoff) {
+    if (spec.target_kind_applicable) {
+      throw std::runtime_error(
+          "[lattice_target] policy_execution_input_handoff targets must set "
+          "target_kind_applicable=false for " +
+          spec.target_id);
+    }
+    if (spec.kind != lattice_target_kind_t::not_applicable) {
+      throw std::runtime_error(
+          "[lattice_target] policy_execution_input_handoff targets must use "
+          "kind=not_applicable for " +
+          spec.target_id);
+    }
+    if (spec.subject_fact_family != "replay_environment") {
+      throw std::runtime_error(
+          "[lattice_target] policy_execution_input_handoff targets must use "
+          "SUBJECT_FACT_FAMILY=replay_environment for " +
+          spec.target_id);
+    }
+    if (spec.proof_kind.empty()) {
+      throw std::runtime_error(
+          "[lattice_target] TARGET_CLASS=policy_execution_input_handoff "
+          "requires PROOF_KIND for " +
+          spec.target_id);
+    }
+    validate_artifact_readiness_proof_template(spec.subject_fact_family,
+                                               spec.proof_kind, spec.target_id);
+    if (kv::lowercase(kv::trim(spec.plan_mode)) == "none") {
+      throw std::runtime_error(
+          "[lattice_target] policy_execution_input_handoff targets must "
+          "declare a dispatchable WAVE_MODE for " +
+          spec.target_id);
+    }
+    if (spec.max_waves <= 0) {
+      throw std::runtime_error(
+          "[lattice_target] policy_execution_input_handoff targets must use "
+          "PLAN_MAX_ATTEMPTS greater than zero for " +
+          spec.target_id);
+    }
+  } else if (synthetic_forecast_oracle_gate) {
+    if (spec.target_kind_applicable) {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_forecast_oracle_gate targets must set "
+          "target_kind_applicable=false for " +
+          spec.target_id);
+    }
+    if (spec.kind != lattice_target_kind_t::not_applicable) {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_forecast_oracle_gate targets must use "
+          "kind=not_applicable for " +
+          spec.target_id);
+    }
+    if (spec.subject_fact_family != "forecast_eval") {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_forecast_oracle_gate targets must use "
+          "SUBJECT_FACT_FAMILY=forecast_eval for " +
+          spec.target_id);
+    }
+    if (spec.proof_kind != "synthetic_forecast_oracle_accuracy_bound") {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_forecast_oracle_gate targets must use "
+          "PROOF_KIND=synthetic_forecast_oracle_accuracy_bound for " +
+          spec.target_id);
+    }
+    if (kv::lowercase(kv::trim(spec.plan_mode)) != "none") {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_forecast_oracle_gate targets must use "
+          "WAVE_MODE=none for " +
+          spec.target_id);
+    }
+    if (spec.max_waves != 0) {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_forecast_oracle_gate targets must use "
+          "PLAN_MAX_ATTEMPTS=0 for " +
+          spec.target_id);
+    }
+  } else if (synthetic_edge_return_projection_oracle_gate) {
+    if (spec.target_kind_applicable) {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_edge_return_projection_oracle_gate "
+          "targets must set target_kind_applicable=false for " +
+          spec.target_id);
+    }
+    if (spec.kind != lattice_target_kind_t::not_applicable) {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_edge_return_projection_oracle_gate "
+          "targets must use kind=not_applicable for " +
+          spec.target_id);
+    }
+    if (spec.subject_fact_family != "forecast_eval") {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_edge_return_projection_oracle_gate "
+          "targets must use SUBJECT_FACT_FAMILY=forecast_eval for " +
+          spec.target_id);
+    }
+    if (spec.proof_kind != "synthetic_edge_return_projection_oracle_bound") {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_edge_return_projection_oracle_gate "
+          "targets must use "
+          "PROOF_KIND=synthetic_edge_return_projection_oracle_bound for " +
+          spec.target_id);
+    }
+    if (kv::lowercase(kv::trim(spec.plan_mode)) != "none") {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_edge_return_projection_oracle_gate "
+          "targets must use WAVE_MODE=none for " +
+          spec.target_id);
+    }
+    if (spec.max_waves != 0) {
+      throw std::runtime_error(
+          "[lattice_target] synthetic_edge_return_projection_oracle_gate "
+          "targets must use PLAN_MAX_ATTEMPTS=0 for " +
+          spec.target_id);
+    }
   } else if (!spec.target_kind_applicable ||
              spec.kind == lattice_target_kind_t::not_applicable) {
     throw std::runtime_error("[lattice_target] non-artifact targets must set "
@@ -12261,20 +12712,20 @@ validate_lattice_target_spec_lowered(const lattice_target_spec_t &spec) {
   const auto checkpoint_source =
       kv::lowercase(kv::trim(std::string(spec.checkpoint_source)));
   const std::string latest_prefix = "latest_satisfying:";
-  if (artifact_readiness && checkpoint_source != "none") {
-    throw std::runtime_error(
-        "[lattice_target] artifact_readiness targets must use "
-        "CHECKPOINT_SOURCE=none for " +
-        spec.target_id);
+  if (kindless_target && checkpoint_source != "none") {
+    throw std::runtime_error("[lattice_target] " + spec.target_class +
+                             " targets must use "
+                             "CHECKPOINT_SOURCE=none for " +
+                             spec.target_id);
   }
-  if (!artifact_readiness && checkpoint_source != "output_checkpoint" &&
+  if (!kindless_target && checkpoint_source != "output_checkpoint" &&
       checkpoint_source.rfind(latest_prefix, 0) != 0) {
     throw std::runtime_error(
         "[lattice_target] CHECKPOINT_SOURCE must be output_checkpoint or "
         "latest_satisfying:<target_id> for " +
         spec.target_id);
   }
-  if (!artifact_readiness && checkpoint_source.rfind(latest_prefix, 0) == 0 &&
+  if (!kindless_target && checkpoint_source.rfind(latest_prefix, 0) == 0 &&
       kv::trim(spec.checkpoint_source.substr(latest_prefix.size())).empty()) {
     throw std::runtime_error(
         "[lattice_target] CHECKPOINT_SOURCE latest_satisfying requires a "
@@ -12300,13 +12751,26 @@ validate_lattice_target_spec_lowered(const lattice_target_spec_t &spec) {
                                spec.target_id);
     }
   };
-  if (artifact_readiness) {
+  if (artifact_readiness || synthetic_forecast_oracle_gate ||
+      synthetic_edge_return_projection_oracle_gate) {
+    const std::string non_dispatch_class =
+        artifact_readiness ? "artifact_readiness" : spec.target_class;
     if (!kv::trim(spec.evaluated_checkpoint_source).empty() ||
         !kv::trim(spec.plan_input_mdn_checkpoint).empty() ||
         !kv::trim(spec.plan_input_representation_checkpoint).empty()) {
       throw std::runtime_error(
-          "[lattice_target] artifact_readiness targets cannot declare "
+          "[lattice_target] " + non_dispatch_class +
+          " targets cannot declare "
           "checkpoint source or plan checkpoint inputs for " +
+          spec.target_id);
+    }
+  } else if (policy_execution_input_handoff) {
+    if (!kv::trim(spec.evaluated_checkpoint_source).empty() ||
+        !kv::trim(spec.plan_input_mdn_checkpoint).empty() ||
+        !kv::trim(spec.plan_input_representation_checkpoint).empty()) {
+      throw std::runtime_error(
+          "[lattice_target] policy_execution_input_handoff targets cannot "
+          "declare checkpoint source or plan checkpoint inputs for " +
           spec.target_id);
     }
   } else {
@@ -12360,6 +12824,140 @@ validate_lattice_target_spec_lowered(const lattice_target_spec_t &spec) {
                              "MIN_TARGET_SUPERVISION_COVERAGE", spec.target_id);
   require_fraction_dimension(spec.min_evaluation_metric_coverage,
                              "MIN_EVALUATION_METRIC_COVERAGE", spec.target_id);
+  if (synthetic_forecast_oracle_gate) {
+    if (!std::isfinite(spec.synthetic_oracle_max_ev_mae) ||
+        spec.synthetic_oracle_max_ev_mae < 0.0) {
+      throw std::runtime_error(
+          "[lattice_target] MAX_ORACLE_EV_MAE must be a finite non-negative "
+          "threshold for " +
+          spec.target_id);
+    }
+    if (!std::isfinite(spec.synthetic_oracle_max_ev_rmse) ||
+        spec.synthetic_oracle_max_ev_rmse < 0.0) {
+      throw std::runtime_error(
+          "[lattice_target] MAX_ORACLE_EV_RMSE must be a finite non-negative "
+          "threshold for " +
+          spec.target_id);
+    }
+    require_fraction_dimension(spec.synthetic_oracle_min_directional_accuracy,
+                               "MIN_ORACLE_DIRECTIONAL_ACCURACY",
+                               spec.target_id);
+    if (!std::isfinite(spec.synthetic_oracle_max_price_ev_mae) ||
+        spec.synthetic_oracle_max_price_ev_mae < 0.0) {
+      throw std::runtime_error(
+          "[lattice_target] MAX_ORACLE_PRICE_EV_MAE must be a finite "
+          "non-negative threshold for " +
+          spec.target_id);
+    }
+    if (!std::isfinite(spec.synthetic_oracle_max_price_ev_rmse) ||
+        spec.synthetic_oracle_max_price_ev_rmse < 0.0) {
+      throw std::runtime_error(
+          "[lattice_target] MAX_ORACLE_PRICE_EV_RMSE must be a finite "
+          "non-negative threshold for " +
+          spec.target_id);
+    }
+    if (!std::isfinite(spec.synthetic_oracle_max_activity_ev_mae) ||
+        spec.synthetic_oracle_max_activity_ev_mae < 0.0) {
+      throw std::runtime_error(
+          "[lattice_target] MAX_ORACLE_ACTIVITY_EV_MAE must be a finite "
+          "non-negative threshold for " +
+          spec.target_id);
+    }
+    if (!std::isfinite(spec.synthetic_oracle_max_activity_ev_rmse) ||
+        spec.synthetic_oracle_max_activity_ev_rmse < 0.0) {
+      throw std::runtime_error(
+          "[lattice_target] MAX_ORACLE_ACTIVITY_EV_RMSE must be a finite "
+          "non-negative threshold for " +
+          spec.target_id);
+    }
+    require_fraction_dimension(
+        spec.synthetic_oracle_min_close_directional_accuracy,
+        "MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY", spec.target_id);
+    if (std::isfinite(spec.synthetic_oracle_max_edge_return_ev_mae) ||
+        std::isfinite(spec.synthetic_oracle_max_edge_return_ev_rmse) ||
+        std::isfinite(
+            spec.synthetic_oracle_min_edge_return_directional_accuracy) ||
+        std::isfinite(
+            spec.synthetic_oracle_min_edge_return_pairwise_rank_accuracy) ||
+        std::isfinite(
+            spec.synthetic_oracle_min_edge_return_best_asset_agreement) ||
+        std::isfinite(spec.synthetic_oracle_min_edge_return_correlation)) {
+      throw std::runtime_error(
+          "[lattice_target] edge-return ORACLE threshold fields require "
+          "TARGET_CLASS=synthetic_edge_return_projection_oracle_gate for " +
+          spec.target_id);
+    }
+  } else if (synthetic_edge_return_projection_oracle_gate) {
+    if (std::isfinite(spec.synthetic_oracle_max_ev_mae) ||
+        std::isfinite(spec.synthetic_oracle_max_ev_rmse) ||
+        std::isfinite(spec.synthetic_oracle_min_directional_accuracy) ||
+        std::isfinite(spec.synthetic_oracle_max_price_ev_mae) ||
+        std::isfinite(spec.synthetic_oracle_max_price_ev_rmse) ||
+        std::isfinite(spec.synthetic_oracle_max_activity_ev_mae) ||
+        std::isfinite(spec.synthetic_oracle_max_activity_ev_rmse) ||
+        std::isfinite(spec.synthetic_oracle_min_close_directional_accuracy)) {
+      throw std::runtime_error(
+          "[lattice_target] feature ORACLE threshold fields require "
+          "TARGET_CLASS=synthetic_forecast_oracle_gate for " +
+          spec.target_id);
+    }
+    if (!std::isfinite(spec.synthetic_oracle_max_edge_return_ev_mae) ||
+        spec.synthetic_oracle_max_edge_return_ev_mae < 0.0) {
+      throw std::runtime_error(
+          "[lattice_target] MAX_ORACLE_EDGE_RETURN_EV_MAE must be a finite "
+          "non-negative threshold for " +
+          spec.target_id);
+    }
+    if (!std::isfinite(spec.synthetic_oracle_max_edge_return_ev_rmse) ||
+        spec.synthetic_oracle_max_edge_return_ev_rmse < 0.0) {
+      throw std::runtime_error(
+          "[lattice_target] MAX_ORACLE_EDGE_RETURN_EV_RMSE must be a finite "
+          "non-negative threshold for " +
+          spec.target_id);
+    }
+    require_fraction_dimension(
+        spec.synthetic_oracle_min_edge_return_directional_accuracy,
+        "MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY", spec.target_id);
+    require_fraction_dimension(
+        spec.synthetic_oracle_min_edge_return_pairwise_rank_accuracy,
+        "MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY", spec.target_id);
+    require_fraction_dimension(
+        spec.synthetic_oracle_min_edge_return_best_asset_agreement,
+        "MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT", spec.target_id);
+    require_finite_dimension(spec.synthetic_oracle_min_edge_return_correlation,
+                             "MIN_ORACLE_EDGE_RETURN_CORRELATION",
+                             "correlation", spec.target_id);
+    if (spec.synthetic_oracle_min_edge_return_correlation < -1.0 ||
+        spec.synthetic_oracle_min_edge_return_correlation > 1.0) {
+      throw std::runtime_error(
+          "[lattice_target] MIN_ORACLE_EDGE_RETURN_CORRELATION must be in "
+          "[-1, 1] for " +
+          spec.target_id);
+    }
+  } else if (
+      std::isfinite(spec.synthetic_oracle_max_ev_mae) ||
+      std::isfinite(spec.synthetic_oracle_max_ev_rmse) ||
+      std::isfinite(spec.synthetic_oracle_min_directional_accuracy) ||
+      std::isfinite(spec.synthetic_oracle_max_price_ev_mae) ||
+      std::isfinite(spec.synthetic_oracle_max_price_ev_rmse) ||
+      std::isfinite(spec.synthetic_oracle_max_activity_ev_mae) ||
+      std::isfinite(spec.synthetic_oracle_max_activity_ev_rmse) ||
+      std::isfinite(spec.synthetic_oracle_min_close_directional_accuracy) ||
+      std::isfinite(spec.synthetic_oracle_max_edge_return_ev_mae) ||
+      std::isfinite(spec.synthetic_oracle_max_edge_return_ev_rmse) ||
+      std::isfinite(
+          spec.synthetic_oracle_min_edge_return_directional_accuracy) ||
+      std::isfinite(
+          spec.synthetic_oracle_min_edge_return_pairwise_rank_accuracy) ||
+      std::isfinite(
+          spec.synthetic_oracle_min_edge_return_best_asset_agreement) ||
+      std::isfinite(spec.synthetic_oracle_min_edge_return_correlation)) {
+    throw std::runtime_error(
+        "[lattice_target] ORACLE threshold fields require "
+        "TARGET_CLASS=synthetic_forecast_oracle_gate or "
+        "TARGET_CLASS=synthetic_edge_return_projection_oracle_gate for " +
+        spec.target_id);
+  }
   require_non_negative_count(spec.max_waves, "MAX_WAVES", spec.target_id);
   require_non_negative_count(spec.require_active_node_head_count,
                              "REQUIRE_ACTIVE_NODE_HEAD_COUNT", spec.target_id);
@@ -14194,9 +14792,10 @@ verify_lattice_target_proof_certificate(
     }
     if (!artifact.fact_family.empty() && !parsed_fact_family.has_value()) {
       append_certificate_issue(check, prefix + " unknown fact_family");
-    } else if (const auto *proof_template =
-                   artifact_readiness_proof_template_for_subject_fact_family(
-                       artifact.fact_family)) {
+    } else if (
+        const auto *proof_template =
+            artifact_readiness_proof_template_for_subject_fact_family_and_kind(
+                artifact.fact_family, artifact.proof_kind)) {
       const bool proof_kind_matches_template =
           artifact.proof_kind == proof_template->proof_kind;
       if (!proof_kind_matches_template) {
@@ -14209,6 +14808,20 @@ verify_lattice_target_proof_certificate(
                                  prefix + " proof_template_bound mismatch");
       }
       if (artifact.proof_template_claim != proof_template->proof_claim) {
+        append_certificate_issue(check,
+                                 prefix + " proof_template_claim mismatch");
+      }
+    } else if (const auto *default_proof_template =
+                   artifact_readiness_proof_template_for_subject_fact_family(
+                       artifact.fact_family)) {
+      append_certificate_issue(
+          check, prefix + " proof_kind does not match artifact proof template");
+      if (artifact.proof_template_bound) {
+        append_certificate_issue(check,
+                                 prefix + " proof_template_bound mismatch");
+      }
+      if (artifact.proof_template_claim !=
+          default_proof_template->proof_claim) {
         append_certificate_issue(check,
                                  prefix + " proof_template_claim mismatch");
       }
@@ -16690,6 +17303,39 @@ canonical_lattice_target_spec_text(const lattice_target_spec_t &spec) {
       << spec.min_target_supervision_coverage << "\n";
   out << "min_evaluation_metric_coverage="
       << spec.min_evaluation_metric_coverage << "\n";
+  if (is_synthetic_forecast_oracle_gate_target_class(spec.target_class)) {
+    out << "synthetic_oracle_max_ev_mae=" << spec.synthetic_oracle_max_ev_mae
+        << "\n";
+    out << "synthetic_oracle_max_ev_rmse=" << spec.synthetic_oracle_max_ev_rmse
+        << "\n";
+    out << "synthetic_oracle_min_directional_accuracy="
+        << spec.synthetic_oracle_min_directional_accuracy << "\n";
+    out << "synthetic_oracle_max_price_ev_mae="
+        << spec.synthetic_oracle_max_price_ev_mae << "\n";
+    out << "synthetic_oracle_max_price_ev_rmse="
+        << spec.synthetic_oracle_max_price_ev_rmse << "\n";
+    out << "synthetic_oracle_max_activity_ev_mae="
+        << spec.synthetic_oracle_max_activity_ev_mae << "\n";
+    out << "synthetic_oracle_max_activity_ev_rmse="
+        << spec.synthetic_oracle_max_activity_ev_rmse << "\n";
+    out << "synthetic_oracle_min_close_directional_accuracy="
+        << spec.synthetic_oracle_min_close_directional_accuracy << "\n";
+  }
+  if (is_synthetic_edge_return_projection_oracle_gate_target_class(
+          spec.target_class)) {
+    out << "synthetic_oracle_max_edge_return_ev_mae="
+        << spec.synthetic_oracle_max_edge_return_ev_mae << "\n";
+    out << "synthetic_oracle_max_edge_return_ev_rmse="
+        << spec.synthetic_oracle_max_edge_return_ev_rmse << "\n";
+    out << "synthetic_oracle_min_edge_return_directional_accuracy="
+        << spec.synthetic_oracle_min_edge_return_directional_accuracy << "\n";
+    out << "synthetic_oracle_min_edge_return_pairwise_rank_accuracy="
+        << spec.synthetic_oracle_min_edge_return_pairwise_rank_accuracy << "\n";
+    out << "synthetic_oracle_min_edge_return_best_asset_agreement="
+        << spec.synthetic_oracle_min_edge_return_best_asset_agreement << "\n";
+    out << "synthetic_oracle_min_edge_return_correlation="
+        << spec.synthetic_oracle_min_edge_return_correlation << "\n";
+  }
   out << "forbid_split=" << spec.forbid_split << "\n";
   out << "forbid_exposure_anchor_index_begin=";
   if (spec.forbid_exposure_anchor_index_begin.has_value()) {
@@ -17549,6 +18195,25 @@ lattice_target_selector_key(const lattice_target_spec_t &spec) {
   out << "|";
   if (spec.anchor_index_end.has_value()) {
     out << *spec.anchor_index_end;
+  }
+  if (is_synthetic_forecast_oracle_gate_target_class(spec.target_class)) {
+    out << "|" << spec.synthetic_oracle_max_ev_mae << "|"
+        << spec.synthetic_oracle_max_ev_rmse << "|"
+        << spec.synthetic_oracle_min_directional_accuracy << "|"
+        << spec.synthetic_oracle_max_price_ev_mae << "|"
+        << spec.synthetic_oracle_max_price_ev_rmse << "|"
+        << spec.synthetic_oracle_max_activity_ev_mae << "|"
+        << spec.synthetic_oracle_max_activity_ev_rmse << "|"
+        << spec.synthetic_oracle_min_close_directional_accuracy;
+  }
+  if (is_synthetic_edge_return_projection_oracle_gate_target_class(
+          spec.target_class)) {
+    out << "|" << spec.synthetic_oracle_max_edge_return_ev_mae << "|"
+        << spec.synthetic_oracle_max_edge_return_ev_rmse << "|"
+        << spec.synthetic_oracle_min_edge_return_directional_accuracy << "|"
+        << spec.synthetic_oracle_min_edge_return_pairwise_rank_accuracy << "|"
+        << spec.synthetic_oracle_min_edge_return_best_asset_agreement << "|"
+        << spec.synthetic_oracle_min_edge_return_correlation;
   }
   return out.str();
 }

@@ -23,6 +23,7 @@
 #include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/lattice/split/split_policy.h"
 #include "hero/lattice_hero/lattice/target/lattice_target.h"
+#include "hero/marshal_hero/marshal/digest.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "kikijyeba/protocol/config_provenance.h"
 #include "piaabo/parse/simple_kv_block.h"
@@ -2740,6 +2741,20 @@ private:
               reason, std::numeric_limits<double>::quiet_NaN(),
               static_cast<double>(result.evidence.evaluated_node_head_count),
               "count");
+        } else if (is_synthetic_forecast_oracle_gate_target_class(
+                       result.target_class) &&
+                   (reason.starts_with("synthetic forecast oracle ") ||
+                    reason.starts_with(
+                        "synthetic feature-aware forecast oracle "))) {
+          append_deficit(result, "metric", "synthetic_forecast_oracle",
+                         "failed", reason);
+        } else if (is_synthetic_edge_return_projection_oracle_gate_target_class(
+                       result.target_class) &&
+                   reason.starts_with(
+                       "synthetic edge-return projection oracle ")) {
+          append_deficit(result, "metric",
+                         "synthetic_edge_return_projection_oracle", "failed",
+                         reason);
         }
       }
     }
@@ -2800,6 +2815,73 @@ private:
                                     " artifact proof matched ")) {
         append_deficit(result, "artifact",
                        result.subject_fact_family + "_proof", "failed", reason);
+      } else if (is_synthetic_forecast_oracle_gate_target_class(
+                     result.target_class) &&
+                 reason.starts_with("no forecast_eval artifact facts found "
+                                    "under")) {
+        append_deficit(result, "artifact", "forecast_eval_fact", "missing",
+                       reason);
+      } else if (is_synthetic_forecast_oracle_gate_target_class(
+                     result.target_class) &&
+                 reason.starts_with("no forecast_eval artifact facts matched "
+                                    "the synthetic oracle target identity")) {
+        append_deficit(result, "artifact", "forecast_eval_identity", "mismatch",
+                       reason);
+      } else if (is_synthetic_forecast_oracle_gate_target_class(
+                     result.target_class) &&
+                 reason.starts_with("no clean forecast_eval artifact proof "
+                                    "matched ")) {
+        append_deficit(result, "artifact", "forecast_eval_proof", "failed",
+                       reason);
+      } else if (is_synthetic_forecast_oracle_gate_target_class(
+                     result.target_class) &&
+                 (reason.starts_with("synthetic forecast oracle metrics are "
+                                     "missing") ||
+                  reason.starts_with(
+                      "synthetic feature-aware forecast oracle metrics are "
+                      "missing"))) {
+        append_deficit(result, "metric", "synthetic_forecast_oracle", "missing",
+                       reason);
+      } else if (is_synthetic_forecast_oracle_gate_target_class(
+                     result.target_class) &&
+                 reason.starts_with(
+                     "synthetic forecast oracle gate requires complete "
+                     "admissible forecast no-lookahead influence")) {
+        append_deficit(result, "artifact", "forecast_no_lookahead_influence",
+                       "failed", reason);
+      } else if (is_synthetic_edge_return_projection_oracle_gate_target_class(
+                     result.target_class) &&
+                 reason.starts_with("no forecast_eval artifact facts found "
+                                    "under")) {
+        append_deficit(result, "artifact", "forecast_eval_fact", "missing",
+                       reason);
+      } else if (is_synthetic_edge_return_projection_oracle_gate_target_class(
+                     result.target_class) &&
+                 reason.starts_with("no forecast_eval artifact facts matched "
+                                    "the synthetic edge-return projection "
+                                    "oracle target identity")) {
+        append_deficit(result, "artifact", "forecast_eval_identity", "mismatch",
+                       reason);
+      } else if (is_synthetic_edge_return_projection_oracle_gate_target_class(
+                     result.target_class) &&
+                 reason.starts_with("no clean forecast_eval artifact proof "
+                                    "matched ")) {
+        append_deficit(result, "artifact", "forecast_eval_proof", "failed",
+                       reason);
+      } else if (is_synthetic_edge_return_projection_oracle_gate_target_class(
+                     result.target_class) &&
+                 reason.starts_with("synthetic edge-return projection oracle "
+                                    "metrics are missing")) {
+        append_deficit(result, "metric",
+                       "synthetic_edge_return_projection_oracle", "missing",
+                       reason);
+      } else if (is_synthetic_edge_return_projection_oracle_gate_target_class(
+                     result.target_class) &&
+                 reason.starts_with("synthetic edge-return projection oracle "
+                                    "gate requires complete admissible "
+                                    "forecast no-lookahead influence")) {
+        append_deficit(result, "artifact", "forecast_no_lookahead_influence",
+                       "failed", reason);
       } else if (is_artifact_readiness_target_class(result.target_class) &&
                  (reason.find("_must_remain_artifact_evidence_only") !=
                       std::string::npos ||
@@ -3271,8 +3353,8 @@ private:
         k_lattice_fact_identity_contract_schema_v1;
     proof.fact_identity_contract_id = k_lattice_fact_identity_contract_id_v1;
     if (const auto *proof_template =
-            artifact_readiness_proof_template_for_subject_fact_family(
-                fact_family)) {
+            artifact_readiness_proof_template_for_subject_fact_family_and_kind(
+                fact_family, spec.proof_kind)) {
       proof.proof_template_bound =
           proof.proof_kind == proof_template->proof_kind;
       proof.proof_template_claim = proof_template->proof_claim;
@@ -4083,7 +4165,20 @@ private:
 
     const auto forecast_influence = resolve_forecast_influence(
         ledger, *parent_forecast, target_anchor_begin);
-    out.consumed_artifact_digests.push_back(parent_forecast_digest);
+    for (const auto &digest :
+         cuwacunu::hero::lattice::exposure::related_fact_digest_aliases(
+             *parent_forecast,
+             cuwacunu::hero::lattice::exposure::forecast_eval_fact_digest)) {
+      if (!digest.empty() &&
+          !string_vector_contains(out.consumed_artifact_digests, digest)) {
+        out.consumed_artifact_digests.push_back(digest);
+      }
+    }
+    if (!parent_forecast_digest.empty() &&
+        !string_vector_contains(out.consumed_artifact_digests,
+                                parent_forecast_digest)) {
+      out.consumed_artifact_digests.push_back(parent_forecast_digest);
+    }
     if (!parent_forecast->forecast_artifact_digest.empty()) {
       out.consumed_artifact_digests.push_back(
           parent_forecast->forecast_artifact_digest);
@@ -4447,6 +4542,267 @@ private:
         exposure::replay_environment_fact_digest(fact), identity_match,
         fact.artifact_evidence, fact.artifact_evidence, fact.visibility_only,
         lineage_bound, std::move(issues));
+  }
+
+  [[nodiscard]] static std::string replay_job_dir_digest_for_policy_lock(
+      const cuwacunu::hero::lattice::exposure::lattice_replay_environment_fact_t
+          &fact) {
+    if (fact.batch_index_path.empty()) {
+      return {};
+    }
+    std::ifstream in(fact.batch_index_path);
+    if (!in) {
+      return {};
+    }
+    const std::string text((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+    return cuwacunu::hero::marshal::marshal_digest_for_text(
+        "policy_execution_replay_job_dir_anchor.v1", text);
+  }
+
+  [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
+  make_policy_execution_input_handoff_proof(
+      const lattice_target_spec_t &spec,
+      const cuwacunu::hero::lattice::exposure::lattice_replay_environment_fact_t
+          &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_ledger_t
+          &ledger,
+      bool identity_match,
+      const std::unordered_map<
+          std::string,
+          const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+              *> &forecast_by_digest,
+      const std::unordered_map<
+          std::string,
+          const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+              *> &forecast_by_artifact_digest) const {
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+    artifact_influence_resolution_t no_lookahead = resolve_replay_influence(
+        ledger, fact, fact.anchor_range.begin, forecast_by_digest,
+        forecast_by_artifact_digest);
+    const auto append_unique = [](std::vector<std::string> &values,
+                                  const std::string &value) {
+      if (!value.empty() &&
+          std::find(values.begin(), values.end(), value) == values.end()) {
+        values.push_back(value);
+      }
+    };
+
+    if (fact.anchor_range.empty()) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_policy_target_anchor_range_missing");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    }
+    if (!no_lookahead.coverage_anchor_range_bound ||
+        !anchor_range_covers(no_lookahead.coverage_anchor_range,
+                             fact.anchor_range)) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_replay_coverage_does_not_cover_policy_target");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    }
+    if (!no_lookahead.influence_end_bound) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_influence_frontier_missing");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    } else if (no_lookahead.influence_end > fact.anchor_range.begin) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_influence_overlaps_policy_target_anchor_range");
+      no_lookahead.admissible = false;
+    }
+    if (!no_lookahead.availability_end_bound) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_label_or_reward_availability_frontier_missing");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    } else if (no_lookahead.availability_end > fact.anchor_range.begin) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_label_or_reward_availability_overlaps_policy_target_"
+          "anchor_range");
+      no_lookahead.admissible = false;
+    }
+    if (no_lookahead.no_lookahead_contract_digest.empty()) {
+      no_lookahead.issues.emplace_back("no_lookahead_contract_digest_missing");
+      no_lookahead.complete = false;
+    }
+
+    const auto replay_fact_digest =
+        exposure::replay_environment_fact_digest(fact);
+    const auto replay_job_dir_digest =
+        replay_job_dir_digest_for_policy_lock(fact);
+    append_unique(no_lookahead.consumed_artifact_digests, replay_fact_digest);
+    append_unique(no_lookahead.consumed_artifact_digests,
+                  fact.experiment_report_digest);
+    append_unique(no_lookahead.consumed_artifact_digests,
+                  fact.experiment_index_report_digest);
+    append_unique(no_lookahead.consumed_artifact_digests,
+                  replay_job_dir_digest);
+    if (replay_job_dir_digest.empty()) {
+      no_lookahead.issues.emplace_back(
+          "policy_execution_replay_job_dir_digest_missing");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    }
+    const auto parent_identity_matches_replay = [&](const auto &parent) {
+      if (parent.protocol_id != fact.protocol_id ||
+          parent.graph_order_fingerprint != fact.graph_order_fingerprint ||
+          parent.source_cursor_token != fact.source_cursor_token ||
+          !split_policy_fingerprint_compatible(parent.split_policy_fingerprint,
+                                               fact.split_policy_fingerprint)) {
+        return false;
+      }
+      if (!fact.anchor_range.empty()) {
+        if (parent.anchor_range.empty() ||
+            !anchor_range_covers(parent.anchor_range, fact.anchor_range)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    std::string parent_forecast_artifact_digest =
+        no_lookahead.parent_forecast_artifact_digest;
+    if (parent_forecast_artifact_digest.empty()) {
+      parent_forecast_artifact_digest = fact.parent_forecast_artifact_digest;
+    }
+    std::vector<std::string> observer_parent_aliases;
+    for (const auto &observer : ledger.observer_belief_facts()) {
+      if (!parent_identity_matches_replay(observer)) {
+        continue;
+      }
+      if (!parent_forecast_artifact_digest.empty() &&
+          observer.forecast_artifact_digest !=
+              parent_forecast_artifact_digest) {
+        continue;
+      }
+      for (const auto &alias : exposure::related_fact_digest_aliases(
+               observer, exposure::observer_belief_fact_digest)) {
+        append_unique(observer_parent_aliases, alias);
+        append_unique(no_lookahead.consumed_artifact_digests, alias);
+      }
+    }
+    if (observer_parent_aliases.empty()) {
+      no_lookahead.issues.emplace_back(
+          "policy_execution_parent_observer_belief_fact_not_found");
+      no_lookahead.complete = false;
+      no_lookahead.admissible = false;
+    }
+    for (const auto &allocation : ledger.allocation_engine_facts()) {
+      const bool observer_matches =
+          !allocation.observer_belief_fact_digest.empty() &&
+          string_vector_contains(observer_parent_aliases,
+                                 allocation.observer_belief_fact_digest);
+      const bool job_matches =
+          !allocation.job_id.empty() && allocation.job_id == fact.job_id;
+      if (!observer_matches && !job_matches) {
+        continue;
+      }
+      if (allocation.protocol_id != fact.protocol_id ||
+          allocation.graph_order_fingerprint != fact.graph_order_fingerprint ||
+          allocation.source_cursor_token != fact.source_cursor_token ||
+          !split_policy_fingerprint_compatible(
+              allocation.split_policy_fingerprint,
+              fact.split_policy_fingerprint)) {
+        continue;
+      }
+      if (!parent_forecast_artifact_digest.empty() &&
+          allocation.forecast_artifact_digest !=
+              parent_forecast_artifact_digest) {
+        continue;
+      }
+      if (!fact.anchor_range.empty() && !allocation.anchor_range.empty() &&
+          !anchor_range_covers(allocation.anchor_range, fact.anchor_range)) {
+        continue;
+      }
+      for (const auto &alias : exposure::related_fact_digest_aliases(
+               allocation, exposure::allocation_engine_fact_digest)) {
+        append_unique(no_lookahead.consumed_artifact_digests, alias);
+      }
+    }
+    if (no_lookahead.consumed_generation_vector_digests.empty()) {
+      no_lookahead.issues.emplace_back(
+          "no_lookahead_generation_vector_not_in_closure");
+      no_lookahead.complete = false;
+    }
+
+    if (!no_lookahead.issues.empty()) {
+      no_lookahead.complete = false;
+    }
+    {
+      auto artifact_digests = no_lookahead.consumed_artifact_digests;
+      auto checkpoint_digests = no_lookahead.consumed_checkpoint_digests;
+      auto generation_digests = no_lookahead.consumed_generation_vector_digests;
+      std::sort(artifact_digests.begin(), artifact_digests.end());
+      std::sort(checkpoint_digests.begin(), checkpoint_digests.end());
+      std::sort(generation_digests.begin(), generation_digests.end());
+      std::ostringstream closure;
+      closure << "policy_execution_input_handoff_no_lookahead_closure.v1|"
+              << spec.target_id << "|"
+              << no_lookahead.no_lookahead_contract_digest << "|"
+              << join_keys(artifact_digests) << "|"
+              << join_keys(checkpoint_digests) << "|"
+              << join_keys(generation_digests) << "|"
+              << no_lookahead.influence_end << "|"
+              << (no_lookahead.influence_end_bound ? "1" : "0") << "|"
+              << no_lookahead.availability_end << "|"
+              << (no_lookahead.availability_end_bound ? "1" : "0") << "|"
+              << fact.anchor_range.begin << "|" << fact.anchor_range.end;
+      no_lookahead.provenance_closure_digest =
+          exposure::exposure_digest_for_text(closure.str());
+    }
+
+    const bool handoff_lineage_bound =
+        !fact.parent_exposure_fact_digest.empty() &&
+        !replay_job_dir_digest.empty() &&
+        !no_lookahead.parent_forecast_fact_digest.empty() &&
+        !no_lookahead.parent_forecast_artifact_digest.empty() &&
+        !observer_parent_aliases.empty() && no_lookahead.complete &&
+        no_lookahead.admissible;
+    auto proof = make_common_artifact_proof(
+        spec, fact, "replay_environment", replay_fact_digest, identity_match,
+        fact.artifact_evidence, fact.artifact_evidence, fact.visibility_only,
+        handoff_lineage_bound, std::move(no_lookahead.issues));
+
+    proof.no_lookahead_certificate_schema =
+        "no_lookahead_artifact_provenance.v1";
+    proof.no_lookahead_provenance_checked = true;
+    proof.no_lookahead_provenance_complete = no_lookahead.complete;
+    proof.no_lookahead_provenance_admissible = no_lookahead.admissible;
+    proof.influence_anchor_end_exclusive_max_bound =
+        no_lookahead.influence_end_bound;
+    proof.influence_anchor_end_exclusive_max = no_lookahead.influence_end;
+    proof.label_or_reward_availability_frontier_checked = true;
+    proof.label_or_reward_availability_frontier_complete =
+        no_lookahead.complete && no_lookahead.availability_end_bound;
+    proof.label_or_reward_availability_frontier_admissible =
+        no_lookahead.admissible && no_lookahead.availability_end_bound &&
+        no_lookahead.availability_end <= fact.anchor_range.begin;
+    proof.label_or_reward_availability_end_exclusive_max_bound =
+        no_lookahead.availability_end_bound;
+    proof.label_or_reward_availability_end_exclusive_max =
+        no_lookahead.availability_end;
+    proof.embargo_purged_window_checked = true;
+    proof.embargo_purged_window_complete = !fact.anchor_range.empty();
+    proof.embargo_purged_window_admissible =
+        no_lookahead.admissible && !fact.anchor_range.empty();
+    proof.embargo_policy_fingerprint = "embargo_policy_anchor_v1";
+    proof.embargo_purged_window_anchor_range_bound = !fact.anchor_range.empty();
+    proof.embargo_purged_window_anchor_begin = fact.anchor_range.begin;
+    proof.embargo_purged_window_anchor_end_exclusive = fact.anchor_range.end;
+    proof.no_lookahead_contract_digest =
+        no_lookahead.no_lookahead_contract_digest;
+    proof.consumed_artifact_digests =
+        std::move(no_lookahead.consumed_artifact_digests);
+    proof.consumed_checkpoint_digests =
+        std::move(no_lookahead.consumed_checkpoint_digests);
+    proof.consumed_generation_vector_digests =
+        std::move(no_lookahead.consumed_generation_vector_digests);
+    proof.provenance_closure_digest =
+        std::move(no_lookahead.provenance_closure_digest);
+    proof.passed = proof.passed && no_lookahead.complete &&
+                   no_lookahead.admissible && proof.issues.empty();
+    return proof;
   }
 
   [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
@@ -6673,6 +7029,883 @@ private:
   }
 
   [[nodiscard]] lattice_target_evaluation_t
+  evaluate_policy_execution_input_handoff_spec(
+      const lattice_target_spec_t &spec, lattice_target_evaluation_t result,
+      std::vector<lattice_target_proof_certificate_t::dependency_proof_t>
+          dependency_proofs) const {
+    namespace detail = lattice_target_eval_detail;
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+
+    result.proof_certificate.dependencies = std::move(dependency_proofs);
+    result.plan_ready = false;
+    result.suggested_wave = {};
+
+    if (detail::target_requires_graph_anchor_identity(spec)) {
+      if (options_.active_identity.graph_order_fingerprint.empty()) {
+        result.status = lattice_target_status_t::blocked;
+        result.reasons.push_back(
+            "active graph order fingerprint is required for policy execution "
+            "input handoff targets but was not provided");
+        return result;
+      }
+      if (options_.active_identity.source_cursor_token.empty()) {
+        result.status = lattice_target_status_t::blocked;
+        result.reasons.push_back(
+            "active source cursor token is required for policy execution input "
+            "handoff targets but was not provided");
+        return result;
+      }
+    }
+
+    const auto expected_split_policy_fingerprint =
+        detail::active_split_policy_fingerprint(options_.split_policy);
+    std::optional<exposure::exposure_ledger_scan_result_t> scanned_ledger{};
+    const exposure::lattice_exposure_ledger_t *ledger =
+        options_.exposure_ledger;
+    if (ledger == nullptr && options_.auto_build_exposure_ledger) {
+      exposure::exposure_build_context_t context{};
+      context.split_policy_fingerprint = expected_split_policy_fingerprint;
+      exposure::exposure_scan_options_t scan_options{};
+      scan_options.derive_replay_environment_facts = true;
+      scanned_ledger = exposure::scan_exposure_ledger_from_runtime_root(
+          options_.runtime_root, context, scan_options);
+      ledger = &scanned_ledger->ledger;
+    }
+    if (ledger == nullptr) {
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "policy execution input handoff target requires an exposure ledger "
+          "but none was provided");
+      return result;
+    }
+
+    try {
+      result.fact_integrity_summary =
+          exposure::summarize_lattice_fact_integrity(
+              *ledger,
+              std::vector<exposure::lattice_fact_family_t>{
+                  exposure::lattice_fact_family_t::forecast_eval,
+                  exposure::lattice_fact_family_t::replay_environment});
+      result.fact_integrity_summary_available = true;
+    } catch (const std::exception &) {
+      result.fact_integrity_summary_available = false;
+    }
+
+    auto proof_spec = spec;
+    proof_spec.component.clear();
+
+    std::unordered_map<
+        std::string,
+        const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t *>
+        forecast_by_digest{};
+    std::unordered_map<
+        std::string,
+        const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t *>
+        forecast_by_artifact_digest{};
+    for (const auto &fact : ledger->forecast_eval_facts()) {
+      if (artifact_fact_matches_identity(proof_spec, fact,
+                                         expected_split_policy_fingerprint) ||
+          artifact_fact_matches_parent_lineage_identity(
+              proof_spec, fact, expected_split_policy_fingerprint)) {
+        for (const auto &alias : exposure::related_fact_digest_aliases(
+                 fact, exposure::forecast_eval_fact_digest)) {
+          forecast_by_digest.emplace(alias, &fact);
+        }
+        if (!fact.forecast_artifact_digest.empty()) {
+          forecast_by_artifact_digest.emplace(fact.forecast_artifact_digest,
+                                              &fact);
+        }
+      }
+    }
+
+    const auto family_fact_count =
+        static_cast<std::int64_t>(ledger->replay_environment_facts().size());
+    std::int64_t identity_fact_count = 0;
+    std::optional<lattice_target_proof_certificate_t::artifact_proof_t>
+        selected_proof{};
+    std::optional<lattice_target_proof_certificate_t::artifact_proof_t>
+        first_identity_proof{};
+    lattice_target_evidence_t selected_evidence{};
+    lattice_target_evidence_t first_identity_evidence{};
+    std::vector<std::string> first_identity_issues{};
+
+    for (const auto &fact : ledger->replay_environment_facts()) {
+      const bool identity_match = artifact_fact_matches_identity(
+          proof_spec, fact, expected_split_policy_fingerprint);
+      auto proof = make_policy_execution_input_handoff_proof(
+          proof_spec, fact, *ledger, identity_match, forecast_by_digest,
+          forecast_by_artifact_digest);
+      if (identity_match) {
+        ++identity_fact_count;
+        if (!first_identity_proof.has_value()) {
+          first_identity_proof = proof;
+          first_identity_evidence = artifact_evidence_from_fact(
+              fact, family_fact_count, identity_fact_count);
+        }
+        if (first_identity_issues.empty() && !proof.issues.empty()) {
+          first_identity_issues = proof.issues;
+        }
+      }
+      if (proof.passed) {
+        selected_evidence = artifact_evidence_from_fact(fact, family_fact_count,
+                                                        identity_fact_count);
+        selected_proof = std::move(proof);
+        break;
+      }
+    }
+
+    result.evidence.matching_job_count = family_fact_count;
+    result.evidence.matching_train_attempt_count = identity_fact_count;
+    if (family_fact_count == 0) {
+      result.status = lattice_target_status_t::missing_report;
+      result.reasons.push_back("no replay_environment artifact facts found "
+                               "under " +
+                               options_.runtime_root.string());
+      return result;
+    }
+    if (identity_fact_count == 0) {
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "no replay_environment artifact facts matched the policy execution "
+          "input handoff target identity");
+      return result;
+    }
+    if (!selected_proof.has_value()) {
+      result.status = lattice_target_status_t::blocked;
+      if (first_identity_proof.has_value()) {
+        result.evidence = first_identity_evidence;
+        result.proof_certificate.artifacts.push_back(*first_identity_proof);
+        result.proof_certificate.proof_context = detail::make_proof_context(
+            proof_spec, options_.active_identity, result.evidence,
+            result.evidence.component_fingerprint,
+            result.split_policy_fingerprint);
+      }
+      std::ostringstream reason;
+      reason << "no clean policy execution input handoff proof matched "
+             << spec.proof_kind;
+      if (!first_identity_issues.empty()) {
+        reason << "; first issues=";
+        for (std::size_t i = 0; i < first_identity_issues.size(); ++i) {
+          if (i != 0) {
+            reason << ",";
+          }
+          reason << first_identity_issues[i];
+        }
+      }
+      result.reasons.push_back(reason.str());
+      return result;
+    }
+
+    result.evidence = std::move(selected_evidence);
+    result.proof_certificate.artifacts.push_back(*selected_proof);
+    result.proof_certificate.proof_context = detail::make_proof_context(
+        proof_spec, options_.active_identity, result.evidence,
+        result.evidence.component_fingerprint, result.split_policy_fingerprint);
+    result.status = lattice_target_status_t::missing_report;
+    result.reasons.push_back(
+        "policy execution input handoff proof passed; policy_training artifact "
+        "has not been produced yet");
+    result.plan_ready = spec.max_waves > 0;
+    result.suggested_wave = detail::make_suggested_wave(spec);
+    return result;
+  }
+
+  struct synthetic_feature_metric_group_t {
+    std::string name{};
+    bool complete{false};
+    std::int64_t count{0};
+    double ev_mae{std::numeric_limits<double>::quiet_NaN()};
+    double ev_rmse{std::numeric_limits<double>::quiet_NaN()};
+    double signed_error{std::numeric_limits<double>::quiet_NaN()};
+    double directional_accuracy{std::numeric_limits<double>::quiet_NaN()};
+    std::vector<std::string> issues{};
+  };
+
+  [[nodiscard]] static synthetic_feature_metric_group_t
+  compute_synthetic_feature_metric_group(
+      const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
+          &fact,
+      std::string name, const std::vector<std::size_t> &feature_indices,
+      bool require_directional_accuracy) {
+    synthetic_feature_metric_group_t out{};
+    out.name = std::move(name);
+    if (feature_indices.empty()) {
+      out.issues.emplace_back(out.name + "_feature_set_empty");
+      return out;
+    }
+    const auto has_index = [](const auto &values, std::size_t index) {
+      return index < values.size();
+    };
+    double mae_weighted_sum = 0.0;
+    double rmse_square_weighted_sum = 0.0;
+    double signed_weighted_sum = 0.0;
+    double direction_weighted_sum = 0.0;
+    for (const auto index : feature_indices) {
+      if (!has_index(fact.forecast_ev_valid_count_per_target_feature, index) ||
+          !has_index(fact.ev_mae_per_target_feature, index) ||
+          !has_index(fact.ev_rmse_per_target_feature, index) ||
+          !has_index(fact.signed_error_per_target_feature, index) ||
+          (require_directional_accuracy &&
+           !has_index(fact.directional_accuracy_per_target_feature, index))) {
+        out.issues.emplace_back(out.name +
+                                "_per_target_feature_metric_missing");
+        return out;
+      }
+      const auto count = fact.forecast_ev_valid_count_per_target_feature[index];
+      const auto mae = fact.ev_mae_per_target_feature[index];
+      const auto rmse = fact.ev_rmse_per_target_feature[index];
+      const auto signed_error = fact.signed_error_per_target_feature[index];
+      if (count <= 0 || !std::isfinite(mae) || !std::isfinite(rmse) ||
+          !std::isfinite(signed_error)) {
+        out.issues.emplace_back(out.name +
+                                "_per_target_feature_metric_invalid");
+        return out;
+      }
+      double direction = std::numeric_limits<double>::quiet_NaN();
+      if (require_directional_accuracy) {
+        direction = fact.directional_accuracy_per_target_feature[index];
+        if (!std::isfinite(direction) || direction < 0.0 || direction > 1.0) {
+          out.issues.emplace_back(out.name + "_directional_accuracy_invalid");
+          return out;
+        }
+      }
+      out.count += count;
+      mae_weighted_sum += static_cast<double>(count) * mae;
+      rmse_square_weighted_sum += static_cast<double>(count) * rmse * rmse;
+      signed_weighted_sum += static_cast<double>(count) * signed_error;
+      if (require_directional_accuracy) {
+        direction_weighted_sum += static_cast<double>(count) * direction;
+      }
+    }
+    if (out.count <= 0) {
+      out.issues.emplace_back(out.name + "_valid_count_zero");
+      return out;
+    }
+    out.ev_mae = mae_weighted_sum / static_cast<double>(out.count);
+    out.ev_rmse =
+        std::sqrt(rmse_square_weighted_sum / static_cast<double>(out.count));
+    out.signed_error = signed_weighted_sum / static_cast<double>(out.count);
+    if (require_directional_accuracy) {
+      out.directional_accuracy =
+          direction_weighted_sum / static_cast<double>(out.count);
+    }
+    out.complete = true;
+    return out;
+  }
+
+  [[nodiscard]] lattice_target_evaluation_t
+  evaluate_synthetic_forecast_oracle_gate_spec(
+      const lattice_target_spec_t &spec, lattice_target_evaluation_t result,
+      std::vector<lattice_target_proof_certificate_t::dependency_proof_t>
+          dependency_proofs) const {
+    namespace detail = lattice_target_eval_detail;
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+
+    result.proof_certificate.dependencies = std::move(dependency_proofs);
+    result.plan_ready = false;
+    result.suggested_wave = {};
+
+    auto artifact_proof_spec = spec;
+    artifact_proof_spec.proof_kind = "forecast_eval_artifact_bound";
+
+    const auto expected_split_policy_fingerprint =
+        detail::active_split_policy_fingerprint(options_.split_policy);
+    std::optional<exposure::exposure_ledger_scan_result_t> scanned_ledger{};
+    const exposure::lattice_exposure_ledger_t *ledger =
+        options_.exposure_ledger;
+    if (ledger == nullptr && options_.auto_build_exposure_ledger) {
+      exposure::exposure_build_context_t context{};
+      context.split_policy_fingerprint = expected_split_policy_fingerprint;
+      exposure::exposure_scan_options_t scan_options{};
+      scan_options.derive_replay_environment_facts = true;
+      scanned_ledger = exposure::scan_exposure_ledger_from_runtime_root(
+          options_.runtime_root, context, scan_options);
+      ledger = &scanned_ledger->ledger;
+    }
+    if (ledger == nullptr) {
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "synthetic forecast oracle gate requires an exposure ledger but none "
+          "was provided");
+      return result;
+    }
+
+    std::set<std::string> target_transform_digests{};
+    for (const auto &fact : ledger->target_transform_facts()) {
+      if (artifact_fact_matches_identity(spec, fact,
+                                         expected_split_policy_fingerprint)) {
+        for (const auto &digest : exposure::related_fact_digest_aliases(
+                 fact, exposure::target_transform_fact_digest)) {
+          target_transform_digests.insert(digest);
+        }
+      }
+    }
+    std::set<std::string> forecast_baseline_digests{};
+    for (const auto &fact : ledger->forecast_baseline_facts()) {
+      if (artifact_fact_matches_identity(spec, fact,
+                                         expected_split_policy_fingerprint)) {
+        for (const auto &digest : exposure::related_fact_digest_aliases(
+                 fact, exposure::forecast_baseline_fact_digest)) {
+          forecast_baseline_digests.insert(digest);
+        }
+      }
+    }
+    std::set<std::string> selection_signal_digests{};
+    for (const auto &fact : ledger->selection_signal_facts()) {
+      if (artifact_fact_matches_identity(spec, fact,
+                                         expected_split_policy_fingerprint)) {
+        for (const auto &digest : exposure::related_fact_digest_aliases(
+                 fact, exposure::selection_signal_fact_digest)) {
+          selection_signal_digests.insert(digest);
+        }
+      }
+    }
+
+    const auto family_fact_count =
+        static_cast<std::int64_t>(ledger->forecast_eval_facts().size());
+    std::int64_t identity_fact_count = 0;
+    std::optional<lattice_target_proof_certificate_t::artifact_proof_t>
+        first_identity_proof{};
+    lattice_target_evidence_t first_identity_evidence{};
+    std::vector<std::string> first_identity_issues{};
+    const exposure::lattice_forecast_eval_fact_t *selected_fact = nullptr;
+    lattice_target_evidence_t selected_evidence{};
+    lattice_target_proof_certificate_t::artifact_proof_t selected_proof{};
+
+    for (const auto &fact : ledger->forecast_eval_facts()) {
+      const bool identity_match = artifact_fact_matches_identity(
+          spec, fact, expected_split_policy_fingerprint);
+      auto proof = make_forecast_eval_artifact_proof(
+          artifact_proof_spec, fact, identity_match, target_transform_digests,
+          forecast_baseline_digests, selection_signal_digests);
+      if (identity_match) {
+        ++identity_fact_count;
+        if (!first_identity_proof.has_value()) {
+          first_identity_proof = proof;
+          first_identity_evidence = artifact_evidence_from_fact(
+              fact, family_fact_count, identity_fact_count);
+        }
+        if (first_identity_issues.empty() && !proof.issues.empty()) {
+          first_identity_issues = proof.issues;
+        }
+      }
+      if (proof.passed) {
+        selected_fact = &fact;
+        selected_evidence = artifact_evidence_from_fact(fact, family_fact_count,
+                                                        identity_fact_count);
+        selected_proof = std::move(proof);
+        break;
+      }
+    }
+
+    result.evidence.matching_job_count = family_fact_count;
+    result.evidence.matching_train_attempt_count = identity_fact_count;
+    if (family_fact_count == 0) {
+      result.status = lattice_target_status_t::missing_report;
+      result.reasons.push_back("no forecast_eval artifact facts found under " +
+                               options_.runtime_root.string());
+      return result;
+    }
+    if (identity_fact_count == 0) {
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "no forecast_eval artifact facts matched the synthetic oracle target "
+          "identity");
+      return result;
+    }
+    if (selected_fact == nullptr) {
+      result.status = lattice_target_status_t::blocked;
+      if (first_identity_proof.has_value()) {
+        result.evidence = first_identity_evidence;
+        result.proof_certificate.artifacts.push_back(*first_identity_proof);
+        result.proof_certificate.proof_context = detail::make_proof_context(
+            spec, options_.active_identity, result.evidence,
+            result.evidence.component_fingerprint,
+            result.split_policy_fingerprint);
+      }
+      std::ostringstream reason;
+      reason << "no clean forecast_eval artifact proof matched "
+             << spec.proof_kind;
+      if (!first_identity_issues.empty()) {
+        reason << "; first issues=";
+        for (std::size_t i = 0; i < first_identity_issues.size(); ++i) {
+          if (i != 0) {
+            reason << ",";
+          }
+          reason << first_identity_issues[i];
+        }
+      }
+      result.reasons.push_back(reason.str());
+      return result;
+    }
+
+    result.evidence = std::move(selected_evidence);
+    result.proof_certificate.artifacts.push_back(selected_proof);
+    result.proof_certificate.proof_context = detail::make_proof_context(
+        spec, options_.active_identity, result.evidence,
+        result.evidence.component_fingerprint, result.split_policy_fingerprint);
+
+    const auto target_range = detail::target_anchor_interval(spec);
+    const auto target_begin = static_cast<std::int64_t>(
+        target_range.empty() ? selected_fact->anchor_range.begin
+                             : target_range.begin);
+    auto influence =
+        resolve_forecast_influence(*ledger, *selected_fact, target_begin);
+    if (!influence.complete || !influence.admissible) {
+      result.status = lattice_target_status_t::blocked;
+      std::ostringstream reason;
+      reason << "synthetic forecast oracle gate requires complete admissible "
+                "forecast no-lookahead influence";
+      if (!influence.issues.empty()) {
+        reason << "; issues=";
+        for (std::size_t i = 0; i < influence.issues.size(); ++i) {
+          if (i != 0) {
+            reason << ",";
+          }
+          reason << influence.issues[i];
+        }
+      }
+      result.reasons.push_back(reason.str());
+      return result;
+    }
+
+    const auto price_metrics = compute_synthetic_feature_metric_group(
+        *selected_fact, "price_features", {0, 1, 2, 3},
+        /*require_directional_accuracy=*/false);
+    const auto activity_metrics = compute_synthetic_feature_metric_group(
+        *selected_fact, "activity_features", {4, 5, 6, 7, 8},
+        /*require_directional_accuracy=*/false);
+    const auto close_metrics = compute_synthetic_feature_metric_group(
+        *selected_fact, "close_feature", {3},
+        /*require_directional_accuracy=*/true);
+    std::vector<std::string> missing_metrics{};
+    for (const auto *group :
+         {&price_metrics, &activity_metrics, &close_metrics}) {
+      if (!group->complete) {
+        if (group->issues.empty()) {
+          missing_metrics.emplace_back(group->name + "_metrics_missing");
+        } else {
+          missing_metrics.insert(missing_metrics.end(), group->issues.begin(),
+                                 group->issues.end());
+        }
+      }
+    }
+    if (!missing_metrics.empty()) {
+      result.status = lattice_target_status_t::missing_report;
+      std::ostringstream reason;
+      reason << "synthetic feature-aware forecast oracle metrics are missing";
+      reason << ": ";
+      for (std::size_t i = 0; i < missing_metrics.size(); ++i) {
+        if (i != 0) {
+          reason << ",";
+        }
+        reason << missing_metrics[i];
+      }
+      result.reasons.push_back(reason.str());
+      return result;
+    }
+
+    bool failed = false;
+    if (price_metrics.ev_mae > spec.synthetic_oracle_max_price_ev_mae) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic feature-aware forecast oracle price_ev_mae above "
+                "MAX_ORACLE_PRICE_EV_MAE: "
+             << price_metrics.ev_mae << " > "
+             << spec.synthetic_oracle_max_price_ev_mae;
+      result.reasons.push_back(reason.str());
+    }
+    if (price_metrics.ev_rmse > spec.synthetic_oracle_max_price_ev_rmse) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic feature-aware forecast oracle price_ev_rmse above "
+                "MAX_ORACLE_PRICE_EV_RMSE: "
+             << price_metrics.ev_rmse << " > "
+             << spec.synthetic_oracle_max_price_ev_rmse;
+      result.reasons.push_back(reason.str());
+    }
+    if (activity_metrics.ev_mae > spec.synthetic_oracle_max_activity_ev_mae) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic feature-aware forecast oracle activity_ev_mae "
+                "above MAX_ORACLE_ACTIVITY_EV_MAE: "
+             << activity_metrics.ev_mae << " > "
+             << spec.synthetic_oracle_max_activity_ev_mae;
+      result.reasons.push_back(reason.str());
+    }
+    if (activity_metrics.ev_rmse > spec.synthetic_oracle_max_activity_ev_rmse) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic feature-aware forecast oracle activity_ev_rmse "
+                "above MAX_ORACLE_ACTIVITY_EV_RMSE: "
+             << activity_metrics.ev_rmse << " > "
+             << spec.synthetic_oracle_max_activity_ev_rmse;
+      result.reasons.push_back(reason.str());
+    }
+    if (close_metrics.directional_accuracy <
+        spec.synthetic_oracle_min_close_directional_accuracy) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic feature-aware forecast oracle "
+                "close_directional_accuracy below "
+                "MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY: "
+             << close_metrics.directional_accuracy << " < "
+             << spec.synthetic_oracle_min_close_directional_accuracy;
+      result.reasons.push_back(reason.str());
+    }
+    if (failed) {
+      result.status = lattice_target_status_t::metric_failed;
+      return result;
+    }
+
+    std::ostringstream reason;
+    reason << "synthetic feature-aware forecast oracle metrics passed: "
+           << "price_ev_mae=" << price_metrics.ev_mae
+           << " price_ev_rmse=" << price_metrics.ev_rmse
+           << " activity_ev_mae=" << activity_metrics.ev_mae
+           << " activity_ev_rmse=" << activity_metrics.ev_rmse
+           << " close_directional_accuracy="
+           << close_metrics.directional_accuracy;
+    result.reasons.push_back(reason.str());
+    result.status = lattice_target_status_t::satisfied;
+    return result;
+  }
+
+  [[nodiscard]] lattice_target_evaluation_t
+  evaluate_synthetic_edge_return_projection_oracle_gate_spec(
+      const lattice_target_spec_t &spec, lattice_target_evaluation_t result,
+      std::vector<lattice_target_proof_certificate_t::dependency_proof_t>
+          dependency_proofs) const {
+    namespace detail = lattice_target_eval_detail;
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+
+    result.proof_certificate.dependencies = std::move(dependency_proofs);
+    result.plan_ready = false;
+    result.suggested_wave = {};
+
+    auto artifact_proof_spec = spec;
+    artifact_proof_spec.proof_kind = "forecast_eval_artifact_bound";
+
+    const auto expected_split_policy_fingerprint =
+        detail::active_split_policy_fingerprint(options_.split_policy);
+    std::optional<exposure::exposure_ledger_scan_result_t> scanned_ledger{};
+    const exposure::lattice_exposure_ledger_t *ledger =
+        options_.exposure_ledger;
+    if (ledger == nullptr && options_.auto_build_exposure_ledger) {
+      exposure::exposure_build_context_t context{};
+      context.split_policy_fingerprint = expected_split_policy_fingerprint;
+      exposure::exposure_scan_options_t scan_options{};
+      scan_options.derive_replay_environment_facts = true;
+      scanned_ledger = exposure::scan_exposure_ledger_from_runtime_root(
+          options_.runtime_root, context, scan_options);
+      ledger = &scanned_ledger->ledger;
+    }
+    if (ledger == nullptr) {
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "synthetic edge-return projection oracle gate requires an exposure "
+          "ledger but none was provided");
+      return result;
+    }
+
+    std::set<std::string> target_transform_digests{};
+    for (const auto &fact : ledger->target_transform_facts()) {
+      if (artifact_fact_matches_identity(spec, fact,
+                                         expected_split_policy_fingerprint)) {
+        for (const auto &digest : exposure::related_fact_digest_aliases(
+                 fact, exposure::target_transform_fact_digest)) {
+          target_transform_digests.insert(digest);
+        }
+      }
+    }
+    std::set<std::string> forecast_baseline_digests{};
+    for (const auto &fact : ledger->forecast_baseline_facts()) {
+      if (artifact_fact_matches_identity(spec, fact,
+                                         expected_split_policy_fingerprint)) {
+        for (const auto &digest : exposure::related_fact_digest_aliases(
+                 fact, exposure::forecast_baseline_fact_digest)) {
+          forecast_baseline_digests.insert(digest);
+        }
+      }
+    }
+    std::set<std::string> selection_signal_digests{};
+    for (const auto &fact : ledger->selection_signal_facts()) {
+      if (artifact_fact_matches_identity(spec, fact,
+                                         expected_split_policy_fingerprint)) {
+        for (const auto &digest : exposure::related_fact_digest_aliases(
+                 fact, exposure::selection_signal_fact_digest)) {
+          selection_signal_digests.insert(digest);
+        }
+      }
+    }
+
+    const auto family_fact_count =
+        static_cast<std::int64_t>(ledger->forecast_eval_facts().size());
+    std::int64_t identity_fact_count = 0;
+    std::optional<lattice_target_proof_certificate_t::artifact_proof_t>
+        first_identity_proof{};
+    lattice_target_evidence_t first_identity_evidence{};
+    std::vector<std::string> first_identity_issues{};
+    const exposure::lattice_forecast_eval_fact_t *selected_fact = nullptr;
+    lattice_target_evidence_t selected_evidence{};
+    lattice_target_proof_certificate_t::artifact_proof_t selected_proof{};
+
+    for (const auto &fact : ledger->forecast_eval_facts()) {
+      const bool identity_match = artifact_fact_matches_identity(
+          spec, fact, expected_split_policy_fingerprint);
+      auto proof = make_forecast_eval_artifact_proof(
+          artifact_proof_spec, fact, identity_match, target_transform_digests,
+          forecast_baseline_digests, selection_signal_digests);
+      if (identity_match) {
+        ++identity_fact_count;
+        if (!first_identity_proof.has_value()) {
+          first_identity_proof = proof;
+          first_identity_evidence = artifact_evidence_from_fact(
+              fact, family_fact_count, identity_fact_count);
+        }
+        if (first_identity_issues.empty() && !proof.issues.empty()) {
+          first_identity_issues = proof.issues;
+        }
+      }
+      if (proof.passed) {
+        selected_fact = &fact;
+        selected_evidence = artifact_evidence_from_fact(fact, family_fact_count,
+                                                        identity_fact_count);
+        selected_proof = std::move(proof);
+        break;
+      }
+    }
+
+    result.evidence.matching_job_count = family_fact_count;
+    result.evidence.matching_train_attempt_count = identity_fact_count;
+    if (family_fact_count == 0) {
+      result.status = lattice_target_status_t::missing_report;
+      result.reasons.push_back("no forecast_eval artifact facts found under " +
+                               options_.runtime_root.string());
+      return result;
+    }
+    if (identity_fact_count == 0) {
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "no forecast_eval artifact facts matched the synthetic edge-return "
+          "projection oracle target identity");
+      return result;
+    }
+    if (selected_fact == nullptr) {
+      result.status = lattice_target_status_t::blocked;
+      if (first_identity_proof.has_value()) {
+        result.evidence = first_identity_evidence;
+        result.proof_certificate.artifacts.push_back(*first_identity_proof);
+        result.proof_certificate.proof_context = detail::make_proof_context(
+            spec, options_.active_identity, result.evidence,
+            result.evidence.component_fingerprint,
+            result.split_policy_fingerprint);
+      }
+      std::ostringstream reason;
+      reason << "no clean forecast_eval artifact proof matched "
+             << spec.proof_kind;
+      if (!first_identity_issues.empty()) {
+        reason << "; first issues=";
+        for (std::size_t i = 0; i < first_identity_issues.size(); ++i) {
+          if (i != 0) {
+            reason << ",";
+          }
+          reason << first_identity_issues[i];
+        }
+      }
+      result.reasons.push_back(reason.str());
+      return result;
+    }
+
+    result.evidence = std::move(selected_evidence);
+    result.proof_certificate.artifacts.push_back(selected_proof);
+    result.proof_certificate.proof_context = detail::make_proof_context(
+        spec, options_.active_identity, result.evidence,
+        result.evidence.component_fingerprint, result.split_policy_fingerprint);
+
+    const auto target_range = detail::target_anchor_interval(spec);
+    const auto target_begin = static_cast<std::int64_t>(
+        target_range.empty() ? selected_fact->anchor_range.begin
+                             : target_range.begin);
+    auto influence =
+        resolve_forecast_influence(*ledger, *selected_fact, target_begin);
+    if (!influence.complete || !influence.admissible) {
+      result.status = lattice_target_status_t::blocked;
+      std::ostringstream reason;
+      reason << "synthetic edge-return projection oracle gate requires "
+                "complete admissible forecast no-lookahead influence";
+      if (!influence.issues.empty()) {
+        reason << "; issues=";
+        for (std::size_t i = 0; i < influence.issues.size(); ++i) {
+          if (i != 0) {
+            reason << ",";
+          }
+          reason << influence.issues[i];
+        }
+      }
+      result.reasons.push_back(reason.str());
+      return result;
+    }
+
+    std::vector<std::string> missing_metrics{};
+    if (selected_fact->edge_return_projection_schema.empty()) {
+      missing_metrics.emplace_back("edge_return_projection_schema_missing");
+    }
+    if (selected_fact->edge_return_projection_quote_node_index < 0 ||
+        selected_fact->edge_return_projection_quote_node_id.empty() ||
+        selected_fact->edge_return_projection_base_node_ids.empty() ||
+        selected_fact->edge_return_projection_close_feature_index < 0) {
+      missing_metrics.emplace_back("edge_return_projection_identity_missing");
+    }
+    if (selected_fact->edge_return_projection_valid_count <= 0) {
+      missing_metrics.emplace_back("edge_return_projection_valid_count_zero");
+    }
+    const auto valid_fraction = [](double value) {
+      return std::isfinite(value) && value >= 0.0 && value <= 1.0;
+    };
+    if (!std::isfinite(selected_fact->edge_return_projection_ev_mae) ||
+        !std::isfinite(selected_fact->edge_return_projection_ev_rmse) ||
+        !std::isfinite(selected_fact->edge_return_projection_signed_error)) {
+      missing_metrics.emplace_back("edge_return_projection_error_missing");
+    }
+    if (!valid_fraction(
+            selected_fact->edge_return_projection_directional_accuracy)) {
+      missing_metrics.emplace_back(
+          "edge_return_projection_directional_accuracy_missing");
+    }
+    if (!std::isfinite(selected_fact->edge_return_projection_correlation) ||
+        selected_fact->edge_return_projection_correlation < -1.0 ||
+        selected_fact->edge_return_projection_correlation > 1.0) {
+      missing_metrics.emplace_back(
+          "edge_return_projection_correlation_missing");
+    }
+    if (selected_fact->edge_return_projection_pairwise_rank_valid_count <= 0 ||
+        !valid_fraction(
+            selected_fact->edge_return_projection_pairwise_rank_accuracy)) {
+      missing_metrics.emplace_back(
+          "edge_return_projection_pairwise_rank_accuracy_missing");
+    }
+    if (selected_fact->edge_return_projection_best_asset_valid_count <= 0 ||
+        !valid_fraction(
+            selected_fact->edge_return_projection_best_asset_agreement)) {
+      missing_metrics.emplace_back(
+          "edge_return_projection_best_asset_agreement_missing");
+    }
+    if (selected_fact->edge_return_projection_valid_count_per_edge.empty() ||
+        selected_fact->edge_return_projection_directional_accuracy_per_edge
+            .empty()) {
+      missing_metrics.emplace_back("edge_return_projection_per_edge_missing");
+    }
+    if (selected_fact->edge_return_projection_valid_count_per_channel.empty() ||
+        selected_fact->edge_return_projection_directional_accuracy_per_channel
+            .empty()) {
+      missing_metrics.emplace_back(
+          "edge_return_projection_per_channel_missing");
+    }
+    if (!missing_metrics.empty()) {
+      result.status = lattice_target_status_t::missing_report;
+      std::ostringstream reason;
+      reason << "synthetic edge-return projection oracle metrics are missing: ";
+      for (std::size_t i = 0; i < missing_metrics.size(); ++i) {
+        if (i != 0) {
+          reason << ",";
+        }
+        reason << missing_metrics[i];
+      }
+      result.reasons.push_back(reason.str());
+      return result;
+    }
+
+    bool failed = false;
+    if (selected_fact->edge_return_projection_ev_mae >
+        spec.synthetic_oracle_max_edge_return_ev_mae) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic edge-return projection oracle ev_mae above "
+                "MAX_ORACLE_EDGE_RETURN_EV_MAE: "
+             << selected_fact->edge_return_projection_ev_mae << " > "
+             << spec.synthetic_oracle_max_edge_return_ev_mae;
+      result.reasons.push_back(reason.str());
+    }
+    if (selected_fact->edge_return_projection_ev_rmse >
+        spec.synthetic_oracle_max_edge_return_ev_rmse) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic edge-return projection oracle ev_rmse above "
+                "MAX_ORACLE_EDGE_RETURN_EV_RMSE: "
+             << selected_fact->edge_return_projection_ev_rmse << " > "
+             << spec.synthetic_oracle_max_edge_return_ev_rmse;
+      result.reasons.push_back(reason.str());
+    }
+    if (selected_fact->edge_return_projection_directional_accuracy <
+        spec.synthetic_oracle_min_edge_return_directional_accuracy) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic edge-return projection oracle "
+                "directional_accuracy below "
+                "MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY: "
+             << selected_fact->edge_return_projection_directional_accuracy
+             << " < "
+             << spec.synthetic_oracle_min_edge_return_directional_accuracy;
+      result.reasons.push_back(reason.str());
+    }
+    if (selected_fact->edge_return_projection_pairwise_rank_accuracy <
+        spec.synthetic_oracle_min_edge_return_pairwise_rank_accuracy) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic edge-return projection oracle "
+                "pairwise_rank_accuracy below "
+                "MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY: "
+             << selected_fact->edge_return_projection_pairwise_rank_accuracy
+             << " < "
+             << spec.synthetic_oracle_min_edge_return_pairwise_rank_accuracy;
+      result.reasons.push_back(reason.str());
+    }
+    if (selected_fact->edge_return_projection_best_asset_agreement <
+        spec.synthetic_oracle_min_edge_return_best_asset_agreement) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic edge-return projection oracle "
+                "best_asset_agreement below "
+                "MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT: "
+             << selected_fact->edge_return_projection_best_asset_agreement
+             << " < "
+             << spec.synthetic_oracle_min_edge_return_best_asset_agreement;
+      result.reasons.push_back(reason.str());
+    }
+    if (selected_fact->edge_return_projection_correlation <
+        spec.synthetic_oracle_min_edge_return_correlation) {
+      failed = true;
+      std::ostringstream reason;
+      reason << "synthetic edge-return projection oracle correlation below "
+                "MIN_ORACLE_EDGE_RETURN_CORRELATION: "
+             << selected_fact->edge_return_projection_correlation << " < "
+             << spec.synthetic_oracle_min_edge_return_correlation;
+      result.reasons.push_back(reason.str());
+    }
+    if (failed) {
+      result.status = lattice_target_status_t::metric_failed;
+      return result;
+    }
+
+    std::ostringstream reason;
+    reason << "synthetic edge-return projection oracle metrics passed: "
+           << "ev_mae=" << selected_fact->edge_return_projection_ev_mae
+           << " ev_rmse=" << selected_fact->edge_return_projection_ev_rmse
+           << " directional_accuracy="
+           << selected_fact->edge_return_projection_directional_accuracy
+           << " pairwise_rank_accuracy="
+           << selected_fact->edge_return_projection_pairwise_rank_accuracy
+           << " best_asset_agreement="
+           << selected_fact->edge_return_projection_best_asset_agreement
+           << " correlation="
+           << selected_fact->edge_return_projection_correlation;
+    result.reasons.push_back(reason.str());
+    result.status = lattice_target_status_t::satisfied;
+    return result;
+  }
+
+  [[nodiscard]] lattice_target_evaluation_t
   evaluate_spec(const lattice_target_spec_t &input_spec,
                 std::vector<std::string> dependency_stack) const {
     namespace detail = lattice_target_eval_detail;
@@ -6811,6 +8044,19 @@ private:
     if (is_artifact_readiness_target_class(spec.target_class)) {
       return evaluate_artifact_readiness_spec(spec, std::move(result),
                                               std::move(dependency_proofs));
+    }
+    if (is_policy_execution_input_handoff_target_class(spec.target_class)) {
+      return evaluate_policy_execution_input_handoff_spec(
+          spec, std::move(result), std::move(dependency_proofs));
+    }
+    if (is_synthetic_forecast_oracle_gate_target_class(spec.target_class)) {
+      return evaluate_synthetic_forecast_oracle_gate_spec(
+          spec, std::move(result), std::move(dependency_proofs));
+    }
+    if (is_synthetic_edge_return_projection_oracle_gate_target_class(
+            spec.target_class)) {
+      return evaluate_synthetic_edge_return_projection_oracle_gate_spec(
+          spec, std::move(result), std::move(dependency_proofs));
     }
 
     if (reject_non_checkpoint_latest_satisfying_reference(

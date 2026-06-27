@@ -16,6 +16,9 @@ namespace mdn {
 // log_pi : [B, N, C, Df, K]
 // mu     : [B, N, C, Df, K]
 // sigma  : [B, N, C, Df, K]
+// direct_edge_return : optional [B, N-1, C] direct base-minus-quote return
+//                      readout for synthetic/edge diagnostics and auxiliary
+//                      training.
 //
 // B  = anchor batch
 // N  = graph node slot
@@ -26,6 +29,7 @@ struct MdnOut {
   torch::Tensor log_pi;
   torch::Tensor mu;
   torch::Tensor sigma;
+  torch::Tensor direct_edge_return;
 };
 
 struct ChannelAdapterOptions {

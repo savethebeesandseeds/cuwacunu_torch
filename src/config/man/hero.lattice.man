@@ -196,6 +196,30 @@ AGENT RUNBOOK
     directly or through LATTICE_PROFILE, as the compact authoring form for
     PROTOCOL_ID=cwu_02v,
     SOURCE_RANGE=anchor_index, and OVER_SPLIT=validation_holdout.
+    The synthetic continuous-chart benchmark also declares the non-dispatch
+    TARGET_CLASS=synthetic_forecast_oracle_gate target. It must use
+    SUBJECT_FACT_FAMILY=forecast_eval and
+    PROOF_KIND=synthetic_forecast_oracle_accuracy_bound. The gate first binds a
+    clean forecast-eval artifact proof, then checks feature-aware finite
+    thresholds: MAX_ORACLE_PRICE_EV_MAE, MAX_ORACLE_PRICE_EV_RMSE,
+    MAX_ORACLE_ACTIVITY_EV_MAE, MAX_ORACLE_ACTIVITY_EV_RMSE, and
+    MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY. Missing feature-aware oracle metrics
+    remain missing_report / inconclusive. The legacy aggregate oracle fields
+    remain parseable for compatibility but are not the center of the synthetic
+    benchmark decision.
+    The benchmark may also declare
+    TARGET_CLASS=synthetic_edge_return_projection_oracle_gate with
+    SUBJECT_FACT_FAMILY=forecast_eval and
+    PROOF_KIND=synthetic_edge_return_projection_oracle_bound. This sibling gate
+    first binds the same clean forecast-eval artifact proof, then checks
+    projected tradable edge returns derived as base close minus quote close.
+    Supported thresholds are MAX_ORACLE_EDGE_RETURN_EV_MAE,
+    MAX_ORACLE_EDGE_RETURN_EV_RMSE,
+    MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY,
+    MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY,
+    MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT, and
+    MIN_ORACLE_EDGE_RETURN_CORRELATION. Missing edge-projection fields remain
+    missing_report / inconclusive.
     Channel-MDN leakage guards may use
     LEAKAGE_GUARD_SCOPE=channel_mdn_validation or
     LEAKAGE_GUARD_SCOPE=channel_mdn_test as compact authoring forms for the
@@ -957,7 +981,7 @@ AGENT RUNBOOK
 	    covariance_coupling_bound, scenario_bank_bound,
 	    nodelift_residual_quality_bound, projection_validation_scores_bound,
 	    feature_semantics_bound, or dock_binding_bound from scanner-derived
-	    observer_belief facts. It remains observer visibility only: raw NodeLift
+	    observer_belief facts. It remains probe visibility only: raw NodeLift
 	    potential is not tradable return evidence, and Lattice does not select
 	    allocations or decide market readiness.
 	    LATTICE_WARN KIND=allocation_engine may flag numeraire_weight, turnover,

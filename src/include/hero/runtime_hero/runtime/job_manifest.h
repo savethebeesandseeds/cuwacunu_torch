@@ -135,6 +135,10 @@ struct job_manifest_t {
   std::string runtime_handoff_id{};
   std::string runtime_handoff_digest{};
   std::string marshal_target_driver_run_id{};
+  bool probe_sidecar_enabled{false};
+  std::string probe_record_schema{
+      "kikijyeba.runtime.job_events.probe_record.v1"};
+  std::string probe_stream_leaf{"runtime.job_events.probe"};
   std::string policy_training_contract_schema{};
   std::string policy_training_contract_digest{};
   std::string policy_training_artifact_schema{};
@@ -280,6 +284,10 @@ struct job_manifest_t {
     out << "runtime_handoff_digest=" << runtime_handoff_digest << "\n";
     out << "marshal_target_driver_run_id=" << marshal_target_driver_run_id
         << "\n";
+    out << "probe_sidecar_enabled="
+        << (probe_sidecar_enabled ? "true" : "false") << "\n";
+    out << "probe_record_schema=" << probe_record_schema << "\n";
+    out << "probe_stream_leaf=" << probe_stream_leaf << "\n";
     out << "policy_training_contract_schema=" << policy_training_contract_schema
         << "\n";
     out << "policy_training_contract_digest=" << policy_training_contract_digest

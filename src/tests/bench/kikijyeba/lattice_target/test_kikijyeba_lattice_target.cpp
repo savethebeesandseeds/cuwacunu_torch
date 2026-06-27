@@ -1,11 +1,14 @@
 #include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
+#include "hero/marshal_hero/marshal/digest.h"
 #include "tests/bench/kikijyeba/test_support/canonical_protocol_fixture.h"
 #include "tests/bench/kikijyeba/test_support/lattice_forecast_artifact_fixture.h"
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -995,12 +998,46 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   }
   forecast.signed_error = -0.02;
   forecast.directional_accuracy = 0.62;
+  forecast.forecast_ev_valid_count_per_target_feature = {10, 10, 10, 10, 8,
+                                                         4,  10, 8,  4};
+  forecast.ev_mae_per_target_feature = {0.010, 0.012, 0.011, 0.014, 0.030,
+                                        0.025, 0.050, 0.030, 0.025};
+  forecast.ev_rmse_per_target_feature = {0.011, 0.015, 0.014, 0.018, 0.040,
+                                         0.030, 0.070, 0.035, 0.030};
+  forecast.signed_error_per_target_feature = {
+      -0.010, -0.010, -0.006, -0.007, -0.020, -0.006, -0.035, -0.009, -0.008};
+  forecast.directional_accuracy_per_target_feature = {
+      0.0, 0.61, 0.64, 0.50, 1.0, 1.0, 1.0, 1.0, 1.0};
+  forecast.edge_return_projection_schema =
+      "synthetic_edge_return_projection.anchor_v1";
+  forecast.edge_return_projection_quote_node_index = 0;
+  forecast.edge_return_projection_quote_node_id = "SYNUSD";
+  forecast.edge_return_projection_base_node_ids = "SYNALPHA,SYNBETA,SYNGAMMA";
+  forecast.edge_return_projection_close_feature_index = 3;
+  forecast.edge_return_projection_valid_count = 30;
+  forecast.edge_return_projection_ev_mae = 0.040;
+  forecast.edge_return_projection_ev_rmse = 0.060;
+  forecast.edge_return_projection_signed_error = -0.010;
+  forecast.edge_return_projection_directional_accuracy = 0.52;
+  forecast.edge_return_projection_correlation = 0.10;
+  forecast.edge_return_projection_pairwise_rank_valid_count = 30;
+  forecast.edge_return_projection_pairwise_rank_accuracy = 0.55;
+  forecast.edge_return_projection_best_asset_valid_count = 10;
+  forecast.edge_return_projection_best_asset_agreement = 0.40;
+  forecast.edge_return_projection_valid_count_per_edge = {10, 10, 10};
+  forecast.edge_return_projection_directional_accuracy_per_edge = {0.50, 0.55,
+                                                                   0.51};
+  forecast.edge_return_projection_valid_count_per_channel = {15, 15};
+  forecast.edge_return_projection_directional_accuracy_per_channel = {0.53,
+                                                                      0.51};
   forecast.calibration_coverage = 0.91;
   forecast.pit_summary = "uniform-ish";
   forecast.sigma_scale_sanity = "ok";
   forecast.support_by_node = "BTC:20,ETH:20";
   forecast.support_by_channel = "close:40";
   forecast.support_by_target_feature = "ev_close:40,ev_return:40";
+  forecast.declared_fact_digest =
+      "runtime_declared_forecast_eval_fact_digest_1";
   if (!forecast_missing_horizon_support) {
     forecast.support_by_horizon = "h3:40";
   }
@@ -1198,6 +1235,8 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   observer.scenario_bank_digest = "scenario_bank_1";
   observer.nodelift_residual_quality = "ok";
   observer.projection_validation_scores = "rmse:0.24";
+  observer.declared_fact_digest =
+      "runtime_declared_observer_belief_fact_digest_1";
   observer.confidence = 0.64;
   observer.data_quality = 0.88;
   observer.liquidity = 0.72;
@@ -1248,6 +1287,8 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   allocation.fallback_reasons =
       allocation_missing_reason_contract ? "" : "none";
   allocation.derisk_reasons = allocation_missing_reason_contract ? "" : "none";
+  allocation.declared_fact_digest =
+      "runtime_declared_allocation_engine_fact_digest_1";
   allocation.observer_belief_fact_digest =
       allocation_observer_digest_mismatch ? "missing_observer_belief_digest"
                                           : observer_digest;
@@ -1285,6 +1326,15 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   replay.experiment_report_path =
       fs::temp_directory_path() /
       "cuwacunu_lattice_target_replay/replay_validation.report";
+  fs::create_directories(replay.batch_index_path.parent_path());
+  {
+    std::ofstream batch_index(replay.batch_index_path, std::ios::trunc);
+    batch_index
+        << "schema=kikijyeba.environment.replay.runtime_batch_index.v1\n"
+        << "experiment_id=replay_validation\n"
+        << "coverage_anchor_begin=" << parent.anchor_range.begin << "\n"
+        << "coverage_anchor_end_exclusive=" << parent.anchor_range.end << "\n";
+  }
   replay.runtime_replay_batch_index_schema =
       replay_schema_mismatch
           ? "wrong.runtime.batch.schema"
@@ -1671,12 +1721,10 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
       replay.experiment_report_digest;
   std::vector<std::string> policy_input_artifacts{
       forecast_digest, forecast.forecast_artifact_digest};
-  policy_input_artifacts.insert(
-      policy_input_artifacts.end(),
-      replay.influence_summary.parent_artifact_digests.begin(),
-      replay.influence_summary.parent_artifact_digests.end());
   policy_input_artifacts.push_back(replay.parent_forecast_eval_fact_digest);
   policy_input_artifacts.push_back(replay.parent_forecast_artifact_digest);
+  policy_input_artifacts.push_back(forecast.declared_fact_digest);
+  policy_input_artifacts.push_back(forecast.forecast_artifact_digest);
   auto policy_execution_artifacts = policy_input_artifacts;
   policy_execution_artifacts.push_back(replay_digest);
   std::vector<std::string> policy_input_checkpoints =
@@ -2419,6 +2467,114 @@ artifact_eval_options(const exposure::lattice_exposure_ledger_t &ledger) {
   return options;
 }
 
+std::vector<target::lattice_target_spec_t> synthetic_feature_aware_oracle_specs(
+    double min_close_directional_accuracy = 0.95) {
+  std::ostringstream dsl;
+  dsl << R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = synthetic_feature_aware_forecast_oracle_ready;
+  TARGET_CLASS = synthetic_forecast_oracle_gate;
+  PROTOCOL_ID = cwu_02v;
+  COMPONENT = wikimyei.inference.expected_value.mdn;
+  SUBJECT_FACT_FAMILY = forecast_eval;
+  PROOF_KIND = synthetic_forecast_oracle_accuracy_bound;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+  MAX_ORACLE_EV_MAE = 0.05;
+  MAX_ORACLE_EV_RMSE = 0.075;
+  MIN_ORACLE_DIRECTIONAL_ACCURACY = 0.95;
+  MAX_ORACLE_PRICE_EV_MAE = 0.02;
+  MAX_ORACLE_PRICE_EV_RMSE = 0.025;
+  MAX_ORACLE_ACTIVITY_EV_MAE = 0.07;
+  MAX_ORACLE_ACTIVITY_EV_RMSE = 0.10;
+  MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY = )DSL"
+      << min_close_directional_accuracy << R"DSL(;
+  WAVE_MODE = none;
+  PLAN_MAX_ATTEMPTS = 0;
+};
+)DSL";
+  return target::decode_lattice_targets_from_dsl(dsl.str());
+}
+
+std::vector<target::lattice_target_spec_t>
+synthetic_edge_return_projection_oracle_specs(
+    double min_directional_accuracy = 0.75,
+    double min_pairwise_rank_accuracy = 0.75,
+    double min_best_asset_agreement = 0.60, double min_correlation = 0.25) {
+  std::ostringstream dsl;
+  dsl << R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = synthetic_edge_return_projection_oracle_ready;
+  TARGET_CLASS = synthetic_edge_return_projection_oracle_gate;
+  PROTOCOL_ID = cwu_02v;
+  COMPONENT = wikimyei.inference.expected_value.mdn;
+  SUBJECT_FACT_FAMILY = forecast_eval;
+  PROOF_KIND = synthetic_edge_return_projection_oracle_bound;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+  MAX_ORACLE_EDGE_RETURN_EV_MAE = 0.05;
+  MAX_ORACLE_EDGE_RETURN_EV_RMSE = 0.075;
+  MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY = )DSL"
+      << min_directional_accuracy << R"DSL(;
+  MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY = )DSL"
+      << min_pairwise_rank_accuracy << R"DSL(;
+  MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT = )DSL"
+      << min_best_asset_agreement << R"DSL(;
+  MIN_ORACLE_EDGE_RETURN_CORRELATION = )DSL"
+      << min_correlation << R"DSL(;
+  WAVE_MODE = none;
+  PLAN_MAX_ATTEMPTS = 0;
+};
+)DSL";
+  return target::decode_lattice_targets_from_dsl(dsl.str());
+}
+
+exposure::lattice_exposure_ledger_t
+clone_artifact_ledger_with_forecast_mutation(
+    const exposure::lattice_exposure_ledger_t &source,
+    const std::function<void(exposure::lattice_forecast_eval_fact_t &)>
+        &mutate_forecast) {
+  exposure::lattice_exposure_ledger_t out{};
+  for (const auto &fact : source.facts()) {
+    out.add(fact, /*derive_source_receipts=*/false,
+            /*derive_selection_signals=*/false);
+  }
+  for (const auto &fact : source.checkpoint_facts()) {
+    out.add_checkpoint(fact);
+  }
+  for (const auto &fact : source.component_training_update_facts()) {
+    out.add_component_training_update(fact);
+  }
+  for (const auto &fact : source.target_transform_facts()) {
+    out.add_target_transform(fact);
+  }
+  for (const auto &fact : source.forecast_baseline_facts()) {
+    out.add_forecast_baseline(fact);
+  }
+  for (const auto &fact : source.selection_signal_facts()) {
+    out.add_selection_signal(fact);
+  }
+  for (auto fact : source.forecast_eval_facts()) {
+    mutate_forecast(fact);
+    out.add_forecast_eval(std::move(fact));
+  }
+  for (const auto &fact : source.observer_belief_facts()) {
+    out.add_observer_belief(fact);
+  }
+  for (const auto &fact : source.allocation_engine_facts()) {
+    out.add_allocation_engine(fact);
+  }
+  for (const auto &fact : source.replay_environment_facts()) {
+    out.add_replay_environment(fact);
+  }
+  for (const auto &fact : source.policy_training_facts()) {
+    out.add_policy_training(fact);
+  }
+  return out;
+}
+
 target::lattice_target_evaluator_options_t
 artifact_runtime_eval_options(const fs::path &runtime_root) {
   target::lattice_target_evaluator_options_t options{};
@@ -2955,6 +3111,105 @@ LATTICE_TARGET_FAMILY {
                   .protocol_id == "cwu_02v",
       "active artifact-readiness family preserves expanded target ids and "
       "fact families");
+  check(
+      find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .target_class == "synthetic_forecast_oracle_gate" &&
+          find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .subject_fact_family == "forecast_eval" &&
+          find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .proof_kind == "synthetic_forecast_oracle_accuracy_bound" &&
+          find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .upstream_target_id ==
+              "channel_mdn_certified_replay_expansion_eval_ready" &&
+          find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .train_split == "certified_replay_expansion_eval" &&
+          find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .checkpoint_source == "none" &&
+          find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .plan_mode == "none" &&
+          find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .max_waves == 0 &&
+          std::abs(
+              find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .synthetic_oracle_max_ev_mae -
+              0.05) < 1e-12 &&
+          std::abs(
+              find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .synthetic_oracle_max_ev_rmse -
+              0.075) < 1e-12 &&
+          std::abs(
+              find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .synthetic_oracle_min_directional_accuracy -
+              0.95) < 1e-12 &&
+          std::abs(
+              find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .synthetic_oracle_max_price_ev_mae -
+              0.02) < 1e-12 &&
+          std::abs(
+              find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .synthetic_oracle_max_price_ev_rmse -
+              0.025) < 1e-12 &&
+          std::abs(
+              find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .synthetic_oracle_max_activity_ev_mae -
+              0.07) < 1e-12 &&
+          std::abs(
+              find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .synthetic_oracle_max_activity_ev_rmse -
+              0.10) < 1e-12 &&
+          std::abs(
+              find_active_plan_spec("synthetic_forecast_oracle_accuracy_ready")
+                  .synthetic_oracle_min_close_directional_accuracy -
+              0.95) < 1e-12,
+      "active synthetic forecast oracle target is a non-dispatch benchmark "
+      "gate over certified forecast_eval facts");
+  check(
+      find_active_plan_spec("synthetic_edge_return_projection_oracle_ready")
+                  .target_class ==
+              "synthetic_edge_return_projection_oracle_gate" &&
+          find_active_plan_spec("synthetic_edge_return_projection_oracle_ready")
+                  .subject_fact_family == "forecast_eval" &&
+          find_active_plan_spec("synthetic_edge_return_projection_oracle_ready")
+                  .proof_kind ==
+              "synthetic_edge_return_projection_oracle_bound" &&
+          find_active_plan_spec("synthetic_edge_return_projection_oracle_ready")
+                  .upstream_target_id ==
+              "channel_mdn_certified_replay_expansion_eval_ready" &&
+          find_active_plan_spec("synthetic_edge_return_projection_oracle_ready")
+                  .train_split == "certified_replay_expansion_eval" &&
+          find_active_plan_spec("synthetic_edge_return_projection_oracle_ready")
+                  .checkpoint_source == "none" &&
+          find_active_plan_spec("synthetic_edge_return_projection_oracle_ready")
+                  .plan_mode == "none" &&
+          find_active_plan_spec("synthetic_edge_return_projection_oracle_ready")
+                  .max_waves == 0 &&
+          std::abs(find_active_plan_spec(
+                       "synthetic_edge_return_projection_oracle_ready")
+                       .synthetic_oracle_max_edge_return_ev_mae -
+                   0.05) < 1e-12 &&
+          std::abs(find_active_plan_spec(
+                       "synthetic_edge_return_projection_oracle_ready")
+                       .synthetic_oracle_max_edge_return_ev_rmse -
+                   0.075) < 1e-12 &&
+          std::abs(find_active_plan_spec(
+                       "synthetic_edge_return_projection_oracle_ready")
+                       .synthetic_oracle_min_edge_return_directional_accuracy -
+                   0.75) < 1e-12 &&
+          std::abs(
+              find_active_plan_spec(
+                  "synthetic_edge_return_projection_oracle_ready")
+                  .synthetic_oracle_min_edge_return_pairwise_rank_accuracy -
+              0.75) < 1e-12 &&
+          std::abs(find_active_plan_spec(
+                       "synthetic_edge_return_projection_oracle_ready")
+                       .synthetic_oracle_min_edge_return_best_asset_agreement -
+                   0.60) < 1e-12 &&
+          std::abs(find_active_plan_spec(
+                       "synthetic_edge_return_projection_oracle_ready")
+                       .synthetic_oracle_min_edge_return_correlation -
+                   0.25) < 1e-12,
+      "active synthetic edge-return projection oracle target is a "
+      "non-dispatch benchmark gate over certified forecast_eval facts");
   check(find_active_plan_spec("cwu_02v_mdn_train_core_ready")
                 .plan_input_representation_checkpoint ==
             "latest_satisfying:cwu_02v_representation_train_core_ready",
@@ -3489,47 +3744,50 @@ LATTICE_WARN_SET {
         "artifact proofs, not TARGET_KIND expansion");
   const auto &artifact_proof_templates =
       target::lattice_artifact_readiness_proof_templates();
-  check(artifact_proof_templates.size() == 10 &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "forecast_eval") != nullptr &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "forecast_eval")
-                    ->proof_kind == "forecast_eval_artifact_bound" &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "replay_environment") != nullptr &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "replay_environment")
-                    ->proof_kind == "replay_environment_artifact_bound" &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "policy_training") != nullptr &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "policy_training")
-                    ->proof_kind == "policy_training_artifact_bound" &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "tsodao_settings_protection") != nullptr &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "tsodao_settings_protection")
-                    ->proof_kind ==
-                "tsodao_settings_protection_artifact_bound" &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "policy_acceptance") != nullptr &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "policy_acceptance")
-                    ->proof_kind == "policy_acceptance_contract_bound" &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "paper_online_readiness") != nullptr &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "paper_online_readiness")
-                    ->proof_kind == "paper_online_readiness_contract_bound" &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "source_analytics") == nullptr &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "selection_signal") == nullptr &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "representation_support") == nullptr,
-        "artifact-readiness proof templates explicitly enumerate proofable "
-        "fact families and leave source analytics, selection signals, "
-        "and representation support as non-promotable catalog evidence");
+  check(
+      artifact_proof_templates.size() == 11 &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "forecast_eval") != nullptr &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "forecast_eval")
+                  ->proof_kind == "forecast_eval_artifact_bound" &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "replay_environment") != nullptr &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "replay_environment")
+                  ->proof_kind == "replay_environment_artifact_bound" &&
+          target::artifact_readiness_proof_template_for_subject_fact_family_and_kind(
+              "replay_environment", "policy_execution_input_handoff_bound") !=
+              nullptr &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "policy_training") != nullptr &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "policy_training")
+                  ->proof_kind == "policy_training_artifact_bound" &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "tsodao_settings_protection") != nullptr &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "tsodao_settings_protection")
+                  ->proof_kind == "tsodao_settings_protection_artifact_bound" &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "policy_acceptance") != nullptr &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "policy_acceptance")
+                  ->proof_kind == "policy_acceptance_contract_bound" &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "paper_online_readiness") != nullptr &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "paper_online_readiness")
+                  ->proof_kind == "paper_online_readiness_contract_bound" &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "source_analytics") == nullptr &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "selection_signal") == nullptr &&
+          target::artifact_readiness_proof_template_for_subject_fact_family(
+              "representation_support") == nullptr,
+      "artifact-readiness proof templates explicitly enumerate proofable "
+      "fact families and leave source analytics, selection signals, "
+      "and representation support as non-promotable catalog evidence");
 
   const auto artifact_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
@@ -3721,6 +3979,25 @@ LATTICE_TARGET {
   REQUIRE_CONTRACT_MATCH = true;
 };
 
+LATTICE_TARGET {
+  TARGET_ID = policy_execution_input_handoff_ready;
+  TARGET_CLASS = policy_execution_input_handoff;
+  COMPONENT = wikimyei.policy.portfolio.graph_node_allocation;
+  SUBJECT_FACT_FAMILY = replay_environment;
+  PROOF_KIND = policy_execution_input_handoff_bound;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+  CHECKPOINT_SOURCE = none;
+  WAVE_MODE = train;
+  PLAN_MAX_ATTEMPTS = 1;
+  REQUIRE_CONTRACT_MATCH = true;
+  REQUIRE_COMPONENT_MATCH = false;
+  REQUIRE_CHECKPOINT_EXISTS = false;
+  REQUIRE_FINITE_LOSS = false;
+};
+
 LATTICE_WARN {
   TARGET_ID = allocation_artifact_ready;
   WARNING_ID = allocation_turnover_high_visibility_only;
@@ -3733,7 +4010,7 @@ LATTICE_WARN {
 };
 )DSL");
 
-  check(artifact_specs.size() == 9,
+  check(artifact_specs.size() == 10,
         "artifact readiness targets decode without TARGET_KIND expansion");
   check(artifact_specs[0].target_class == "artifact_readiness" &&
             artifact_specs[0].subject_fact_family == "observer_belief" &&
@@ -3831,6 +4108,23 @@ LATTICE_WARN {
           artifact_specs[7].max_waves == 0,
       "allocation artifact readiness keeps proof kind separate from target "
       "kind");
+  check(artifact_specs[9].target_class == "policy_execution_input_handoff" &&
+            artifact_specs[9].subject_fact_family == "replay_environment" &&
+            artifact_specs[9].proof_kind ==
+                "policy_execution_input_handoff_bound" &&
+            artifact_specs[9].component ==
+                "wikimyei.policy.portfolio.graph_node_allocation" &&
+            artifact_specs[9].kind ==
+                target::lattice_target_kind_t::not_applicable &&
+            !artifact_specs[9].target_kind_applicable &&
+            artifact_specs[9].checkpoint_source == "none" &&
+            artifact_specs[9].plan_mode == "train" &&
+            artifact_specs[9].max_waves == 1 &&
+            !artifact_specs[9].require_component_match &&
+            !artifact_specs[9].require_checkpoint_exists &&
+            !artifact_specs[9].require_finite_loss,
+        "policy execution input handoff target stays dispatchable while still "
+        "using replay_environment handoff proof semantics");
 
   const auto artifact_canonical =
       target::canonical_lattice_target_spec_text(artifact_specs[0]);
@@ -4215,6 +4509,119 @@ LATTICE_TARGET {
                        .replay_environment_source_order_policy));
   target::lattice_target_evaluator_t artifact_evaluator(
       artifact_specs, artifact_eval_options(artifact_ledger));
+  {
+    target::lattice_target_evaluator_t oracle_evaluator(
+        synthetic_feature_aware_oracle_specs(),
+        artifact_eval_options(artifact_ledger));
+    const auto oracle_eval = oracle_evaluator.evaluate(
+        "synthetic_feature_aware_forecast_oracle_ready");
+    check(oracle_eval.status ==
+                  target::lattice_target_status_t::metric_failed &&
+              oracle_eval.proof_certificate_check.passed &&
+              has_reason_containing(oracle_eval.reasons,
+                                    "close_directional_accuracy below "
+                                    "MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY") &&
+              !has_reason_containing(oracle_eval.reasons,
+                                     "directional_accuracy below "
+                                     "MIN_ORACLE_DIRECTIONAL_ACCURACY"),
+          "synthetic forecast oracle gate must fail on close-only price "
+          "direction rather than aggregate directional accuracy");
+  }
+  {
+    const auto close_pass_ledger = clone_artifact_ledger_with_forecast_mutation(
+        artifact_ledger, [](auto &fact) {
+          if (fact.directional_accuracy_per_target_feature.size() >= 4) {
+            fact.directional_accuracy_per_target_feature[3] = 0.96;
+          }
+        });
+    target::lattice_target_evaluator_t oracle_evaluator(
+        synthetic_feature_aware_oracle_specs(),
+        artifact_eval_options(close_pass_ledger));
+    const auto oracle_eval = oracle_evaluator.evaluate(
+        "synthetic_feature_aware_forecast_oracle_ready");
+    check(oracle_eval.status == target::lattice_target_status_t::satisfied &&
+              has_reason_containing(oracle_eval.reasons,
+                                    "feature-aware forecast oracle metrics "
+                                    "passed") &&
+              has_reason_containing(oracle_eval.reasons,
+                                    "close_directional_accuracy=0.96"),
+          "synthetic forecast oracle gate should use feature-aware "
+          "price/activity/close metrics instead of old aggregate EV metrics");
+  }
+  {
+    target::lattice_target_evaluator_t edge_oracle_evaluator(
+        synthetic_edge_return_projection_oracle_specs(),
+        artifact_eval_options(artifact_ledger));
+    const auto edge_eval = edge_oracle_evaluator.evaluate(
+        "synthetic_edge_return_projection_oracle_ready");
+    check(edge_eval.status == target::lattice_target_status_t::metric_failed &&
+              edge_eval.proof_certificate_check.passed &&
+              has_reason_containing(
+                  edge_eval.reasons,
+                  "directional_accuracy below "
+                  "MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY") &&
+              has_reason_containing(
+                  edge_eval.reasons,
+                  "pairwise_rank_accuracy below "
+                  "MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY") &&
+              has_reason_containing(edge_eval.reasons,
+                                    "correlation below "
+                                    "MIN_ORACLE_EDGE_RETURN_CORRELATION"),
+          "synthetic edge-return projection oracle should fail on tradable "
+          "edge direction/ranking/correlation metrics");
+  }
+  {
+    const auto edge_pass_ledger = clone_artifact_ledger_with_forecast_mutation(
+        artifact_ledger, [](auto &fact) {
+          fact.edge_return_projection_directional_accuracy = 0.82;
+          fact.edge_return_projection_pairwise_rank_accuracy = 0.80;
+          fact.edge_return_projection_best_asset_agreement = 0.70;
+          fact.edge_return_projection_correlation = 0.40;
+          fact.edge_return_projection_directional_accuracy_per_edge = {
+              0.80, 0.84, 0.82};
+          fact.edge_return_projection_directional_accuracy_per_channel = {0.81,
+                                                                          0.83};
+        });
+    target::lattice_target_evaluator_t edge_oracle_evaluator(
+        synthetic_edge_return_projection_oracle_specs(),
+        artifact_eval_options(edge_pass_ledger));
+    const auto edge_eval = edge_oracle_evaluator.evaluate(
+        "synthetic_edge_return_projection_oracle_ready");
+    check(edge_eval.status == target::lattice_target_status_t::satisfied &&
+              has_reason_containing(
+                  edge_eval.reasons,
+                  "edge-return projection oracle metrics passed") &&
+              has_reason_containing(edge_eval.reasons,
+                                    "directional_accuracy=0.82") &&
+              has_reason_containing(edge_eval.reasons,
+                                    "pairwise_rank_accuracy=0.8") &&
+              has_reason_containing(edge_eval.reasons, "correlation=0.4"),
+          "synthetic edge-return projection oracle should pass only when "
+          "projected tradable-edge metrics clear their thresholds");
+  }
+  {
+    const auto edge_missing_ledger =
+        clone_artifact_ledger_with_forecast_mutation(
+            artifact_ledger, [](auto &fact) {
+              fact.edge_return_projection_schema.clear();
+              fact.edge_return_projection_valid_count = 0;
+              fact.edge_return_projection_directional_accuracy =
+                  std::numeric_limits<double>::quiet_NaN();
+              fact.edge_return_projection_valid_count_per_edge.clear();
+              fact.edge_return_projection_directional_accuracy_per_edge.clear();
+            });
+    target::lattice_target_evaluator_t edge_oracle_evaluator(
+        synthetic_edge_return_projection_oracle_specs(),
+        artifact_eval_options(edge_missing_ledger));
+    const auto edge_eval = edge_oracle_evaluator.evaluate(
+        "synthetic_edge_return_projection_oracle_ready");
+    check(edge_eval.status == target::lattice_target_status_t::missing_report &&
+              has_reason_containing(edge_eval.reasons,
+                                    "edge-return projection oracle metrics are "
+                                    "missing"),
+          "synthetic edge-return projection oracle should fail closed when "
+          "fresh forecast_eval facts do not emit edge projection fields");
+  }
   const auto observer_eval =
       artifact_evaluator.evaluate("observer_belief_artifact_ready");
   check(observer_eval.status == target::lattice_target_status_t::satisfied &&
@@ -4690,6 +5097,106 @@ LATTICE_TARGET {
   check_artifact_proof_no_decision_authority(
       replay_eval.proof_certificate.artifacts.front(),
       "replay_environment_artifact_ready");
+
+  const auto policy_handoff_eval =
+      artifact_evaluator.evaluate("policy_execution_input_handoff_ready");
+  const auto &forecast_fact = artifact_ledger.forecast_eval_facts().front();
+  const auto &observer_fact = artifact_ledger.observer_belief_facts().front();
+  const auto &allocation_fact =
+      artifact_ledger.allocation_engine_facts().front();
+  const auto &replay_fact = artifact_ledger.replay_environment_facts().front();
+  check(policy_handoff_eval.proof_certificate.artifacts.size() == 1,
+        "policy execution input handoff should return one selected replay "
+        "artifact proof: " +
+            describe_evaluation(policy_handoff_eval));
+  const auto &handoff_proof =
+      policy_handoff_eval.proof_certificate.artifacts.front();
+  const auto handoff_consumed = [&](const std::string &digest) {
+    return !digest.empty() &&
+           std::find(handoff_proof.consumed_artifact_digests.begin(),
+                     handoff_proof.consumed_artifact_digests.end(),
+                     digest) != handoff_proof.consumed_artifact_digests.end();
+  };
+  const auto handoff_consumed_checkpoint = [&](const std::string &digest) {
+    return !digest.empty() &&
+           std::find(handoff_proof.consumed_checkpoint_digests.begin(),
+                     handoff_proof.consumed_checkpoint_digests.end(),
+                     digest) != handoff_proof.consumed_checkpoint_digests.end();
+  };
+  const auto handoff_consumed_generation = [&](const std::string &digest) {
+    return !digest.empty() &&
+           std::find(handoff_proof.consumed_generation_vector_digests.begin(),
+                     handoff_proof.consumed_generation_vector_digests.end(),
+                     digest) !=
+               handoff_proof.consumed_generation_vector_digests.end();
+  };
+  std::ifstream replay_batch_index(replay_fact.batch_index_path);
+  check(static_cast<bool>(replay_batch_index),
+        "policy execution handoff fixture should write replay batch index");
+  std::ostringstream replay_batch_index_text;
+  replay_batch_index_text << replay_batch_index.rdbuf();
+  const auto expected_replay_job_dir_digest =
+      cuwacunu::hero::marshal::marshal_digest_for_text(
+          "policy_execution_replay_job_dir_anchor.v1",
+          replay_batch_index_text.str());
+  check(policy_handoff_eval.status ==
+                target::lattice_target_status_t::missing_report &&
+            policy_handoff_eval.plan_ready &&
+            !policy_handoff_eval.suggested_wave.empty() &&
+            policy_handoff_eval.proof_certificate.artifacts.size() == 1 &&
+            handoff_proof.fact_family == "replay_environment" &&
+            handoff_proof.passed && handoff_proof.proof_template_bound &&
+            handoff_proof.no_lookahead_provenance_checked &&
+            handoff_proof.no_lookahead_provenance_complete &&
+            handoff_proof.no_lookahead_provenance_admissible &&
+            handoff_proof.influence_anchor_end_exclusive_max_bound &&
+            handoff_proof.influence_anchor_end_exclusive_max == 0 &&
+            handoff_proof.proof_kind ==
+                "policy_execution_input_handoff_bound" &&
+            handoff_proof.no_lookahead_contract_digest ==
+                protocol_fixture::
+                    canonical_cwu_02v_no_lookahead_contract_digest() &&
+            policy_handoff_eval.proof_certificate_check.passed,
+        "policy execution input handoff exposes a passing claim-bound "
+        "no-lookahead proof before the policy_training artifact exists: " +
+            describe_evaluation(policy_handoff_eval));
+  for (const auto &alias : exposure::related_fact_digest_aliases(
+           forecast_fact, exposure::forecast_eval_fact_digest)) {
+    check(handoff_consumed(alias),
+          "policy execution handoff closure includes forecast fact alias " +
+              alias);
+  }
+  for (const auto &alias : exposure::related_fact_digest_aliases(
+           observer_fact, exposure::observer_belief_fact_digest)) {
+    check(handoff_consumed(alias),
+          "policy execution handoff closure includes observer belief alias " +
+              alias);
+  }
+  for (const auto &alias : exposure::related_fact_digest_aliases(
+           allocation_fact, exposure::allocation_engine_fact_digest)) {
+    check(handoff_consumed(alias),
+          "policy execution handoff closure includes allocation-engine alias " +
+              alias);
+  }
+  check(handoff_consumed(forecast_fact.forecast_artifact_digest) &&
+            handoff_consumed(
+                exposure::replay_environment_fact_digest(replay_fact)) &&
+            handoff_consumed(replay_fact.experiment_report_digest) &&
+            handoff_consumed(expected_replay_job_dir_digest),
+        "policy execution handoff closure includes forecast artifact, replay "
+        "fact/report, and replay job-dir digest");
+  check(
+      handoff_consumed_checkpoint(
+          forecast_fact.evaluated_representation_checkpoint_digest) &&
+          handoff_consumed_checkpoint(
+              forecast_fact.evaluated_mdn_checkpoint_digest) &&
+          handoff_consumed_generation(forecast_fact.influence_summary
+                                          .producer_generation_vector_digest) &&
+          handoff_consumed_generation(replay_fact.influence_summary
+                                          .producer_generation_vector_digest) &&
+          !handoff_proof.provenance_closure_digest.empty(),
+      "policy execution handoff closure preserves checkpoint, generation, "
+      "and provenance closure data required by Runtime");
 
   const auto missing_replay_policy_summary_ledger = artifact_readiness_ledger(
       /*observer_authority_drift=*/false,

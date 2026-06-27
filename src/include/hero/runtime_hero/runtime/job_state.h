@@ -96,6 +96,19 @@ struct job_state_t {
   std::string replay_graph_anchor_edge_batch_artifact_path{};
   std::string replay_observation_artifact_index_path{};
   std::string replay_artifact_error{};
+  bool representation_edge_feature_probe_written{false};
+  std::string representation_edge_feature_probe_path{};
+  int64_t representation_edge_feature_probe_row_count{0};
+  std::string representation_edge_feature_probe_error{};
+  bool mdn_edge_context_feature_probe_written{false};
+  std::string mdn_edge_context_feature_probe_path{};
+  int64_t mdn_edge_context_feature_probe_row_count{0};
+  std::string mdn_edge_context_feature_probe_error{};
+  bool probe_sidecar_enabled{false};
+  bool probe_records_written{false};
+  std::string probe_stream_path{};
+  int64_t probe_record_count{0};
+  std::string probe_record_error{};
 
   [[nodiscard]] std::string to_text() const {
     std::ostringstream out;
@@ -201,6 +214,30 @@ struct job_state_t {
     out << "replay_observation_artifact_index_path="
         << replay_observation_artifact_index_path << "\n";
     out << "replay_artifact_error=" << replay_artifact_error << "\n";
+    out << "representation_edge_feature_probe_written="
+        << (representation_edge_feature_probe_written ? "true" : "false")
+        << "\n";
+    out << "representation_edge_feature_probe_path="
+        << representation_edge_feature_probe_path << "\n";
+    out << "representation_edge_feature_probe_row_count="
+        << representation_edge_feature_probe_row_count << "\n";
+    out << "representation_edge_feature_probe_error="
+        << representation_edge_feature_probe_error << "\n";
+    out << "mdn_edge_context_feature_probe_written="
+        << (mdn_edge_context_feature_probe_written ? "true" : "false") << "\n";
+    out << "mdn_edge_context_feature_probe_path="
+        << mdn_edge_context_feature_probe_path << "\n";
+    out << "mdn_edge_context_feature_probe_row_count="
+        << mdn_edge_context_feature_probe_row_count << "\n";
+    out << "mdn_edge_context_feature_probe_error="
+        << mdn_edge_context_feature_probe_error << "\n";
+    out << "probe_sidecar_enabled="
+        << (probe_sidecar_enabled ? "true" : "false") << "\n";
+    out << "probe_records_written="
+        << (probe_records_written ? "true" : "false") << "\n";
+    out << "probe_stream_path=" << probe_stream_path << "\n";
+    out << "probe_record_count=" << probe_record_count << "\n";
+    out << "probe_record_error=" << probe_record_error << "\n";
     return out.str();
   }
 };
@@ -214,6 +251,7 @@ inline job_state_t make_initial_job_state(const job_manifest_t &manifest,
   out.job_attempt_index = manifest.job_attempt_index;
   out.job_attempt_policy = manifest.job_attempt_policy;
   out.job_kind = manifest.job_kind;
+  out.probe_sidecar_enabled = manifest.probe_sidecar_enabled;
   out.wave_id = wave_plan.wave_id;
   out.target_component_family_id = wave_plan.target_component_family_id;
   out.wave_action = wave_plan.action;

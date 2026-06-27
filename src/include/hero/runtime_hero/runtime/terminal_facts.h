@@ -334,12 +334,13 @@ inline void write_fact_file(const std::filesystem::path &path,
   write_text_file_atomically(path, out.str());
 }
 
-[[nodiscard]] inline std::map<std::string, std::string> make_result_fact_fields(
-    const job_manifest_t &manifest, const job_state_t &state,
-    const std::map<std::string, std::string> &report,
-    const std::filesystem::path &report_path,
-    const std::string &source_report_digest,
-    const std::string &grad_clip_norm) {
+[[nodiscard]] inline std::map<std::string, std::string>
+make_result_fact_fields(const job_manifest_t &manifest,
+                        const job_state_t &state,
+                        const std::map<std::string, std::string> &report,
+                        const std::filesystem::path &report_path,
+                        const std::string &source_report_digest,
+                        const std::string &grad_clip_norm) {
   std::map<std::string, std::string> fields;
   put_common(&fields, "runtime.result.fact", "1", manifest, state, report_path,
              source_report_digest);
@@ -369,6 +370,87 @@ inline void write_fact_file(const std::filesystem::path &path,
       map_get(report, "last_valid_target_count"));
   put(&fields, "total_valid_target_count",
       map_get(report, "total_valid_target_count"));
+  put(&fields, "forecast_ev_valid_count",
+      map_get(report, "forecast_ev_valid_count"));
+  put(&fields, "ev_mae", map_get(report, "ev_mae"));
+  put(&fields, "ev_rmse", map_get(report, "ev_rmse"));
+  put(&fields, "signed_error", map_get(report, "signed_error"));
+  put(&fields, "directional_accuracy", map_get(report, "directional_accuracy"));
+  put(&fields, "forecast_ev_valid_count_per_channel",
+      map_get(report, "forecast_ev_valid_count_per_channel"));
+  put(&fields, "ev_mae_per_channel", map_get(report, "ev_mae_per_channel"));
+  put(&fields, "ev_rmse_per_channel", map_get(report, "ev_rmse_per_channel"));
+  put(&fields, "signed_error_per_channel",
+      map_get(report, "signed_error_per_channel"));
+  put(&fields, "directional_accuracy_per_channel",
+      map_get(report, "directional_accuracy_per_channel"));
+  put(&fields, "forecast_ev_valid_count_per_target_feature",
+      map_get(report, "forecast_ev_valid_count_per_target_feature"));
+  put(&fields, "ev_mae_per_target_feature",
+      map_get(report, "ev_mae_per_target_feature"));
+  put(&fields, "ev_rmse_per_target_feature",
+      map_get(report, "ev_rmse_per_target_feature"));
+  put(&fields, "signed_error_per_target_feature",
+      map_get(report, "signed_error_per_target_feature"));
+  put(&fields, "directional_accuracy_per_target_feature",
+      map_get(report, "directional_accuracy_per_target_feature"));
+  put(&fields, "forecast_ev_valid_count_per_channel_target_feature",
+      map_get(report, "forecast_ev_valid_count_per_channel_target_feature"));
+  put(&fields, "ev_mae_per_channel_target_feature",
+      map_get(report, "ev_mae_per_channel_target_feature"));
+  put(&fields, "ev_rmse_per_channel_target_feature",
+      map_get(report, "ev_rmse_per_channel_target_feature"));
+  put(&fields, "signed_error_per_channel_target_feature",
+      map_get(report, "signed_error_per_channel_target_feature"));
+  put(&fields, "directional_accuracy_per_channel_target_feature",
+      map_get(report, "directional_accuracy_per_channel_target_feature"));
+  put(&fields, "forecast_ev_valid_count_per_node",
+      map_get(report, "forecast_ev_valid_count_per_node"));
+  put(&fields, "ev_mae_per_node", map_get(report, "ev_mae_per_node"));
+  put(&fields, "ev_rmse_per_node", map_get(report, "ev_rmse_per_node"));
+  put(&fields, "signed_error_per_node",
+      map_get(report, "signed_error_per_node"));
+  put(&fields, "directional_accuracy_per_node",
+      map_get(report, "directional_accuracy_per_node"));
+  put(&fields, "edge_return_projection_schema",
+      map_get(report, "edge_return_projection_schema"));
+  put(&fields, "edge_return_projection_quote_node_index",
+      map_get(report, "edge_return_projection_quote_node_index"));
+  put(&fields, "edge_return_projection_quote_node_id",
+      map_get(report, "edge_return_projection_quote_node_id"));
+  put(&fields, "edge_return_projection_base_node_ids",
+      map_get(report, "edge_return_projection_base_node_ids"));
+  put(&fields, "edge_return_projection_close_feature_index",
+      map_get(report, "edge_return_projection_close_feature_index"));
+  put(&fields, "edge_return_projection_valid_count",
+      map_get(report, "edge_return_projection_valid_count"));
+  put(&fields, "edge_return_projection_ev_mae",
+      map_get(report, "edge_return_projection_ev_mae"));
+  put(&fields, "edge_return_projection_ev_rmse",
+      map_get(report, "edge_return_projection_ev_rmse"));
+  put(&fields, "edge_return_projection_signed_error",
+      map_get(report, "edge_return_projection_signed_error"));
+  put(&fields, "edge_return_projection_directional_accuracy",
+      map_get(report, "edge_return_projection_directional_accuracy"));
+  put(&fields, "edge_return_projection_correlation",
+      map_get(report, "edge_return_projection_correlation"));
+  put(&fields, "edge_return_projection_pairwise_rank_valid_count",
+      map_get(report, "edge_return_projection_pairwise_rank_valid_count"));
+  put(&fields, "edge_return_projection_pairwise_rank_accuracy",
+      map_get(report, "edge_return_projection_pairwise_rank_accuracy"));
+  put(&fields, "edge_return_projection_best_asset_valid_count",
+      map_get(report, "edge_return_projection_best_asset_valid_count"));
+  put(&fields, "edge_return_projection_best_asset_agreement",
+      map_get(report, "edge_return_projection_best_asset_agreement"));
+  put(&fields, "edge_return_projection_valid_count_per_edge",
+      map_get(report, "edge_return_projection_valid_count_per_edge"));
+  put(&fields, "edge_return_projection_directional_accuracy_per_edge",
+      map_get(report, "edge_return_projection_directional_accuracy_per_edge"));
+  put(&fields, "edge_return_projection_valid_count_per_channel",
+      map_get(report, "edge_return_projection_valid_count_per_channel"));
+  put(&fields, "edge_return_projection_directional_accuracy_per_channel",
+      map_get(report,
+              "edge_return_projection_directional_accuracy_per_channel"));
   put(&fields, "grad_norm_last", map_get(report, "last_grad_norm"));
   put(&fields, "grad_norm_max_pre_clip", map_get(report, "max_grad_norm"));
   put(&fields, "grad_clip_norm", grad_clip_norm);
@@ -446,12 +528,13 @@ make_checkpoint_io_fact_fields(const job_manifest_t &manifest,
   return fields;
 }
 
-[[nodiscard]] inline std::map<std::string, std::string> make_health_fact_fields(
-    const job_manifest_t &manifest, const job_state_t &state,
-    const std::map<std::string, std::string> &report,
-    const std::filesystem::path &report_path,
-    const std::string &source_report_digest,
-    const std::string &grad_clip_norm) {
+[[nodiscard]] inline std::map<std::string, std::string>
+make_health_fact_fields(const job_manifest_t &manifest,
+                        const job_state_t &state,
+                        const std::map<std::string, std::string> &report,
+                        const std::filesystem::path &report_path,
+                        const std::string &source_report_digest,
+                        const std::string &grad_clip_norm) {
   std::map<std::string, std::string> fields;
   put_common(&fields, "runtime.health_measurement.fact", "1", manifest, state,
              report_path, source_report_digest);

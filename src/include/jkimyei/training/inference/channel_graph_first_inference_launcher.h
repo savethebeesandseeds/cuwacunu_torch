@@ -7,21 +7,23 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include <torch/torch.h>
 
 #include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
+#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
-#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/inference/expected_value/mdn/channel_context_mdn_train_model.h"
@@ -38,6 +40,9 @@ struct channel_graph_first_inference_launcher_options_t {
   bool train_target{true};
   bool write_report{false};
   std::filesystem::path report_path{};
+  std::function<void(std::string_view)> learning_probe_report_sink{};
+  std::filesystem::path representation_edge_feature_probe_path{};
+  std::filesystem::path mdn_edge_context_feature_probe_path{};
   bool force_empty_targets_for_test{false};
   cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
       runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
@@ -53,7 +58,8 @@ struct channel_graph_first_inference_training_report_t {
   std::string context_value_shape{"[B,N,C,De]"};
   std::string output_contract{
       "graph_order.channel_node_future_distribution.v1"};
-  std::string output_value_shape{"log_pi:[B,N,C,Df,K];mu_sigma:[B,N,C,Df,K]"};
+  std::string output_value_shape{
+      "log_pi:[B,N,C,Df,K];mu_sigma:[B,N,C,Df,K];direct_edge_return:[B,N-1,C]"};
   std::string graph_order_fingerprint{};
   std::vector<std::string> node_ids{};
   std::vector<std::string> edge_ids{};
@@ -70,8 +76,8 @@ struct channel_graph_first_inference_training_report_t {
   int64_t residual_depth{0};
   int64_t feature_embedding_dim{0};
   int64_t channel_adapter_rank{0};
-  std::string mdn_architecture{
-      "shared_slot_trunk.channel_adapter.shared_feature_head.v2"};
+  std::string mdn_architecture{"shared_slot_trunk.channel_adapter.shared_"
+                               "feature_head.direct_edge_readout.v3"};
   std::string loss_reduction{"balanced_channel_feature_mean"};
   bool shared_trunk{true};
   bool channel_adapters_enabled{true};
@@ -83,6 +89,21 @@ struct channel_graph_first_inference_training_report_t {
   double sigma_min{std::numeric_limits<double>::quiet_NaN()};
   double sigma_max{std::numeric_limits<double>::quiet_NaN()};
   double eps{std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_auxiliary_loss_weight{0.0};
+  double edge_return_auxiliary_direction_weight{0.0};
+  double edge_return_auxiliary_rank_weight{0.0};
+  double edge_return_auxiliary_huber_beta{
+      std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_auxiliary_logit_scale{
+      std::numeric_limits<double>::quiet_NaN()};
+  bool direct_edge_return_readout_enabled{false};
+  double direct_edge_return_readout_loss_weight{0.0};
+  double direct_edge_return_readout_direction_weight{0.0};
+  double direct_edge_return_readout_rank_weight{0.0};
+  double direct_edge_return_readout_huber_beta{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_logit_scale{
+      std::numeric_limits<double>::quiet_NaN()};
   std::size_t effective_batch_size{0};
   std::string batch_size_source{};
   std::string dtype{};
@@ -125,8 +146,125 @@ struct channel_graph_first_inference_training_report_t {
 
   double last_loss{std::numeric_limits<double>::quiet_NaN()};
   double mean_loss{std::numeric_limits<double>::quiet_NaN()};
+  double last_edge_return_auxiliary_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_edge_return_auxiliary_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_edge_return_auxiliary_regression_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_edge_return_auxiliary_regression_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_edge_return_auxiliary_direction_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_edge_return_auxiliary_direction_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_edge_return_auxiliary_rank_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_edge_return_auxiliary_rank_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t edge_return_auxiliary_valid_count{0};
+  int64_t edge_return_auxiliary_pairwise_valid_count{0};
+  double last_direct_edge_return_readout_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_direct_edge_return_readout_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_direct_edge_return_readout_regression_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_direct_edge_return_readout_regression_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_direct_edge_return_readout_direction_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_direct_edge_return_readout_direction_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_direct_edge_return_readout_rank_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_direct_edge_return_readout_rank_loss{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t direct_edge_return_readout_loss_valid_count{0};
+  int64_t direct_edge_return_readout_loss_pairwise_valid_count{0};
   int64_t last_valid_target_count{0};
   int64_t total_valid_target_count{0};
+  int64_t forecast_ev_valid_count{0};
+  double ev_mae{std::numeric_limits<double>::quiet_NaN()};
+  double ev_rmse{std::numeric_limits<double>::quiet_NaN()};
+  double signed_error{std::numeric_limits<double>::quiet_NaN()};
+  double directional_accuracy{std::numeric_limits<double>::quiet_NaN()};
+  std::vector<int64_t> forecast_ev_valid_count_per_channel{};
+  std::vector<double> ev_mae_per_channel{};
+  std::vector<double> ev_rmse_per_channel{};
+  std::vector<double> signed_error_per_channel{};
+  std::vector<double> directional_accuracy_per_channel{};
+  std::vector<int64_t> forecast_ev_valid_count_per_target_feature{};
+  std::vector<double> ev_mae_per_target_feature{};
+  std::vector<double> ev_rmse_per_target_feature{};
+  std::vector<double> signed_error_per_target_feature{};
+  std::vector<double> directional_accuracy_per_target_feature{};
+  std::vector<int64_t> forecast_ev_valid_count_per_channel_target_feature{};
+  std::vector<double> ev_mae_per_channel_target_feature{};
+  std::vector<double> ev_rmse_per_channel_target_feature{};
+  std::vector<double> signed_error_per_channel_target_feature{};
+  std::vector<double> directional_accuracy_per_channel_target_feature{};
+  std::vector<int64_t> forecast_ev_valid_count_per_node{};
+  std::vector<double> ev_mae_per_node{};
+  std::vector<double> ev_rmse_per_node{};
+  std::vector<double> signed_error_per_node{};
+  std::vector<double> directional_accuracy_per_node{};
+  std::string edge_return_projection_schema{
+      "synthetic_edge_return_projection.anchor_v1"};
+  int64_t edge_return_projection_quote_node_index{0};
+  std::string edge_return_projection_quote_node_id{};
+  std::string edge_return_projection_base_node_ids{};
+  int64_t edge_return_projection_close_feature_index{3};
+  int64_t edge_return_projection_valid_count{0};
+  double edge_return_projection_ev_mae{
+      std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_projection_ev_rmse{
+      std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_projection_signed_error{
+      std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_projection_directional_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_projection_correlation{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t edge_return_projection_pairwise_rank_valid_count{0};
+  double edge_return_projection_pairwise_rank_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t edge_return_projection_best_asset_valid_count{0};
+  double edge_return_projection_best_asset_agreement{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::vector<int64_t> edge_return_projection_valid_count_per_edge{};
+  std::vector<double> edge_return_projection_directional_accuracy_per_edge{};
+  std::vector<int64_t> edge_return_projection_valid_count_per_channel{};
+  std::vector<double> edge_return_projection_directional_accuracy_per_channel{};
+  std::string direct_edge_return_readout_schema{
+      "synthetic_direct_edge_return_readout.anchor_v1"};
+  int64_t direct_edge_return_readout_quote_node_index{0};
+  std::string direct_edge_return_readout_quote_node_id{};
+  std::string direct_edge_return_readout_base_node_ids{};
+  int64_t direct_edge_return_readout_close_feature_index{3};
+  int64_t direct_edge_return_readout_valid_count{0};
+  double direct_edge_return_readout_ev_mae{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_ev_rmse{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_signed_error{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_directional_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_correlation{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t direct_edge_return_readout_pairwise_rank_valid_count{0};
+  double direct_edge_return_readout_pairwise_rank_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t direct_edge_return_readout_best_asset_valid_count{0};
+  double direct_edge_return_readout_best_asset_agreement{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::vector<int64_t> direct_edge_return_readout_valid_count_per_edge{};
+  std::vector<double>
+      direct_edge_return_readout_directional_accuracy_per_edge{};
+  std::vector<int64_t> direct_edge_return_readout_valid_count_per_channel{};
+  std::vector<double>
+      direct_edge_return_readout_directional_accuracy_per_channel{};
   double last_valid_target_fraction{std::numeric_limits<double>::quiet_NaN()};
   double mean_valid_target_fraction{std::numeric_limits<double>::quiet_NaN()};
   double last_sigma_mean{std::numeric_limits<double>::quiet_NaN()};
@@ -161,6 +299,14 @@ struct channel_graph_first_inference_training_report_t {
   int64_t report_write_count{0};
   int64_t last_report_attempted_step{0};
   std::string report_path{};
+  bool representation_edge_feature_probe_written{false};
+  int64_t representation_edge_feature_probe_row_count{0};
+  std::string representation_edge_feature_probe_path{};
+  std::string representation_edge_feature_probe_error{};
+  bool mdn_edge_context_feature_probe_written{false};
+  int64_t mdn_edge_context_feature_probe_row_count{0};
+  std::string mdn_edge_context_feature_probe_path{};
+  std::string mdn_edge_context_feature_probe_error{};
   bool runtime_lls_emitted{false};
   std::string nodelift_runtime_lls{};
   std::string representation_runtime_lls{};
@@ -232,6 +378,28 @@ struct channel_graph_first_inference_training_report_t {
     oss << "sigma_min=" << sigma_min << "\n";
     oss << "sigma_max=" << sigma_max << "\n";
     oss << "eps=" << eps << "\n";
+    oss << "edge_return_auxiliary_loss_weight="
+        << edge_return_auxiliary_loss_weight << "\n";
+    oss << "edge_return_auxiliary_direction_weight="
+        << edge_return_auxiliary_direction_weight << "\n";
+    oss << "edge_return_auxiliary_rank_weight="
+        << edge_return_auxiliary_rank_weight << "\n";
+    oss << "edge_return_auxiliary_huber_beta="
+        << edge_return_auxiliary_huber_beta << "\n";
+    oss << "edge_return_auxiliary_logit_scale="
+        << edge_return_auxiliary_logit_scale << "\n";
+    oss << "direct_edge_return_readout_enabled="
+        << (direct_edge_return_readout_enabled ? "true" : "false") << "\n";
+    oss << "direct_edge_return_readout_loss_weight="
+        << direct_edge_return_readout_loss_weight << "\n";
+    oss << "direct_edge_return_readout_direction_weight="
+        << direct_edge_return_readout_direction_weight << "\n";
+    oss << "direct_edge_return_readout_rank_weight="
+        << direct_edge_return_readout_rank_weight << "\n";
+    oss << "direct_edge_return_readout_huber_beta="
+        << direct_edge_return_readout_huber_beta << "\n";
+    oss << "direct_edge_return_readout_logit_scale="
+        << direct_edge_return_readout_logit_scale << "\n";
     oss << "effective_batch_size=" << effective_batch_size << "\n";
     oss << "batch_size_source=" << batch_size_source << "\n";
     oss << "dtype=" << dtype << "\n";
@@ -299,8 +467,168 @@ struct channel_graph_first_inference_training_report_t {
         << (all_target_masks_forced_empty ? "true" : "false") << "\n";
     oss << "last_loss=" << last_loss << "\n";
     oss << "mean_loss=" << mean_loss << "\n";
+    oss << "last_edge_return_auxiliary_loss=" << last_edge_return_auxiliary_loss
+        << "\n";
+    oss << "mean_edge_return_auxiliary_loss=" << mean_edge_return_auxiliary_loss
+        << "\n";
+    oss << "last_edge_return_auxiliary_regression_loss="
+        << last_edge_return_auxiliary_regression_loss << "\n";
+    oss << "mean_edge_return_auxiliary_regression_loss="
+        << mean_edge_return_auxiliary_regression_loss << "\n";
+    oss << "last_edge_return_auxiliary_direction_loss="
+        << last_edge_return_auxiliary_direction_loss << "\n";
+    oss << "mean_edge_return_auxiliary_direction_loss="
+        << mean_edge_return_auxiliary_direction_loss << "\n";
+    oss << "last_edge_return_auxiliary_rank_loss="
+        << last_edge_return_auxiliary_rank_loss << "\n";
+    oss << "mean_edge_return_auxiliary_rank_loss="
+        << mean_edge_return_auxiliary_rank_loss << "\n";
+    oss << "edge_return_auxiliary_valid_count="
+        << edge_return_auxiliary_valid_count << "\n";
+    oss << "edge_return_auxiliary_pairwise_valid_count="
+        << edge_return_auxiliary_pairwise_valid_count << "\n";
+    oss << "last_direct_edge_return_readout_loss="
+        << last_direct_edge_return_readout_loss << "\n";
+    oss << "mean_direct_edge_return_readout_loss="
+        << mean_direct_edge_return_readout_loss << "\n";
+    oss << "last_direct_edge_return_readout_regression_loss="
+        << last_direct_edge_return_readout_regression_loss << "\n";
+    oss << "mean_direct_edge_return_readout_regression_loss="
+        << mean_direct_edge_return_readout_regression_loss << "\n";
+    oss << "last_direct_edge_return_readout_direction_loss="
+        << last_direct_edge_return_readout_direction_loss << "\n";
+    oss << "mean_direct_edge_return_readout_direction_loss="
+        << mean_direct_edge_return_readout_direction_loss << "\n";
+    oss << "last_direct_edge_return_readout_rank_loss="
+        << last_direct_edge_return_readout_rank_loss << "\n";
+    oss << "mean_direct_edge_return_readout_rank_loss="
+        << mean_direct_edge_return_readout_rank_loss << "\n";
+    oss << "direct_edge_return_readout_loss_valid_count="
+        << direct_edge_return_readout_loss_valid_count << "\n";
+    oss << "direct_edge_return_readout_loss_pairwise_valid_count="
+        << direct_edge_return_readout_loss_pairwise_valid_count << "\n";
     oss << "last_valid_target_count=" << last_valid_target_count << "\n";
     oss << "total_valid_target_count=" << total_valid_target_count << "\n";
+    oss << "forecast_ev_valid_count=" << forecast_ev_valid_count << "\n";
+    oss << "ev_mae=" << ev_mae << "\n";
+    oss << "ev_rmse=" << ev_rmse << "\n";
+    oss << "signed_error=" << signed_error << "\n";
+    oss << "directional_accuracy=" << directional_accuracy << "\n";
+    append_i64_list(oss, "forecast_ev_valid_count_per_channel",
+                    forecast_ev_valid_count_per_channel);
+    append_double_list(oss, "ev_mae_per_channel", ev_mae_per_channel);
+    append_double_list(oss, "ev_rmse_per_channel", ev_rmse_per_channel);
+    append_double_list(oss, "signed_error_per_channel",
+                       signed_error_per_channel);
+    append_double_list(oss, "directional_accuracy_per_channel",
+                       directional_accuracy_per_channel);
+    append_i64_list(oss, "forecast_ev_valid_count_per_target_feature",
+                    forecast_ev_valid_count_per_target_feature);
+    append_double_list(oss, "ev_mae_per_target_feature",
+                       ev_mae_per_target_feature);
+    append_double_list(oss, "ev_rmse_per_target_feature",
+                       ev_rmse_per_target_feature);
+    append_double_list(oss, "signed_error_per_target_feature",
+                       signed_error_per_target_feature);
+    append_double_list(oss, "directional_accuracy_per_target_feature",
+                       directional_accuracy_per_target_feature);
+    append_i64_list(oss, "forecast_ev_valid_count_per_channel_target_feature",
+                    forecast_ev_valid_count_per_channel_target_feature);
+    append_double_list(oss, "ev_mae_per_channel_target_feature",
+                       ev_mae_per_channel_target_feature);
+    append_double_list(oss, "ev_rmse_per_channel_target_feature",
+                       ev_rmse_per_channel_target_feature);
+    append_double_list(oss, "signed_error_per_channel_target_feature",
+                       signed_error_per_channel_target_feature);
+    append_double_list(oss, "directional_accuracy_per_channel_target_feature",
+                       directional_accuracy_per_channel_target_feature);
+    append_i64_list(oss, "forecast_ev_valid_count_per_node",
+                    forecast_ev_valid_count_per_node);
+    append_double_list(oss, "ev_mae_per_node", ev_mae_per_node);
+    append_double_list(oss, "ev_rmse_per_node", ev_rmse_per_node);
+    append_double_list(oss, "signed_error_per_node", signed_error_per_node);
+    append_double_list(oss, "directional_accuracy_per_node",
+                       directional_accuracy_per_node);
+    oss << "edge_return_projection_schema=" << edge_return_projection_schema
+        << "\n";
+    oss << "edge_return_projection_quote_node_index="
+        << edge_return_projection_quote_node_index << "\n";
+    oss << "edge_return_projection_quote_node_id="
+        << edge_return_projection_quote_node_id << "\n";
+    oss << "edge_return_projection_base_node_ids="
+        << edge_return_projection_base_node_ids << "\n";
+    oss << "edge_return_projection_close_feature_index="
+        << edge_return_projection_close_feature_index << "\n";
+    oss << "edge_return_projection_valid_count="
+        << edge_return_projection_valid_count << "\n";
+    oss << "edge_return_projection_ev_mae=" << edge_return_projection_ev_mae
+        << "\n";
+    oss << "edge_return_projection_ev_rmse=" << edge_return_projection_ev_rmse
+        << "\n";
+    oss << "edge_return_projection_signed_error="
+        << edge_return_projection_signed_error << "\n";
+    oss << "edge_return_projection_directional_accuracy="
+        << edge_return_projection_directional_accuracy << "\n";
+    oss << "edge_return_projection_correlation="
+        << edge_return_projection_correlation << "\n";
+    oss << "edge_return_projection_pairwise_rank_valid_count="
+        << edge_return_projection_pairwise_rank_valid_count << "\n";
+    oss << "edge_return_projection_pairwise_rank_accuracy="
+        << edge_return_projection_pairwise_rank_accuracy << "\n";
+    oss << "edge_return_projection_best_asset_valid_count="
+        << edge_return_projection_best_asset_valid_count << "\n";
+    oss << "edge_return_projection_best_asset_agreement="
+        << edge_return_projection_best_asset_agreement << "\n";
+    append_i64_list(oss, "edge_return_projection_valid_count_per_edge",
+                    edge_return_projection_valid_count_per_edge);
+    append_double_list(oss,
+                       "edge_return_projection_directional_accuracy_per_edge",
+                       edge_return_projection_directional_accuracy_per_edge);
+    append_i64_list(oss, "edge_return_projection_valid_count_per_channel",
+                    edge_return_projection_valid_count_per_channel);
+    append_double_list(
+        oss, "edge_return_projection_directional_accuracy_per_channel",
+        edge_return_projection_directional_accuracy_per_channel);
+    oss << "direct_edge_return_readout_schema="
+        << direct_edge_return_readout_schema << "\n";
+    oss << "direct_edge_return_readout_quote_node_index="
+        << direct_edge_return_readout_quote_node_index << "\n";
+    oss << "direct_edge_return_readout_quote_node_id="
+        << direct_edge_return_readout_quote_node_id << "\n";
+    oss << "direct_edge_return_readout_base_node_ids="
+        << direct_edge_return_readout_base_node_ids << "\n";
+    oss << "direct_edge_return_readout_close_feature_index="
+        << direct_edge_return_readout_close_feature_index << "\n";
+    oss << "direct_edge_return_readout_valid_count="
+        << direct_edge_return_readout_valid_count << "\n";
+    oss << "direct_edge_return_readout_ev_mae="
+        << direct_edge_return_readout_ev_mae << "\n";
+    oss << "direct_edge_return_readout_ev_rmse="
+        << direct_edge_return_readout_ev_rmse << "\n";
+    oss << "direct_edge_return_readout_signed_error="
+        << direct_edge_return_readout_signed_error << "\n";
+    oss << "direct_edge_return_readout_directional_accuracy="
+        << direct_edge_return_readout_directional_accuracy << "\n";
+    oss << "direct_edge_return_readout_correlation="
+        << direct_edge_return_readout_correlation << "\n";
+    oss << "direct_edge_return_readout_pairwise_rank_valid_count="
+        << direct_edge_return_readout_pairwise_rank_valid_count << "\n";
+    oss << "direct_edge_return_readout_pairwise_rank_accuracy="
+        << direct_edge_return_readout_pairwise_rank_accuracy << "\n";
+    oss << "direct_edge_return_readout_best_asset_valid_count="
+        << direct_edge_return_readout_best_asset_valid_count << "\n";
+    oss << "direct_edge_return_readout_best_asset_agreement="
+        << direct_edge_return_readout_best_asset_agreement << "\n";
+    append_i64_list(oss, "direct_edge_return_readout_valid_count_per_edge",
+                    direct_edge_return_readout_valid_count_per_edge);
+    append_double_list(
+        oss, "direct_edge_return_readout_directional_accuracy_per_edge",
+        direct_edge_return_readout_directional_accuracy_per_edge);
+    append_i64_list(oss, "direct_edge_return_readout_valid_count_per_channel",
+                    direct_edge_return_readout_valid_count_per_channel);
+    append_double_list(
+        oss, "direct_edge_return_readout_directional_accuracy_per_channel",
+        direct_edge_return_readout_directional_accuracy_per_channel);
     oss << "last_valid_target_fraction=" << last_valid_target_fraction << "\n";
     oss << "mean_valid_target_fraction=" << mean_valid_target_fraction << "\n";
     oss << "last_sigma_mean=" << last_sigma_mean << "\n";
@@ -343,6 +671,23 @@ struct channel_graph_first_inference_training_report_t {
     oss << "report_write_count=" << report_write_count << "\n";
     oss << "last_report_attempted_step=" << last_report_attempted_step << "\n";
     oss << "report_path=" << report_path << "\n";
+    oss << "representation_edge_feature_probe_written="
+        << (representation_edge_feature_probe_written ? "true" : "false")
+        << "\n";
+    oss << "representation_edge_feature_probe_row_count="
+        << representation_edge_feature_probe_row_count << "\n";
+    oss << "representation_edge_feature_probe_path="
+        << representation_edge_feature_probe_path << "\n";
+    oss << "representation_edge_feature_probe_error="
+        << representation_edge_feature_probe_error << "\n";
+    oss << "mdn_edge_context_feature_probe_written="
+        << (mdn_edge_context_feature_probe_written ? "true" : "false") << "\n";
+    oss << "mdn_edge_context_feature_probe_row_count="
+        << mdn_edge_context_feature_probe_row_count << "\n";
+    oss << "mdn_edge_context_feature_probe_path="
+        << mdn_edge_context_feature_probe_path << "\n";
+    oss << "mdn_edge_context_feature_probe_error="
+        << mdn_edge_context_feature_probe_error << "\n";
     oss << "runtime_lls_emitted=" << (runtime_lls_emitted ? "true" : "false")
         << "\n";
     return oss.str();
@@ -524,6 +869,22 @@ inline void accumulate_i64_vector(const torch::Tensor &tensor,
   }
 }
 
+inline void accumulate_double_sum_vector(const torch::Tensor &tensor,
+                                         std::vector<double> &sum) {
+  const auto values = tensor_to_double_vector(tensor);
+  if (values.empty()) {
+    return;
+  }
+  if (sum.size() < values.size()) {
+    sum.resize(values.size(), 0.0);
+  }
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (std::isfinite(values[i])) {
+      sum[i] += values[i];
+    }
+  }
+}
+
 [[nodiscard]] inline std::vector<double>
 mean_vector(const std::vector<double> &sum, const std::vector<int64_t> &count) {
   std::vector<double> out;
@@ -534,6 +895,67 @@ mean_vector(const std::vector<double> &sum, const std::vector<int64_t> &count) {
                       : std::numeric_limits<double>::quiet_NaN());
   }
   return out;
+}
+
+[[nodiscard]] inline std::vector<double>
+ratio_vector(const std::vector<double> &sum,
+             const std::vector<int64_t> &count) {
+  std::vector<double> out;
+  out.reserve(sum.size());
+  for (std::size_t i = 0; i < sum.size(); ++i) {
+    out.push_back(i < count.size() && count[i] > 0
+                      ? sum[i] / static_cast<double>(count[i])
+                      : std::numeric_limits<double>::quiet_NaN());
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<double>
+rmse_vector(const std::vector<double> &squared_sum,
+            const std::vector<int64_t> &count) {
+  std::vector<double> out;
+  out.reserve(squared_sum.size());
+  for (std::size_t i = 0; i < squared_sum.size(); ++i) {
+    out.push_back(
+        i < count.size() && count[i] > 0
+            ? std::sqrt(squared_sum[i] / static_cast<double>(count[i]))
+            : std::numeric_limits<double>::quiet_NaN());
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<double>
+directional_accuracy_vector(const std::vector<int64_t> &correct,
+                            const std::vector<int64_t> &count) {
+  std::vector<double> out;
+  out.reserve(correct.size());
+  for (std::size_t i = 0; i < correct.size(); ++i) {
+    out.push_back(i < count.size() && count[i] > 0
+                      ? static_cast<double>(correct[i]) /
+                            static_cast<double>(count[i])
+                      : std::numeric_limits<double>::quiet_NaN());
+  }
+  return out;
+}
+
+[[nodiscard]] inline double correlation_from_sums(
+    const int64_t count, const double predicted_sum, const double realized_sum,
+    const double predicted_squared_sum, const double realized_squared_sum,
+    const double cross_sum) {
+  if (count <= 1) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const double n = static_cast<double>(count);
+  const double predicted_variance_term =
+      n * predicted_squared_sum - predicted_sum * predicted_sum;
+  const double realized_variance_term =
+      n * realized_squared_sum - realized_sum * realized_sum;
+  const double covariance_term = n * cross_sum - predicted_sum * realized_sum;
+  if (predicted_variance_term <= 0.0 || realized_variance_term <= 0.0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return covariance_term /
+         std::sqrt(predicted_variance_term * realized_variance_term);
 }
 
 inline void ensure_parent_directory(const std::filesystem::path &path,
@@ -585,6 +1007,301 @@ inline void write_text_file(const std::filesystem::path &path,
   out << payload;
 }
 
+template <typename KeyT>
+[[nodiscard]] inline int64_t append_representation_edge_feature_probe_rows(
+    const std::filesystem::path &path,
+    const cuwacunu::wikimyei::representation::encoding::vicreg::stream::
+        channel_representation_batch_t<KeyT> &representation_batch,
+    const cuwacunu::wikimyei::inference::expected_value::mdn::stream::
+        channel_mdn_input_batch_t<KeyT> &mdn_batch,
+    int64_t close_feature_index = 3) {
+  if (path.empty() || mdn_batch.node_ids.size() < 2) {
+    return 0;
+  }
+  const auto close_it =
+      std::find(mdn_batch.target_coords.begin(), mdn_batch.target_coords.end(),
+                close_feature_index);
+  if (close_it == mdn_batch.target_coords.end()) {
+    return 0;
+  }
+  const int64_t close_slot = static_cast<int64_t>(
+      std::distance(mdn_batch.target_coords.begin(), close_it));
+  TORCH_CHECK(representation_batch.node_encoding.defined() &&
+                  representation_batch.node_encoding.dim() == 4,
+              "[channel_graph_first_inference_launcher] representation edge "
+              "feature probe requires node_encoding [B,N,C,De]");
+  TORCH_CHECK(mdn_batch.future.defined() && mdn_batch.future.dim() == 4,
+              "[channel_graph_first_inference_launcher] representation edge "
+              "feature probe requires future [B,N,C,Df]");
+  TORCH_CHECK(mdn_batch.future_mask.defined() &&
+                  mdn_batch.future_mask.dim() == 4,
+              "[channel_graph_first_inference_launcher] representation edge "
+              "feature probe requires future_mask [B,N,C,Df]");
+
+  const auto context = representation_batch.node_encoding.detach()
+                           .to(torch::kCPU)
+                           .to(torch::kFloat64)
+                           .contiguous();
+  const auto future = mdn_batch.future.detach()
+                          .to(torch::kCPU)
+                          .to(torch::kFloat64)
+                          .contiguous();
+  const auto future_mask = mdn_batch.future_mask.detach()
+                               .to(torch::kCPU)
+                               .to(torch::kBool)
+                               .contiguous();
+  const auto anchor_keys = mdn_batch.anchor_keys.detach()
+                               .to(torch::kCPU)
+                               .to(torch::kInt64)
+                               .contiguous();
+
+  const int64_t B = context.size(0);
+  const int64_t N = context.size(1);
+  const int64_t C = context.size(2);
+  const int64_t De = context.size(3);
+  TORCH_CHECK(future.size(0) == B && future.size(1) == N && future.size(2) == C,
+              "[channel_graph_first_inference_launcher] future shape does not "
+              "match representation context for edge feature probe");
+  TORCH_CHECK(future_mask.sizes() == future.sizes(),
+              "[channel_graph_first_inference_launcher] future_mask shape does "
+              "not match future for edge feature probe");
+  TORCH_CHECK(anchor_keys.defined() && anchor_keys.dim() == 1 &&
+                  anchor_keys.size(0) == B,
+              "[channel_graph_first_inference_launcher] anchor_keys shape does "
+              "not match representation context for edge feature probe");
+  if (close_slot < 0 || close_slot >= future.size(3)) {
+    return 0;
+  }
+
+  ensure_parent_directory(path, "representation edge feature probe");
+  const bool write_header =
+      !std::filesystem::exists(path) || std::filesystem::file_size(path) == 0;
+  std::ofstream out(path, std::ios::app);
+  if (!out) {
+    throw std::runtime_error(
+        "[channel_graph_first_inference_launcher] failed to open "
+        "representation edge feature probe path");
+  }
+  if (write_header) {
+    out << "record_schema,anchor_key,anchor_index,anchor_local_index,edge_"
+           "index,edge_id,"
+           "base_node_id,quote_node_id,channel_index,"
+           "target_edge_close_return,feature_count,feature_values\n";
+  }
+
+  constexpr int64_t quote_node_index = 0;
+  int64_t row_count = 0;
+  out << std::setprecision(17);
+  for (int64_t b = 0; b < B; ++b) {
+    const int64_t anchor_key =
+        anchor_keys.select(0, b).template item<int64_t>();
+    const int64_t anchor_index =
+        static_cast<int64_t>(representation_batch.cursor.begin_anchor_index) +
+        b;
+    for (int64_t base = 1; base < N; ++base) {
+      const int64_t edge_index = base - 1;
+      const std::string edge_id =
+          edge_index < static_cast<int64_t>(mdn_batch.edge_ids.size())
+              ? mdn_batch.edge_ids[static_cast<std::size_t>(edge_index)]
+              : std::string{};
+      const auto &base_node_id =
+          mdn_batch.node_ids[static_cast<std::size_t>(base)];
+      const auto &quote_node_id =
+          mdn_batch.node_ids[static_cast<std::size_t>(quote_node_index)];
+      for (int64_t c = 0; c < C; ++c) {
+        const bool base_valid =
+            future_mask.index({b, base, c, close_slot}).template item<bool>();
+        const bool quote_valid =
+            future_mask.index({b, quote_node_index, c, close_slot})
+                .template item<bool>();
+        if (!base_valid || !quote_valid) {
+          continue;
+        }
+        const double base_close =
+            future.index({b, base, c, close_slot}).template item<double>();
+        const double quote_close =
+            future.index({b, quote_node_index, c, close_slot})
+                .template item<double>();
+        const double target_edge_close = base_close - quote_close;
+        if (!std::isfinite(target_edge_close)) {
+          continue;
+        }
+        const int64_t feature_count = De * 3;
+        out << "kikijyeba.synthetic.representation_edge_feature_probe.v1,"
+            << anchor_key << "," << anchor_index << "," << b << ","
+            << edge_index << "," << edge_id << "," << base_node_id << ","
+            << quote_node_id << "," << c << "," << target_edge_close << ","
+            << feature_count << ",";
+        bool first_feature = true;
+        for (int64_t d = 0; d < De; ++d) {
+          const double value =
+              context.index({b, base, c, d}).template item<double>();
+          if (!first_feature) {
+            out << ";";
+          }
+          out << value;
+          first_feature = false;
+        }
+        for (int64_t d = 0; d < De; ++d) {
+          const double value = context.index({b, quote_node_index, c, d})
+                                   .template item<double>();
+          out << ";" << value;
+        }
+        for (int64_t d = 0; d < De; ++d) {
+          const double value =
+              context.index({b, base, c, d}).template item<double>() -
+              context.index({b, quote_node_index, c, d})
+                  .template item<double>();
+          out << ";" << value;
+        }
+        out << "\n";
+        ++row_count;
+      }
+    }
+  }
+  return row_count;
+}
+
+template <typename KeyT>
+[[nodiscard]] inline int64_t append_mdn_edge_context_feature_probe_rows(
+    const std::filesystem::path &path,
+    const torch::Tensor &edge_context_features,
+    const cuwacunu::wikimyei::representation::encoding::vicreg::stream::
+        channel_representation_batch_t<KeyT> &representation_batch,
+    const cuwacunu::wikimyei::inference::expected_value::mdn::stream::
+        channel_mdn_input_batch_t<KeyT> &mdn_batch,
+    int64_t close_feature_index = 3) {
+  if (path.empty() || mdn_batch.node_ids.size() < 2) {
+    return 0;
+  }
+  const auto close_it =
+      std::find(mdn_batch.target_coords.begin(), mdn_batch.target_coords.end(),
+                close_feature_index);
+  if (close_it == mdn_batch.target_coords.end()) {
+    return 0;
+  }
+  const int64_t close_slot = static_cast<int64_t>(
+      std::distance(mdn_batch.target_coords.begin(), close_it));
+  TORCH_CHECK(edge_context_features.defined() &&
+                  edge_context_features.dim() == 4,
+              "[channel_graph_first_inference_launcher] MDN edge context "
+              "feature probe requires [B,N-1,C,F]");
+  TORCH_CHECK(mdn_batch.future.defined() && mdn_batch.future.dim() == 4,
+              "[channel_graph_first_inference_launcher] MDN edge context "
+              "feature probe requires future [B,N,C,Df]");
+  TORCH_CHECK(mdn_batch.future_mask.defined() &&
+                  mdn_batch.future_mask.dim() == 4,
+              "[channel_graph_first_inference_launcher] MDN edge context "
+              "feature probe requires future_mask [B,N,C,Df]");
+
+  const auto context = edge_context_features.detach()
+                           .to(torch::kCPU)
+                           .to(torch::kFloat64)
+                           .contiguous();
+  const auto future = mdn_batch.future.detach()
+                          .to(torch::kCPU)
+                          .to(torch::kFloat64)
+                          .contiguous();
+  const auto future_mask = mdn_batch.future_mask.detach()
+                               .to(torch::kCPU)
+                               .to(torch::kBool)
+                               .contiguous();
+  const auto anchor_keys = mdn_batch.anchor_keys.detach()
+                               .to(torch::kCPU)
+                               .to(torch::kInt64)
+                               .contiguous();
+
+  const int64_t B = context.size(0);
+  const int64_t base_count = context.size(1);
+  const int64_t C = context.size(2);
+  const int64_t F = context.size(3);
+  TORCH_CHECK(future.size(0) == B && future.size(1) == base_count + 1 &&
+                  future.size(2) == C,
+              "[channel_graph_first_inference_launcher] future shape does not "
+              "match MDN edge context feature probe");
+  TORCH_CHECK(future_mask.sizes() == future.sizes(),
+              "[channel_graph_first_inference_launcher] future_mask shape does "
+              "not match future for MDN edge context feature probe");
+  TORCH_CHECK(anchor_keys.defined() && anchor_keys.dim() == 1 &&
+                  anchor_keys.size(0) == B,
+              "[channel_graph_first_inference_launcher] anchor_keys shape does "
+              "not match MDN edge context feature probe");
+  if (close_slot < 0 || close_slot >= future.size(3)) {
+    return 0;
+  }
+
+  ensure_parent_directory(path, "MDN edge context feature probe");
+  const bool write_header =
+      !std::filesystem::exists(path) || std::filesystem::file_size(path) == 0;
+  std::ofstream out(path, std::ios::app);
+  if (!out) {
+    throw std::runtime_error(
+        "[channel_graph_first_inference_launcher] failed to open MDN edge "
+        "context feature probe path");
+  }
+  if (write_header) {
+    out << "record_schema,anchor_key,anchor_index,anchor_local_index,edge_"
+           "index,edge_id,"
+           "base_node_id,quote_node_id,channel_index,"
+           "target_edge_close_return,feature_count,feature_values\n";
+  }
+
+  constexpr int64_t quote_node_index = 0;
+  int64_t row_count = 0;
+  out << std::setprecision(17);
+  for (int64_t b = 0; b < B; ++b) {
+    const int64_t anchor_key =
+        anchor_keys.select(0, b).template item<int64_t>();
+    const int64_t anchor_index =
+        static_cast<int64_t>(representation_batch.cursor.begin_anchor_index) +
+        b;
+    for (int64_t edge_index = 0; edge_index < base_count; ++edge_index) {
+      const int64_t base = edge_index + 1;
+      const std::string edge_id =
+          edge_index < static_cast<int64_t>(mdn_batch.edge_ids.size())
+              ? mdn_batch.edge_ids[static_cast<std::size_t>(edge_index)]
+              : std::string{};
+      const auto &base_node_id =
+          mdn_batch.node_ids[static_cast<std::size_t>(base)];
+      const auto &quote_node_id =
+          mdn_batch.node_ids[static_cast<std::size_t>(quote_node_index)];
+      for (int64_t c = 0; c < C; ++c) {
+        const bool base_valid =
+            future_mask.index({b, base, c, close_slot}).template item<bool>();
+        const bool quote_valid =
+            future_mask.index({b, quote_node_index, c, close_slot})
+                .template item<bool>();
+        if (!base_valid || !quote_valid) {
+          continue;
+        }
+        const double base_close =
+            future.index({b, base, c, close_slot}).template item<double>();
+        const double quote_close =
+            future.index({b, quote_node_index, c, close_slot})
+                .template item<double>();
+        const double target_edge_close = base_close - quote_close;
+        if (!std::isfinite(target_edge_close)) {
+          continue;
+        }
+        out << "kikijyeba.synthetic.mdn_edge_context_feature_probe.v1,"
+            << anchor_key << "," << anchor_index << "," << b << ","
+            << edge_index << "," << edge_id << "," << base_node_id << ","
+            << quote_node_id << "," << c << "," << target_edge_close << "," << F
+            << ",";
+        for (int64_t d = 0; d < F; ++d) {
+          if (d > 0) {
+            out << ";";
+          }
+          out << context.index({b, edge_index, c, d}).template item<double>();
+        }
+        out << "\n";
+        ++row_count;
+      }
+    }
+  }
+  return row_count;
+}
+
 [[nodiscard]] inline std::filesystem::path
 runtime_lls_wave_batch_path(const std::filesystem::path &report_path,
                             const std::string &component_suffix) {
@@ -614,8 +1331,7 @@ inline double bool_fraction_or_nan(const torch::Tensor &mask) {
 }
 
 inline void append_finite_double(
-    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t
-        &document,
+    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t &document,
     std::string key, double value, std::string domain = "(-inf,+inf)") {
   if (std::isfinite(value)) {
     document.entries.push_back(
@@ -696,8 +1412,8 @@ inline std::string make_channel_mdn_runtime_lls(
   document.entries.push_back(lls::make_component_runtime_lls_string_entry(
       "loss_reduction", "balanced_channel_feature_mean"));
   document.entries.push_back(lls::make_component_runtime_lls_string_entry(
-      "mdn_architecture",
-      "shared_slot_trunk.channel_adapter.shared_feature_head.v2"));
+      "mdn_architecture", "shared_slot_trunk.channel_adapter.shared_feature_"
+                          "head.direct_edge_readout.v3"));
   if (step.loss.defined() && step.loss.numel() > 0) {
     append_finite_double(
         document, "loss",
@@ -721,6 +1437,56 @@ inline std::string make_channel_mdn_runtime_lls(
   append_finite_double(document, "mixture_entropy", step.mixture_entropy,
                        "[0,+inf)");
   append_finite_double(document, "grad_norm", step.grad_norm, "[0,+inf)");
+  if (step.direct_edge_return_readout_loss.defined() &&
+      step.direct_edge_return_readout_loss.numel() > 0) {
+    append_finite_double(document, "direct_edge_return_readout_loss",
+                         step.direct_edge_return_readout_loss.detach()
+                             .to(torch::kCPU)
+                             .to(torch::kFloat64)
+                             .item<double>());
+  }
+  if (step.direct_edge_return_readout_regression_loss.defined() &&
+      step.direct_edge_return_readout_regression_loss.numel() > 0) {
+    append_finite_double(
+        document, "direct_edge_return_readout_regression_loss",
+        step.direct_edge_return_readout_regression_loss.detach()
+            .to(torch::kCPU)
+            .to(torch::kFloat64)
+            .item<double>());
+  }
+  if (step.direct_edge_return_readout_direction_loss.defined() &&
+      step.direct_edge_return_readout_direction_loss.numel() > 0) {
+    append_finite_double(document, "direct_edge_return_readout_direction_loss",
+                         step.direct_edge_return_readout_direction_loss.detach()
+                             .to(torch::kCPU)
+                             .to(torch::kFloat64)
+                             .item<double>());
+  }
+  if (step.direct_edge_return_readout_rank_loss.defined() &&
+      step.direct_edge_return_readout_rank_loss.numel() > 0) {
+    append_finite_double(document, "direct_edge_return_readout_rank_loss",
+                         step.direct_edge_return_readout_rank_loss.detach()
+                             .to(torch::kCPU)
+                             .to(torch::kFloat64)
+                             .item<double>());
+  }
+  if (step.direct_edge_return_readout_valid_count > 0) {
+    append_finite_double(
+        document, "direct_edge_return_readout_directional_accuracy",
+        static_cast<double>(
+            step.direct_edge_return_readout_direction_correct_count) /
+            static_cast<double>(step.direct_edge_return_readout_valid_count),
+        "[0,1]");
+  }
+  if (step.direct_edge_return_readout_pairwise_rank_valid_count > 0) {
+    append_finite_double(
+        document, "direct_edge_return_readout_pairwise_rank_accuracy",
+        static_cast<double>(
+            step.direct_edge_return_readout_pairwise_rank_correct_count) /
+            static_cast<double>(
+                step.direct_edge_return_readout_pairwise_rank_valid_count),
+        "[0,1]");
+  }
   return lls::emit_component_runtime_lls_canonical(document);
 }
 
@@ -1425,6 +2191,19 @@ public:
     out.node_ids = plan.node_ids;
     out.edge_ids = plan.edge_ids;
     out.target_coords = builder_.bundle().channel_mdn.target_coords;
+    if (!out.node_ids.empty()) {
+      out.edge_return_projection_quote_node_id = out.node_ids.front();
+      out.direct_edge_return_readout_quote_node_id = out.node_ids.front();
+      std::ostringstream base_nodes;
+      for (std::size_t i = 1; i < out.node_ids.size(); ++i) {
+        if (i != 1) {
+          base_nodes << ",";
+        }
+        base_nodes << out.node_ids[i];
+      }
+      out.edge_return_projection_base_node_ids = base_nodes.str();
+      out.direct_edge_return_readout_base_node_ids = base_nodes.str();
+    }
     out.channel_count = builder_.bundle().channel_mdn.channel_count;
     out.context_dim = plan.context_dim;
     out.future_horizon = builder_.bundle().channel_mdn.future_horizon;
@@ -1438,6 +2217,40 @@ public:
     out.sigma_min = builder_.bundle().channel_mdn.sigma_min;
     out.sigma_max = builder_.bundle().channel_mdn.sigma_max;
     out.eps = builder_.bundle().channel_mdn.eps;
+    out.edge_return_auxiliary_loss_weight =
+        builder_.bundle()
+            .channel_mdn_training.mdn_edge_return_auxiliary_loss_weight;
+    out.edge_return_auxiliary_direction_weight =
+        builder_.bundle()
+            .channel_mdn_training.mdn_edge_return_auxiliary_direction_weight;
+    out.edge_return_auxiliary_rank_weight =
+        builder_.bundle()
+            .channel_mdn_training.mdn_edge_return_auxiliary_rank_weight;
+    out.edge_return_auxiliary_huber_beta =
+        builder_.bundle()
+            .channel_mdn_training.mdn_edge_return_auxiliary_huber_beta;
+    out.edge_return_auxiliary_logit_scale =
+        builder_.bundle()
+            .channel_mdn_training.mdn_edge_return_auxiliary_logit_scale;
+    out.direct_edge_return_readout_enabled =
+        builder_.bundle()
+            .channel_mdn_training.mdn_direct_edge_return_readout_enabled;
+    out.direct_edge_return_readout_loss_weight =
+        builder_.bundle()
+            .channel_mdn_training.mdn_direct_edge_return_readout_loss_weight;
+    out.direct_edge_return_readout_direction_weight =
+        builder_.bundle()
+            .channel_mdn_training
+            .mdn_direct_edge_return_readout_direction_weight;
+    out.direct_edge_return_readout_rank_weight =
+        builder_.bundle()
+            .channel_mdn_training.mdn_direct_edge_return_readout_rank_weight;
+    out.direct_edge_return_readout_huber_beta =
+        builder_.bundle()
+            .channel_mdn_training.mdn_direct_edge_return_readout_huber_beta;
+    out.direct_edge_return_readout_logit_scale =
+        builder_.bundle()
+            .channel_mdn_training.mdn_direct_edge_return_readout_logit_scale;
     out.effective_batch_size = plan.effective_batch_size;
     out.batch_size_source = plan.batch_size_source;
     out.dtype = plan.dtype;
@@ -1651,6 +2464,14 @@ public:
     report.mdn_checkpoint_loaded = false;
     report.all_target_masks_forced_empty =
         options_.force_empty_targets_for_test;
+    if (!options_.representation_edge_feature_probe_path.empty()) {
+      report.representation_edge_feature_probe_path =
+          options_.representation_edge_feature_probe_path.string();
+    }
+    if (!options_.mdn_edge_context_feature_probe_path.empty()) {
+      report.mdn_edge_context_feature_probe_path =
+          options_.mdn_edge_context_feature_probe_path.string();
+    }
     report.source_cursor_token = source_cursor_report.cursor_token();
     report.source_anchor_count =
         static_cast<int64_t>(source_cursor_report.accepted_anchor_count);
@@ -1663,6 +2484,26 @@ public:
 
     double loss_sum = 0.0;
     int64_t loss_count = 0;
+    double edge_auxiliary_loss_sum = 0.0;
+    int64_t edge_auxiliary_loss_count = 0;
+    double edge_auxiliary_regression_loss_sum = 0.0;
+    int64_t edge_auxiliary_regression_loss_count = 0;
+    double edge_auxiliary_direction_loss_sum = 0.0;
+    int64_t edge_auxiliary_direction_loss_count = 0;
+    double edge_auxiliary_rank_loss_sum = 0.0;
+    int64_t edge_auxiliary_rank_loss_count = 0;
+    int64_t edge_auxiliary_valid_count = 0;
+    int64_t edge_auxiliary_pairwise_valid_count = 0;
+    double direct_readout_loss_sum = 0.0;
+    int64_t direct_readout_loss_count = 0;
+    double direct_readout_regression_loss_sum = 0.0;
+    int64_t direct_readout_regression_loss_count = 0;
+    double direct_readout_direction_loss_sum = 0.0;
+    int64_t direct_readout_direction_loss_count = 0;
+    double direct_readout_rank_loss_sum = 0.0;
+    int64_t direct_readout_rank_loss_count = 0;
+    int64_t direct_readout_loss_valid_count = 0;
+    int64_t direct_readout_loss_pairwise_valid_count = 0;
     double valid_fraction_sum = 0.0;
     int64_t valid_fraction_count = 0;
     double sigma_mean_sum = 0.0;
@@ -1676,6 +2517,72 @@ public:
     double mixture_entropy_sum = 0.0;
     int64_t mixture_entropy_count = 0;
     double max_grad_norm = -std::numeric_limits<double>::infinity();
+    double ev_abs_error_sum = 0.0;
+    double ev_squared_error_sum = 0.0;
+    double ev_signed_error_sum = 0.0;
+    int64_t ev_metric_valid_count = 0;
+    int64_t ev_direction_correct_count = 0;
+    std::vector<int64_t> ev_valid_count_per_channel_sum;
+    std::vector<int64_t> ev_direction_correct_count_per_channel_sum;
+    std::vector<double> ev_abs_error_sum_per_channel;
+    std::vector<double> ev_squared_error_sum_per_channel;
+    std::vector<double> ev_signed_error_sum_per_channel;
+    std::vector<int64_t> ev_valid_count_per_target_feature_sum;
+    std::vector<int64_t> ev_direction_correct_count_per_target_feature_sum;
+    std::vector<double> ev_abs_error_sum_per_target_feature;
+    std::vector<double> ev_squared_error_sum_per_target_feature;
+    std::vector<double> ev_signed_error_sum_per_target_feature;
+    std::vector<int64_t> ev_valid_count_per_channel_target_feature_sum;
+    std::vector<int64_t>
+        ev_direction_correct_count_per_channel_target_feature_sum;
+    std::vector<double> ev_abs_error_sum_per_channel_target_feature;
+    std::vector<double> ev_squared_error_sum_per_channel_target_feature;
+    std::vector<double> ev_signed_error_sum_per_channel_target_feature;
+    std::vector<int64_t> ev_valid_count_per_node_sum;
+    std::vector<int64_t> ev_direction_correct_count_per_node_sum;
+    std::vector<double> ev_abs_error_sum_per_node;
+    std::vector<double> ev_squared_error_sum_per_node;
+    std::vector<double> ev_signed_error_sum_per_node;
+    double edge_return_projection_abs_error_sum = 0.0;
+    double edge_return_projection_squared_error_sum = 0.0;
+    double edge_return_projection_signed_error_sum = 0.0;
+    double edge_return_projection_pred_sum = 0.0;
+    double edge_return_projection_realized_sum = 0.0;
+    double edge_return_projection_pred_squared_sum = 0.0;
+    double edge_return_projection_realized_squared_sum = 0.0;
+    double edge_return_projection_cross_sum = 0.0;
+    int64_t edge_return_projection_valid_count = 0;
+    int64_t edge_return_projection_direction_correct_count = 0;
+    int64_t edge_return_projection_pairwise_rank_valid_count = 0;
+    int64_t edge_return_projection_pairwise_rank_correct_count = 0;
+    int64_t edge_return_projection_best_asset_valid_count = 0;
+    int64_t edge_return_projection_best_asset_correct_count = 0;
+    std::vector<int64_t> edge_return_projection_valid_count_per_edge_sum;
+    std::vector<int64_t>
+        edge_return_projection_direction_correct_count_per_edge_sum;
+    std::vector<int64_t> edge_return_projection_valid_count_per_channel_sum;
+    std::vector<int64_t>
+        edge_return_projection_direction_correct_count_per_channel_sum;
+    double direct_edge_return_readout_abs_error_sum = 0.0;
+    double direct_edge_return_readout_squared_error_sum = 0.0;
+    double direct_edge_return_readout_signed_error_sum = 0.0;
+    double direct_edge_return_readout_pred_sum = 0.0;
+    double direct_edge_return_readout_realized_sum = 0.0;
+    double direct_edge_return_readout_pred_squared_sum = 0.0;
+    double direct_edge_return_readout_realized_squared_sum = 0.0;
+    double direct_edge_return_readout_cross_sum = 0.0;
+    int64_t direct_edge_return_readout_valid_count = 0;
+    int64_t direct_edge_return_readout_direction_correct_count = 0;
+    int64_t direct_edge_return_readout_pairwise_rank_valid_count = 0;
+    int64_t direct_edge_return_readout_pairwise_rank_correct_count = 0;
+    int64_t direct_edge_return_readout_best_asset_valid_count = 0;
+    int64_t direct_edge_return_readout_best_asset_correct_count = 0;
+    std::vector<int64_t> direct_edge_return_readout_valid_count_per_edge_sum;
+    std::vector<int64_t>
+        direct_edge_return_readout_direction_correct_count_per_edge_sum;
+    std::vector<int64_t> direct_edge_return_readout_valid_count_per_channel_sum;
+    std::vector<int64_t>
+        direct_edge_return_readout_direction_correct_count_per_channel_sum;
     std::vector<double> nll_per_channel_sum;
     std::vector<int64_t> nll_per_channel_count;
     std::vector<double> nll_per_target_feature_sum;
@@ -1692,6 +2599,53 @@ public:
       if (loss_count > 0) {
         report.mean_loss = loss_sum / static_cast<double>(loss_count);
       }
+      if (edge_auxiliary_loss_count > 0) {
+        report.mean_edge_return_auxiliary_loss =
+            edge_auxiliary_loss_sum /
+            static_cast<double>(edge_auxiliary_loss_count);
+      }
+      if (edge_auxiliary_regression_loss_count > 0) {
+        report.mean_edge_return_auxiliary_regression_loss =
+            edge_auxiliary_regression_loss_sum /
+            static_cast<double>(edge_auxiliary_regression_loss_count);
+      }
+      if (edge_auxiliary_direction_loss_count > 0) {
+        report.mean_edge_return_auxiliary_direction_loss =
+            edge_auxiliary_direction_loss_sum /
+            static_cast<double>(edge_auxiliary_direction_loss_count);
+      }
+      if (edge_auxiliary_rank_loss_count > 0) {
+        report.mean_edge_return_auxiliary_rank_loss =
+            edge_auxiliary_rank_loss_sum /
+            static_cast<double>(edge_auxiliary_rank_loss_count);
+      }
+      report.edge_return_auxiliary_valid_count = edge_auxiliary_valid_count;
+      report.edge_return_auxiliary_pairwise_valid_count =
+          edge_auxiliary_pairwise_valid_count;
+      if (direct_readout_loss_count > 0) {
+        report.mean_direct_edge_return_readout_loss =
+            direct_readout_loss_sum /
+            static_cast<double>(direct_readout_loss_count);
+      }
+      if (direct_readout_regression_loss_count > 0) {
+        report.mean_direct_edge_return_readout_regression_loss =
+            direct_readout_regression_loss_sum /
+            static_cast<double>(direct_readout_regression_loss_count);
+      }
+      if (direct_readout_direction_loss_count > 0) {
+        report.mean_direct_edge_return_readout_direction_loss =
+            direct_readout_direction_loss_sum /
+            static_cast<double>(direct_readout_direction_loss_count);
+      }
+      if (direct_readout_rank_loss_count > 0) {
+        report.mean_direct_edge_return_readout_rank_loss =
+            direct_readout_rank_loss_sum /
+            static_cast<double>(direct_readout_rank_loss_count);
+      }
+      report.direct_edge_return_readout_loss_valid_count =
+          direct_readout_loss_valid_count;
+      report.direct_edge_return_readout_loss_pairwise_valid_count =
+          direct_readout_loss_pairwise_valid_count;
       if (valid_fraction_count > 0) {
         report.mean_valid_target_fraction =
             valid_fraction_sum / static_cast<double>(valid_fraction_count);
@@ -1723,6 +2677,205 @@ public:
       if (std::isfinite(max_grad_norm)) {
         report.max_grad_norm = max_grad_norm;
       }
+      report.forecast_ev_valid_count = ev_metric_valid_count;
+      if (ev_metric_valid_count > 0) {
+        report.ev_mae =
+            ev_abs_error_sum / static_cast<double>(ev_metric_valid_count);
+        report.ev_rmse = std::sqrt(ev_squared_error_sum /
+                                   static_cast<double>(ev_metric_valid_count));
+        report.signed_error =
+            ev_signed_error_sum / static_cast<double>(ev_metric_valid_count);
+        report.directional_accuracy =
+            static_cast<double>(ev_direction_correct_count) /
+            static_cast<double>(ev_metric_valid_count);
+      }
+      report.forecast_ev_valid_count_per_channel =
+          ev_valid_count_per_channel_sum;
+      report.ev_mae_per_channel =
+          channel_graph_first_inference_launcher_detail::ratio_vector(
+              ev_abs_error_sum_per_channel, ev_valid_count_per_channel_sum);
+      report.ev_rmse_per_channel =
+          channel_graph_first_inference_launcher_detail::rmse_vector(
+              ev_squared_error_sum_per_channel, ev_valid_count_per_channel_sum);
+      report.signed_error_per_channel =
+          channel_graph_first_inference_launcher_detail::ratio_vector(
+              ev_signed_error_sum_per_channel, ev_valid_count_per_channel_sum);
+      report.directional_accuracy_per_channel =
+          channel_graph_first_inference_launcher_detail::
+              directional_accuracy_vector(
+                  ev_direction_correct_count_per_channel_sum,
+                  ev_valid_count_per_channel_sum);
+
+      report.forecast_ev_valid_count_per_target_feature =
+          ev_valid_count_per_target_feature_sum;
+      report.ev_mae_per_target_feature =
+          channel_graph_first_inference_launcher_detail::ratio_vector(
+              ev_abs_error_sum_per_target_feature,
+              ev_valid_count_per_target_feature_sum);
+      report.ev_rmse_per_target_feature =
+          channel_graph_first_inference_launcher_detail::rmse_vector(
+              ev_squared_error_sum_per_target_feature,
+              ev_valid_count_per_target_feature_sum);
+      report.signed_error_per_target_feature =
+          channel_graph_first_inference_launcher_detail::ratio_vector(
+              ev_signed_error_sum_per_target_feature,
+              ev_valid_count_per_target_feature_sum);
+      report.directional_accuracy_per_target_feature =
+          channel_graph_first_inference_launcher_detail::
+              directional_accuracy_vector(
+                  ev_direction_correct_count_per_target_feature_sum,
+                  ev_valid_count_per_target_feature_sum);
+
+      report.forecast_ev_valid_count_per_channel_target_feature =
+          ev_valid_count_per_channel_target_feature_sum;
+      report.ev_mae_per_channel_target_feature =
+          channel_graph_first_inference_launcher_detail::ratio_vector(
+              ev_abs_error_sum_per_channel_target_feature,
+              ev_valid_count_per_channel_target_feature_sum);
+      report.ev_rmse_per_channel_target_feature =
+          channel_graph_first_inference_launcher_detail::rmse_vector(
+              ev_squared_error_sum_per_channel_target_feature,
+              ev_valid_count_per_channel_target_feature_sum);
+      report.signed_error_per_channel_target_feature =
+          channel_graph_first_inference_launcher_detail::ratio_vector(
+              ev_signed_error_sum_per_channel_target_feature,
+              ev_valid_count_per_channel_target_feature_sum);
+      report.directional_accuracy_per_channel_target_feature =
+          channel_graph_first_inference_launcher_detail::
+              directional_accuracy_vector(
+                  ev_direction_correct_count_per_channel_target_feature_sum,
+                  ev_valid_count_per_channel_target_feature_sum);
+
+      report.forecast_ev_valid_count_per_node = ev_valid_count_per_node_sum;
+      report.ev_mae_per_node =
+          channel_graph_first_inference_launcher_detail::ratio_vector(
+              ev_abs_error_sum_per_node, ev_valid_count_per_node_sum);
+      report.ev_rmse_per_node =
+          channel_graph_first_inference_launcher_detail::rmse_vector(
+              ev_squared_error_sum_per_node, ev_valid_count_per_node_sum);
+      report.signed_error_per_node =
+          channel_graph_first_inference_launcher_detail::ratio_vector(
+              ev_signed_error_sum_per_node, ev_valid_count_per_node_sum);
+      report.directional_accuracy_per_node =
+          channel_graph_first_inference_launcher_detail::
+              directional_accuracy_vector(
+                  ev_direction_correct_count_per_node_sum,
+                  ev_valid_count_per_node_sum);
+      report.edge_return_projection_valid_count =
+          edge_return_projection_valid_count;
+      if (edge_return_projection_valid_count > 0) {
+        report.edge_return_projection_ev_mae =
+            edge_return_projection_abs_error_sum /
+            static_cast<double>(edge_return_projection_valid_count);
+        report.edge_return_projection_ev_rmse =
+            std::sqrt(edge_return_projection_squared_error_sum /
+                      static_cast<double>(edge_return_projection_valid_count));
+        report.edge_return_projection_signed_error =
+            edge_return_projection_signed_error_sum /
+            static_cast<double>(edge_return_projection_valid_count);
+        report.edge_return_projection_directional_accuracy =
+            static_cast<double>(
+                edge_return_projection_direction_correct_count) /
+            static_cast<double>(edge_return_projection_valid_count);
+        report.edge_return_projection_correlation =
+            channel_graph_first_inference_launcher_detail::
+                correlation_from_sums(
+                    edge_return_projection_valid_count,
+                    edge_return_projection_pred_sum,
+                    edge_return_projection_realized_sum,
+                    edge_return_projection_pred_squared_sum,
+                    edge_return_projection_realized_squared_sum,
+                    edge_return_projection_cross_sum);
+      }
+      report.edge_return_projection_pairwise_rank_valid_count =
+          edge_return_projection_pairwise_rank_valid_count;
+      if (edge_return_projection_pairwise_rank_valid_count > 0) {
+        report.edge_return_projection_pairwise_rank_accuracy =
+            static_cast<double>(
+                edge_return_projection_pairwise_rank_correct_count) /
+            static_cast<double>(
+                edge_return_projection_pairwise_rank_valid_count);
+      }
+      report.edge_return_projection_best_asset_valid_count =
+          edge_return_projection_best_asset_valid_count;
+      if (edge_return_projection_best_asset_valid_count > 0) {
+        report.edge_return_projection_best_asset_agreement =
+            static_cast<double>(
+                edge_return_projection_best_asset_correct_count) /
+            static_cast<double>(edge_return_projection_best_asset_valid_count);
+      }
+      report.edge_return_projection_valid_count_per_edge =
+          edge_return_projection_valid_count_per_edge_sum;
+      report.edge_return_projection_directional_accuracy_per_edge =
+          channel_graph_first_inference_launcher_detail::
+              directional_accuracy_vector(
+                  edge_return_projection_direction_correct_count_per_edge_sum,
+                  edge_return_projection_valid_count_per_edge_sum);
+      report.edge_return_projection_valid_count_per_channel =
+          edge_return_projection_valid_count_per_channel_sum;
+      report.edge_return_projection_directional_accuracy_per_channel =
+          channel_graph_first_inference_launcher_detail::
+              directional_accuracy_vector(
+                  edge_return_projection_direction_correct_count_per_channel_sum,
+                  edge_return_projection_valid_count_per_channel_sum);
+      report.direct_edge_return_readout_valid_count =
+          direct_edge_return_readout_valid_count;
+      if (direct_edge_return_readout_valid_count > 0) {
+        report.direct_edge_return_readout_ev_mae =
+            direct_edge_return_readout_abs_error_sum /
+            static_cast<double>(direct_edge_return_readout_valid_count);
+        report.direct_edge_return_readout_ev_rmse = std::sqrt(
+            direct_edge_return_readout_squared_error_sum /
+            static_cast<double>(direct_edge_return_readout_valid_count));
+        report.direct_edge_return_readout_signed_error =
+            direct_edge_return_readout_signed_error_sum /
+            static_cast<double>(direct_edge_return_readout_valid_count);
+        report.direct_edge_return_readout_directional_accuracy =
+            static_cast<double>(
+                direct_edge_return_readout_direction_correct_count) /
+            static_cast<double>(direct_edge_return_readout_valid_count);
+        report.direct_edge_return_readout_correlation =
+            channel_graph_first_inference_launcher_detail::
+                correlation_from_sums(
+                    direct_edge_return_readout_valid_count,
+                    direct_edge_return_readout_pred_sum,
+                    direct_edge_return_readout_realized_sum,
+                    direct_edge_return_readout_pred_squared_sum,
+                    direct_edge_return_readout_realized_squared_sum,
+                    direct_edge_return_readout_cross_sum);
+      }
+      report.direct_edge_return_readout_pairwise_rank_valid_count =
+          direct_edge_return_readout_pairwise_rank_valid_count;
+      if (direct_edge_return_readout_pairwise_rank_valid_count > 0) {
+        report.direct_edge_return_readout_pairwise_rank_accuracy =
+            static_cast<double>(
+                direct_edge_return_readout_pairwise_rank_correct_count) /
+            static_cast<double>(
+                direct_edge_return_readout_pairwise_rank_valid_count);
+      }
+      report.direct_edge_return_readout_best_asset_valid_count =
+          direct_edge_return_readout_best_asset_valid_count;
+      if (direct_edge_return_readout_best_asset_valid_count > 0) {
+        report.direct_edge_return_readout_best_asset_agreement =
+            static_cast<double>(
+                direct_edge_return_readout_best_asset_correct_count) /
+            static_cast<double>(
+                direct_edge_return_readout_best_asset_valid_count);
+      }
+      report.direct_edge_return_readout_valid_count_per_edge =
+          direct_edge_return_readout_valid_count_per_edge_sum;
+      report.direct_edge_return_readout_directional_accuracy_per_edge =
+          channel_graph_first_inference_launcher_detail::
+              directional_accuracy_vector(
+                  direct_edge_return_readout_direction_correct_count_per_edge_sum,
+                  direct_edge_return_readout_valid_count_per_edge_sum);
+      report.direct_edge_return_readout_valid_count_per_channel =
+          direct_edge_return_readout_valid_count_per_channel_sum;
+      report.direct_edge_return_readout_directional_accuracy_per_channel =
+          channel_graph_first_inference_launcher_detail::
+              directional_accuracy_vector(
+                  direct_edge_return_readout_direction_correct_count_per_channel_sum,
+                  direct_edge_return_readout_valid_count_per_channel_sum);
       report.mean_nll_per_channel =
           channel_graph_first_inference_launcher_detail::mean_vector(
               nll_per_channel_sum, nll_per_channel_count);
@@ -1760,21 +2913,25 @@ public:
     };
 
     auto write_report = [&]() {
-      if (!options_.write_report) {
-        return;
-      }
       refresh_running_report();
-      report.report_written = true;
-      ++report.report_write_count;
       report.last_report_attempted_step = report.steps_attempted;
-      report.report_path = options_.report_path.string();
-      channel_graph_first_inference_launcher_detail::write_report_file(
-          options_.report_path, report);
-      if (report.runtime_lls_emitted) {
+      if (!options_.report_path.empty()) {
+        report.report_path = options_.report_path.string();
+      }
+      if (options_.write_report) {
+        report.report_written = true;
+        ++report.report_write_count;
+        channel_graph_first_inference_launcher_detail::write_report_file(
+            options_.report_path, report);
+      }
+      if (options_.write_report && report.runtime_lls_emitted) {
         channel_graph_first_inference_launcher_detail::
             write_component_runtime_lls_sidecars(
                 options_.report_path, report.nodelift_runtime_lls,
                 report.representation_runtime_lls, report.mdn_runtime_lls);
+      }
+      if (options_.learning_probe_report_sink) {
+        options_.learning_probe_report_sink(report.to_text());
       }
     };
 
@@ -1798,6 +2955,22 @@ public:
       auto batch = cuwacunu::wikimyei::inference::expected_value::mdn::stream::
           make_channel_mdn_input_batch(channel_batch,
                                        builder_.channel_mdn_adapter_options());
+      if (!options_.representation_edge_feature_probe_path.empty() &&
+          report.representation_edge_feature_probe_error.empty()) {
+        try {
+          const auto rows = channel_graph_first_inference_launcher_detail::
+              append_representation_edge_feature_probe_rows(
+                  options_.representation_edge_feature_probe_path,
+                  channel_batch, batch,
+                  report.edge_return_projection_close_feature_index);
+          if (rows > 0) {
+            report.representation_edge_feature_probe_written = true;
+            report.representation_edge_feature_probe_row_count += rows;
+          }
+        } catch (const std::exception &ex) {
+          report.representation_edge_feature_probe_error = ex.what();
+        }
+      }
       auto input = cuwacunu::wikimyei::inference::expected_value::mdn::stream::
           to_channel_mdn_input(batch);
       if (options_.force_empty_targets_for_test) {
@@ -1816,6 +2989,28 @@ public:
             mdn::channel_context_mdn_train_options_from_spec(
                 builder_.bundle().channel_mdn);
         train_options.grad_clip_norm = training_spec.grad_clip_norm;
+        train_options.edge_return_auxiliary_loss_weight =
+            training_spec.mdn_edge_return_auxiliary_loss_weight;
+        train_options.edge_return_auxiliary_direction_weight =
+            training_spec.mdn_edge_return_auxiliary_direction_weight;
+        train_options.edge_return_auxiliary_rank_weight =
+            training_spec.mdn_edge_return_auxiliary_rank_weight;
+        train_options.edge_return_auxiliary_huber_beta =
+            training_spec.mdn_edge_return_auxiliary_huber_beta;
+        train_options.edge_return_auxiliary_logit_scale =
+            training_spec.mdn_edge_return_auxiliary_logit_scale;
+        train_options.direct_edge_return_readout_enabled =
+            training_spec.mdn_direct_edge_return_readout_enabled;
+        train_options.direct_edge_return_readout_loss_weight =
+            training_spec.mdn_direct_edge_return_readout_loss_weight;
+        train_options.direct_edge_return_readout_direction_weight =
+            training_spec.mdn_direct_edge_return_readout_direction_weight;
+        train_options.direct_edge_return_readout_rank_weight =
+            training_spec.mdn_direct_edge_return_readout_rank_weight;
+        train_options.direct_edge_return_readout_huber_beta =
+            training_spec.mdn_direct_edge_return_readout_huber_beta;
+        train_options.direct_edge_return_readout_logit_scale =
+            training_spec.mdn_direct_edge_return_readout_logit_scale;
         model_holder =
             std::make_unique<cuwacunu::wikimyei::inference::expected_value::
                                  mdn::channel_context_mdn_train_model_t>(
@@ -1836,6 +3031,27 @@ public:
             channel_graph_first_inference_launcher_detail::
                 parameters_are_on_device(model_ptr->model()->parameters(),
                                          builder_.options().device);
+      }
+
+      if (!train_target &&
+          !options_.mdn_edge_context_feature_probe_path.empty() &&
+          report.mdn_edge_context_feature_probe_error.empty()) {
+        try {
+          const auto edge_context_features =
+              model_ptr->direct_edge_context_features(input.context,
+                                                      input.context_mask);
+          const auto rows = channel_graph_first_inference_launcher_detail::
+              append_mdn_edge_context_feature_probe_rows(
+                  options_.mdn_edge_context_feature_probe_path,
+                  edge_context_features, channel_batch, batch,
+                  report.edge_return_projection_close_feature_index);
+          if (rows > 0) {
+            report.mdn_edge_context_feature_probe_written = true;
+            report.mdn_edge_context_feature_probe_row_count += rows;
+          }
+        } catch (const std::exception &ex) {
+          report.mdn_edge_context_feature_probe_error = ex.what();
+        }
       }
 
       cuwacunu::wikimyei::inference::expected_value::mdn::
@@ -1866,6 +3082,14 @@ public:
                   cuwacunu::wikimyei::inference::expected_value::mdn::
                       channel_mdn_nll_options_from_spec(
                           builder_.bundle().channel_mdn));
+          cuwacunu::wikimyei::inference::expected_value::mdn::
+              channel_context_mdn_train_detail::
+                  accumulate_expected_value_metrics(step, out, input.future,
+                                                    combined_mask);
+          cuwacunu::wikimyei::inference::expected_value::mdn::
+              channel_context_mdn_train_detail::
+                  accumulate_direct_edge_return_readout_metrics(
+                      step, out, input.future, combined_mask);
           step.nll_per_channel = cuwacunu::wikimyei::inference::expected_value::
               mdn::mdn_masked_mean_per_channel(nll_map, combined_mask);
           step.nll_per_target_feature =
@@ -1888,6 +3112,46 @@ public:
                   cuwacunu::wikimyei::inference::expected_value::mdn::
                       channel_mdn_nll_options_from_spec(
                           builder_.bundle().channel_mdn));
+          auto eval_train_options = cuwacunu::wikimyei::inference::
+              expected_value::mdn::channel_context_mdn_train_options_from_spec(
+                  builder_.bundle().channel_mdn);
+          eval_train_options.edge_return_auxiliary_loss_weight =
+              training_spec.mdn_edge_return_auxiliary_loss_weight;
+          eval_train_options.edge_return_auxiliary_direction_weight =
+              training_spec.mdn_edge_return_auxiliary_direction_weight;
+          eval_train_options.edge_return_auxiliary_rank_weight =
+              training_spec.mdn_edge_return_auxiliary_rank_weight;
+          eval_train_options.edge_return_auxiliary_huber_beta =
+              training_spec.mdn_edge_return_auxiliary_huber_beta;
+          eval_train_options.edge_return_auxiliary_logit_scale =
+              training_spec.mdn_edge_return_auxiliary_logit_scale;
+          eval_train_options.direct_edge_return_readout_enabled =
+              training_spec.mdn_direct_edge_return_readout_enabled;
+          eval_train_options.direct_edge_return_readout_loss_weight =
+              training_spec.mdn_direct_edge_return_readout_loss_weight;
+          eval_train_options.direct_edge_return_readout_direction_weight =
+              training_spec.mdn_direct_edge_return_readout_direction_weight;
+          eval_train_options.direct_edge_return_readout_rank_weight =
+              training_spec.mdn_direct_edge_return_readout_rank_weight;
+          eval_train_options.direct_edge_return_readout_huber_beta =
+              training_spec.mdn_direct_edge_return_readout_huber_beta;
+          eval_train_options.direct_edge_return_readout_logit_scale =
+              training_spec.mdn_direct_edge_return_readout_logit_scale;
+          const auto edge_auxiliary = cuwacunu::wikimyei::inference::
+              expected_value::mdn::channel_context_mdn_train_detail::
+                  compute_edge_return_auxiliary_loss(
+                      out, input.future, combined_mask, eval_train_options);
+          cuwacunu::wikimyei::inference::expected_value::mdn::
+              channel_context_mdn_train_detail::
+                  record_edge_return_auxiliary_loss(step, edge_auxiliary);
+          const auto direct_readout = cuwacunu::wikimyei::inference::
+              expected_value::mdn::channel_context_mdn_train_detail::
+                  compute_direct_edge_return_readout_loss(
+                      out, input.future, combined_mask, eval_train_options);
+          cuwacunu::wikimyei::inference::expected_value::mdn::
+              channel_context_mdn_train_detail::
+                  record_direct_edge_return_readout_loss(step, direct_readout);
+          step.loss = step.loss + edge_auxiliary.loss + direct_readout.loss;
           step.sigma_mean =
               out.sigma.mean().to(torch::kCPU).template item<double>();
           step.sigma_min =
@@ -1935,6 +3199,84 @@ public:
           loss_sum += report.last_loss;
           ++loss_count;
         }
+        auto finite_scalar_or_nan = [](const torch::Tensor &value) {
+          if (!value.defined() || value.numel() == 0) {
+            return std::numeric_limits<double>::quiet_NaN();
+          }
+          const double scalar = value.detach()
+                                    .to(torch::kCPU)
+                                    .to(torch::kFloat64)
+                                    .template item<double>();
+          return std::isfinite(scalar)
+                     ? scalar
+                     : std::numeric_limits<double>::quiet_NaN();
+        };
+        report.last_edge_return_auxiliary_loss =
+            finite_scalar_or_nan(step.edge_return_auxiliary_loss);
+        if (std::isfinite(report.last_edge_return_auxiliary_loss)) {
+          edge_auxiliary_loss_sum += report.last_edge_return_auxiliary_loss;
+          ++edge_auxiliary_loss_count;
+        }
+        report.last_edge_return_auxiliary_regression_loss =
+            finite_scalar_or_nan(step.edge_return_auxiliary_regression_loss);
+        if (std::isfinite(report.last_edge_return_auxiliary_regression_loss)) {
+          edge_auxiliary_regression_loss_sum +=
+              report.last_edge_return_auxiliary_regression_loss;
+          ++edge_auxiliary_regression_loss_count;
+        }
+        report.last_edge_return_auxiliary_direction_loss =
+            finite_scalar_or_nan(step.edge_return_auxiliary_direction_loss);
+        if (std::isfinite(report.last_edge_return_auxiliary_direction_loss)) {
+          edge_auxiliary_direction_loss_sum +=
+              report.last_edge_return_auxiliary_direction_loss;
+          ++edge_auxiliary_direction_loss_count;
+        }
+        report.last_edge_return_auxiliary_rank_loss =
+            finite_scalar_or_nan(step.edge_return_auxiliary_rank_loss);
+        if (std::isfinite(report.last_edge_return_auxiliary_rank_loss)) {
+          edge_auxiliary_rank_loss_sum +=
+              report.last_edge_return_auxiliary_rank_loss;
+          ++edge_auxiliary_rank_loss_count;
+        }
+        edge_auxiliary_valid_count += step.edge_return_auxiliary_valid_count;
+        edge_auxiliary_pairwise_valid_count +=
+            step.edge_return_auxiliary_pairwise_valid_count;
+        report.last_direct_edge_return_readout_loss =
+            finite_scalar_or_nan(step.direct_edge_return_readout_loss);
+        if (std::isfinite(report.last_direct_edge_return_readout_loss)) {
+          direct_readout_loss_sum +=
+              report.last_direct_edge_return_readout_loss;
+          ++direct_readout_loss_count;
+        }
+        report.last_direct_edge_return_readout_regression_loss =
+            finite_scalar_or_nan(
+                step.direct_edge_return_readout_regression_loss);
+        if (std::isfinite(
+                report.last_direct_edge_return_readout_regression_loss)) {
+          direct_readout_regression_loss_sum +=
+              report.last_direct_edge_return_readout_regression_loss;
+          ++direct_readout_regression_loss_count;
+        }
+        report.last_direct_edge_return_readout_direction_loss =
+            finite_scalar_or_nan(
+                step.direct_edge_return_readout_direction_loss);
+        if (std::isfinite(
+                report.last_direct_edge_return_readout_direction_loss)) {
+          direct_readout_direction_loss_sum +=
+              report.last_direct_edge_return_readout_direction_loss;
+          ++direct_readout_direction_loss_count;
+        }
+        report.last_direct_edge_return_readout_rank_loss =
+            finite_scalar_or_nan(step.direct_edge_return_readout_rank_loss);
+        if (std::isfinite(report.last_direct_edge_return_readout_rank_loss)) {
+          direct_readout_rank_loss_sum +=
+              report.last_direct_edge_return_readout_rank_loss;
+          ++direct_readout_rank_loss_count;
+        }
+        direct_readout_loss_valid_count +=
+            step.direct_edge_return_readout_loss_valid_count;
+        direct_readout_loss_pairwise_valid_count +=
+            step.direct_edge_return_readout_loss_pairwise_valid_count;
       } else if (step.skipped) {
         ++report.skipped_batches;
         ++report.wave_pulses_skipped;
@@ -1972,6 +3314,164 @@ public:
       if (std::isfinite(step.mixture_entropy)) {
         mixture_entropy_sum += step.mixture_entropy;
         ++mixture_entropy_count;
+      }
+      if (step.ev_metric_valid_count > 0) {
+        ev_abs_error_sum += step.ev_abs_error_sum;
+        ev_squared_error_sum += step.ev_squared_error_sum;
+        ev_signed_error_sum += step.ev_signed_error_sum;
+        ev_metric_valid_count += step.ev_metric_valid_count;
+        ev_direction_correct_count += step.ev_direction_correct_count;
+        channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+            step.ev_valid_count_per_channel, ev_valid_count_per_channel_sum);
+        channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+            step.ev_direction_correct_count_per_channel,
+            ev_direction_correct_count_per_channel_sum);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(step.ev_abs_error_sum_per_channel,
+                                         ev_abs_error_sum_per_channel);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(step.ev_squared_error_sum_per_channel,
+                                         ev_squared_error_sum_per_channel);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(step.ev_signed_error_sum_per_channel,
+                                         ev_signed_error_sum_per_channel);
+
+        channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+            step.ev_valid_count_per_target_feature,
+            ev_valid_count_per_target_feature_sum);
+        channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+            step.ev_direction_correct_count_per_target_feature,
+            ev_direction_correct_count_per_target_feature_sum);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(
+                step.ev_abs_error_sum_per_target_feature,
+                ev_abs_error_sum_per_target_feature);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(
+                step.ev_squared_error_sum_per_target_feature,
+                ev_squared_error_sum_per_target_feature);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(
+                step.ev_signed_error_sum_per_target_feature,
+                ev_signed_error_sum_per_target_feature);
+
+        channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+            step.ev_valid_count_per_channel_target_feature,
+            ev_valid_count_per_channel_target_feature_sum);
+        channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+            step.ev_direction_correct_count_per_channel_target_feature,
+            ev_direction_correct_count_per_channel_target_feature_sum);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(
+                step.ev_abs_error_sum_per_channel_target_feature,
+                ev_abs_error_sum_per_channel_target_feature);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(
+                step.ev_squared_error_sum_per_channel_target_feature,
+                ev_squared_error_sum_per_channel_target_feature);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(
+                step.ev_signed_error_sum_per_channel_target_feature,
+                ev_signed_error_sum_per_channel_target_feature);
+
+        channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+            step.ev_valid_count_per_node, ev_valid_count_per_node_sum);
+        channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+            step.ev_direction_correct_count_per_node,
+            ev_direction_correct_count_per_node_sum);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(step.ev_abs_error_sum_per_node,
+                                         ev_abs_error_sum_per_node);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(step.ev_squared_error_sum_per_node,
+                                         ev_squared_error_sum_per_node);
+        channel_graph_first_inference_launcher_detail::
+            accumulate_double_sum_vector(step.ev_signed_error_sum_per_node,
+                                         ev_signed_error_sum_per_node);
+        if (step.edge_return_projection_valid_count > 0) {
+          edge_return_projection_abs_error_sum +=
+              step.edge_return_projection_abs_error_sum;
+          edge_return_projection_squared_error_sum +=
+              step.edge_return_projection_squared_error_sum;
+          edge_return_projection_signed_error_sum +=
+              step.edge_return_projection_signed_error_sum;
+          edge_return_projection_pred_sum +=
+              step.edge_return_projection_pred_sum;
+          edge_return_projection_realized_sum +=
+              step.edge_return_projection_realized_sum;
+          edge_return_projection_pred_squared_sum +=
+              step.edge_return_projection_pred_squared_sum;
+          edge_return_projection_realized_squared_sum +=
+              step.edge_return_projection_realized_squared_sum;
+          edge_return_projection_cross_sum +=
+              step.edge_return_projection_cross_sum;
+          edge_return_projection_valid_count +=
+              step.edge_return_projection_valid_count;
+          edge_return_projection_direction_correct_count +=
+              step.edge_return_projection_direction_correct_count;
+          edge_return_projection_pairwise_rank_valid_count +=
+              step.edge_return_projection_pairwise_rank_valid_count;
+          edge_return_projection_pairwise_rank_correct_count +=
+              step.edge_return_projection_pairwise_rank_correct_count;
+          edge_return_projection_best_asset_valid_count +=
+              step.edge_return_projection_best_asset_valid_count;
+          edge_return_projection_best_asset_correct_count +=
+              step.edge_return_projection_best_asset_correct_count;
+          channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+              step.edge_return_projection_valid_count_per_edge,
+              edge_return_projection_valid_count_per_edge_sum);
+          channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+              step.edge_return_projection_direction_correct_count_per_edge,
+              edge_return_projection_direction_correct_count_per_edge_sum);
+          channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+              step.edge_return_projection_valid_count_per_channel,
+              edge_return_projection_valid_count_per_channel_sum);
+          channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+              step.edge_return_projection_direction_correct_count_per_channel,
+              edge_return_projection_direction_correct_count_per_channel_sum);
+        }
+        if (step.direct_edge_return_readout_valid_count > 0) {
+          direct_edge_return_readout_abs_error_sum +=
+              step.direct_edge_return_readout_abs_error_sum;
+          direct_edge_return_readout_squared_error_sum +=
+              step.direct_edge_return_readout_squared_error_sum;
+          direct_edge_return_readout_signed_error_sum +=
+              step.direct_edge_return_readout_signed_error_sum;
+          direct_edge_return_readout_pred_sum +=
+              step.direct_edge_return_readout_pred_sum;
+          direct_edge_return_readout_realized_sum +=
+              step.direct_edge_return_readout_realized_sum;
+          direct_edge_return_readout_pred_squared_sum +=
+              step.direct_edge_return_readout_pred_squared_sum;
+          direct_edge_return_readout_realized_squared_sum +=
+              step.direct_edge_return_readout_realized_squared_sum;
+          direct_edge_return_readout_cross_sum +=
+              step.direct_edge_return_readout_cross_sum;
+          direct_edge_return_readout_valid_count +=
+              step.direct_edge_return_readout_valid_count;
+          direct_edge_return_readout_direction_correct_count +=
+              step.direct_edge_return_readout_direction_correct_count;
+          direct_edge_return_readout_pairwise_rank_valid_count +=
+              step.direct_edge_return_readout_pairwise_rank_valid_count;
+          direct_edge_return_readout_pairwise_rank_correct_count +=
+              step.direct_edge_return_readout_pairwise_rank_correct_count;
+          direct_edge_return_readout_best_asset_valid_count +=
+              step.direct_edge_return_readout_best_asset_valid_count;
+          direct_edge_return_readout_best_asset_correct_count +=
+              step.direct_edge_return_readout_best_asset_correct_count;
+          channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+              step.direct_edge_return_readout_valid_count_per_edge,
+              direct_edge_return_readout_valid_count_per_edge_sum);
+          channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+              step.direct_edge_return_readout_direction_correct_count_per_edge,
+              direct_edge_return_readout_direction_correct_count_per_edge_sum);
+          channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+              step.direct_edge_return_readout_valid_count_per_channel,
+              direct_edge_return_readout_valid_count_per_channel_sum);
+          channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+              step.direct_edge_return_readout_direction_correct_count_per_channel,
+              direct_edge_return_readout_direction_correct_count_per_channel_sum);
+        }
       }
       report.nonfinite_output_count += step.nonfinite_output_count;
       report.last_grad_norm = step.grad_norm;

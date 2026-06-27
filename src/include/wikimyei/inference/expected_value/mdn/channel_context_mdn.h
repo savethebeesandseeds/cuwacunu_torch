@@ -120,6 +120,8 @@ struct ChannelContextMdnImpl : torch::nn::Module {
       channel_adapters{nullptr};
   cuwacunu::wikimyei::inference::expected_value::mdn::FeatureConditionedMdnHead
       head{nullptr};
+  cuwacunu::wikimyei::inference::expected_value::mdn::DirectEdgeReturnHead
+      direct_edge_head{nullptr};
 
   ChannelContextMdnImpl(int64_t De_, int64_t Df_, int64_t C_, int64_t Hf_,
                         int64_t K_, int64_t H_, int64_t depth_,
@@ -173,6 +175,10 @@ struct ChannelContextMdnImpl : torch::nn::Module {
                                 .source_feature_vocab_size = 0,
                                 .target_coords = target_coords,
                                 .sigma_floor = sigma_floor}));
+    direct_edge_head =
+        register_module("direct_edge_head",
+                        cuwacunu::wikimyei::inference::expected_value::mdn::
+                            DirectEdgeReturnHead(H, /*quote_node_index=*/0));
     this->to(device, dtype);
   }
 
@@ -188,7 +194,47 @@ struct ChannelContextMdnImpl : torch::nn::Module {
         channel_context.to(torch::TensorOptions().dtype(dtype).device(device));
     auto h = backbone->forward(x.reshape({B * N * C, De})).view({B, N, C, H});
     h = channel_adapters->forward(h);
-    return head->forward(h);
+    auto out = head->forward(h);
+    out.direct_edge_return = direct_edge_head->forward(h);
+    return out;
+  }
+
+  torch::Tensor
+  direct_edge_context_features(const torch::Tensor &channel_context) {
+    TORCH_CHECK(channel_context.defined() && channel_context.dim() == 4,
+                "[ChannelContextMdn] context must be [B,N,C,De]");
+    TORCH_CHECK(channel_context.size(2) == C && channel_context.size(3) == De,
+                "[ChannelContextMdn] context shape mismatch");
+    const auto B = channel_context.size(0);
+    const auto N = channel_context.size(1);
+    auto x =
+        channel_context.to(torch::TensorOptions().dtype(dtype).device(device));
+    auto h = backbone->forward(x.reshape({B * N * C, De})).view({B, N, C, H});
+    h = channel_adapters->forward(h);
+    return direct_edge_head->edge_features(h);
+  }
+
+  torch::Tensor
+  direct_edge_context_features(const torch::Tensor &channel_context,
+                               const torch::Tensor &context_mask) {
+    TORCH_CHECK(context_mask.defined() && context_mask.dim() == 3,
+                "[ChannelContextMdn] context_mask must be [B,N,C]");
+    TORCH_CHECK(channel_context.defined() && channel_context.dim() == 4,
+                "[ChannelContextMdn] context must be [B,N,C,De]");
+    TORCH_CHECK(context_mask.size(0) == channel_context.size(0) &&
+                    context_mask.size(1) == channel_context.size(1) &&
+                    context_mask.size(2) == channel_context.size(2),
+                "[ChannelContextMdn] context/mask shape mismatch");
+    auto mask = context_mask.to(torch::TensorOptions()
+                                    .dtype(torch::kBool)
+                                    .device(channel_context.device()));
+    auto finite_or_masked = torch::isfinite(channel_context)
+                                .logical_or(mask.unsqueeze(-1).logical_not());
+    TORCH_CHECK(finite_or_masked.all().template item<bool>(),
+                "[ChannelContextMdn] non-finite context value under true mask");
+    auto clean_context = torch::where(mask.unsqueeze(-1), channel_context,
+                                      torch::zeros_like(channel_context));
+    return direct_edge_context_features(clean_context);
   }
 
   cuwacunu::wikimyei::inference::expected_value::mdn::MdnOut
@@ -239,6 +285,8 @@ struct ChannelContextPlusGlobalMdnImpl : torch::nn::Module {
       channel_adapters{nullptr};
   cuwacunu::wikimyei::inference::expected_value::mdn::FeatureConditionedMdnHead
       head{nullptr};
+  cuwacunu::wikimyei::inference::expected_value::mdn::DirectEdgeReturnHead
+      direct_edge_head{nullptr};
 
   ChannelContextPlusGlobalMdnImpl(int64_t De_, int64_t Dg_, int64_t Df_,
                                   int64_t C_, int64_t Hf_, int64_t K_,
@@ -293,6 +341,10 @@ struct ChannelContextPlusGlobalMdnImpl : torch::nn::Module {
                                 .source_feature_vocab_size = 0,
                                 .target_coords = target_coords,
                                 .sigma_floor = sigma_floor}));
+    direct_edge_head =
+        register_module("direct_edge_head",
+                        cuwacunu::wikimyei::inference::expected_value::mdn::
+                            DirectEdgeReturnHead(H, /*quote_node_index=*/0));
     this->to(device, dtype);
   }
 
@@ -360,7 +412,9 @@ struct ChannelContextPlusGlobalMdnImpl : torch::nn::Module {
     h = h.masked_fill(active_mask.logical_not().unsqueeze(-1), 0.0);
     h = channel_adapters->forward(h);
     h = h.masked_fill(active_mask.logical_not().unsqueeze(-1), 0.0);
-    return head->forward(h);
+    auto out = head->forward(h);
+    out.direct_edge_return = direct_edge_head->forward(h);
+    return out;
   }
 };
 

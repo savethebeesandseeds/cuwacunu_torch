@@ -8,6 +8,9 @@
 #include "hero/mcp_stdio_transport.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/short_ref.h"
+#include "kikijyeba/protocol/protocol_variant.h"
+#include "ujcamei/source/contract/runtime/decode.h"
+#include "ujcamei/source/retrieval/dataloader/source_cursor.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/inference/expected_value/mdn/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
@@ -18,12 +21,15 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -346,6 +352,23 @@ constexpr tool_descriptor_t
     return false;
   }
   int parsed = 0;
+  const auto result =
+      std::from_chars(value.data(), value.data() + value.size(), parsed);
+  if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+    return false;
+  }
+  if (out) {
+    *out = parsed;
+  }
+  return true;
+}
+
+[[nodiscard]] bool parse_int64(std::string_view raw, std::int64_t *out) {
+  const std::string value = trim_ascii(raw);
+  if (value.empty()) {
+    return false;
+  }
+  std::int64_t parsed = 0;
   const auto result =
       std::from_chars(value.data(), value.data() + value.size(), parsed);
   if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
@@ -5019,6 +5042,7 @@ mdn_distribution_calibration_diagnostic_summary_json() {
       << ",\"bounded_unit_interval_count\":"
       << summary.bounded_unit_interval_count
       << ",\"minimum_direction_count\":" << summary.minimum_direction_count
+      << ",\"maximum_direction_count\":" << summary.maximum_direction_count
       << ",\"above_direction_count\":" << summary.above_direction_count
       << ",\"below_direction_count\":" << summary.below_direction_count
       << ",\"metric_declared_direction_count\":"
@@ -7761,6 +7785,36 @@ forecast_eval_fact_json(const exposure::lattice_forecast_eval_fact_t &fact) {
       << ",\"ev_rmse\":" << double_json(fact.ev_rmse)
       << ",\"signed_error\":" << double_json(fact.signed_error)
       << ",\"directional_accuracy\":" << double_json(fact.directional_accuracy)
+      << ",\"edge_return_projection_schema\":"
+      << json_quote(fact.edge_return_projection_schema)
+      << ",\"edge_return_projection_quote_node_index\":"
+      << fact.edge_return_projection_quote_node_index
+      << ",\"edge_return_projection_quote_node_id\":"
+      << json_quote(fact.edge_return_projection_quote_node_id)
+      << ",\"edge_return_projection_base_node_ids\":"
+      << json_quote(fact.edge_return_projection_base_node_ids)
+      << ",\"edge_return_projection_close_feature_index\":"
+      << fact.edge_return_projection_close_feature_index
+      << ",\"edge_return_projection_valid_count\":"
+      << fact.edge_return_projection_valid_count
+      << ",\"edge_return_projection_ev_mae\":"
+      << double_json(fact.edge_return_projection_ev_mae)
+      << ",\"edge_return_projection_ev_rmse\":"
+      << double_json(fact.edge_return_projection_ev_rmse)
+      << ",\"edge_return_projection_signed_error\":"
+      << double_json(fact.edge_return_projection_signed_error)
+      << ",\"edge_return_projection_directional_accuracy\":"
+      << double_json(fact.edge_return_projection_directional_accuracy)
+      << ",\"edge_return_projection_correlation\":"
+      << double_json(fact.edge_return_projection_correlation)
+      << ",\"edge_return_projection_pairwise_rank_valid_count\":"
+      << fact.edge_return_projection_pairwise_rank_valid_count
+      << ",\"edge_return_projection_pairwise_rank_accuracy\":"
+      << double_json(fact.edge_return_projection_pairwise_rank_accuracy)
+      << ",\"edge_return_projection_best_asset_valid_count\":"
+      << fact.edge_return_projection_best_asset_valid_count
+      << ",\"edge_return_projection_best_asset_agreement\":"
+      << double_json(fact.edge_return_projection_best_asset_agreement)
       << ",\"calibration_coverage\":" << double_json(fact.calibration_coverage)
       << ",\"pit_summary\":" << json_quote(fact.pit_summary)
       << ",\"sigma_scale_sanity\":" << json_quote(fact.sigma_scale_sanity)
@@ -11993,12 +12047,888 @@ derive_active_identity_from_runtime_root(const fs::path &runtime_root) {
   return id;
 }
 
+struct source_graph_identity_t {
+  cuwacunu::kikijyeba::topology::graph::market_graph_t graph{};
+  std::unordered_map<
+      std::string, cuwacunu::ujcamei::source::registry::instrument_signature_t>
+      edge_instruments{};
+};
+
+[[nodiscard]] bool text_is_true(std::string_view raw) {
+  bool parsed = false;
+  return parse_bool(raw, &parsed) && parsed;
+}
+
+[[nodiscard]] bool active_channel_matches_source_form(
+    const cuwacunu::ujcamei::source::contract::source_spec_t &source_spec,
+    const cuwacunu::ujcamei::source::contract::source_form_t &source) {
+  for (const auto &channel : source_spec.channel_forms) {
+    if (text_is_true(channel.active) && source.interval == channel.interval &&
+        trim_ascii(source.record_type) == trim_ascii(channel.record_type)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] source_graph_identity_t derive_source_graph_identity(
+    const cuwacunu::ujcamei::source::contract::source_spec_t &source_spec) {
+  namespace graph_ns = cuwacunu::kikijyeba::topology::graph;
+  source_graph_identity_t out{};
+  std::unordered_map<std::string, graph_ns::node_index_t> node_to_index;
+  node_to_index.reserve(source_spec.graph_node_forms.size());
+  for (const auto &node : source_spec.graph_node_forms) {
+    if (!text_is_true(node.active)) {
+      continue;
+    }
+    const std::string node_id = trim_ascii(node.node_id);
+    if (node_id.empty()) {
+      throw std::runtime_error(
+          "active graph node has empty id while deriving active source cursor");
+    }
+    const auto index =
+        static_cast<graph_ns::node_index_t>(out.graph.node_ids.size());
+    if (!node_to_index.emplace(node_id, index).second) {
+      throw std::runtime_error(
+          "duplicate active graph node while deriving active source cursor: " +
+          node_id);
+    }
+    out.graph.node_ids.push_back(node_id);
+  }
+  if (out.graph.node_ids.empty()) {
+    throw std::runtime_error(
+        "no active graph nodes while deriving active source cursor");
+  }
+
+  const auto add_edge =
+      [&](const std::string &edge_id, const std::string &base_node,
+          const std::string &quote_node,
+          const cuwacunu::ujcamei::source::registry::instrument_signature_t
+              &signature) {
+        if (edge_id.empty() || base_node.empty() || quote_node.empty()) {
+          throw std::runtime_error(
+              "active graph edge has empty id or endpoint while deriving "
+              "active source cursor");
+        }
+        const auto base = node_to_index.find(base_node);
+        const auto quote = node_to_index.find(quote_node);
+        if (base == node_to_index.end() || quote == node_to_index.end()) {
+          throw std::runtime_error(
+              "active graph edge references inactive or missing node while "
+              "deriving active source cursor: " +
+              edge_id);
+        }
+        if (out.edge_instruments.find(edge_id) != out.edge_instruments.end()) {
+          return;
+        }
+        out.graph.edge_ids.push_back(edge_id);
+        out.graph.base_index.push_back(base->second);
+        out.graph.quote_index.push_back(quote->second);
+        out.edge_instruments.emplace(edge_id, signature);
+      };
+
+  for (const auto &edge : source_spec.graph_edge_forms) {
+    if (!text_is_true(edge.active)) {
+      continue;
+    }
+    const std::string edge_id = trim_ascii(edge.edge_id);
+    const std::string source_instrument = trim_ascii(edge.source_instrument);
+    const auto source = std::find_if(
+        source_spec.source_forms.begin(), source_spec.source_forms.end(),
+        [&](const auto &row) {
+          return trim_ascii(row.instrument) == source_instrument &&
+                 trim_ascii(row.base_asset) == trim_ascii(edge.base_node) &&
+                 trim_ascii(row.quote_asset) == trim_ascii(edge.quote_node);
+        });
+    if (source == source_spec.source_forms.end()) {
+      throw std::runtime_error(
+          "explicit graph edge has no matching source row while deriving "
+          "active source cursor: " +
+          edge_id);
+    }
+    add_edge(edge_id, trim_ascii(edge.base_node), trim_ascii(edge.quote_node),
+             source->instrument_signature());
+  }
+
+  if (out.graph.edge_ids.empty() &&
+      trim_ascii(source_spec.graph_edge_resolution_policy) ==
+          "edge_discovery") {
+    const std::string edge_source_kind =
+        trim_ascii(source_spec.graph_edge_source_kind);
+    for (const auto &source : source_spec.source_forms) {
+      const std::string base = trim_ascii(source.base_asset);
+      const std::string quote = trim_ascii(source.quote_asset);
+      if (trim_ascii(source.source_kind) != edge_source_kind ||
+          node_to_index.find(base) == node_to_index.end() ||
+          node_to_index.find(quote) == node_to_index.end() || base == quote ||
+          !active_channel_matches_source_form(source_spec, source)) {
+        continue;
+      }
+      add_edge(trim_ascii(source.instrument), base, quote,
+               source.instrument_signature());
+    }
+  }
+  if (out.graph.edge_ids.empty()) {
+    throw std::runtime_error(
+        "no active graph edges while deriving active source cursor");
+  }
+  out.graph.validate();
+  return out;
+}
+
+struct readonly_kline_csv_record_t {
+  std::int64_t open_time{0};
+  std::int64_t close_time{0};
+};
+
+struct readonly_channel_key_domain_t {
+  std::vector<std::int64_t> keys{};
+  std::int64_t left{0};
+  std::int64_t right{0};
+  std::int64_t step{0};
+  std::int64_t valid_left{0};
+  std::int64_t valid_right{0};
+  std::size_t input_length{0};
+  std::size_t future_length{0};
+};
+
+struct readonly_edge_anchor_domain_t {
+  std::int64_t left{0};
+  std::int64_t right{0};
+  std::int64_t step{0};
+  std::size_t count{0};
+  std::size_t max_input_length{0};
+  std::size_t max_future_length{0};
+  std::vector<readonly_channel_key_domain_t> channels{};
+};
+
+[[nodiscard]] bool parse_required_size(std::string_view raw, std::size_t *out) {
+  std::int64_t parsed = 0;
+  if (!parse_int64(raw, &parsed) || parsed < 0) {
+    return false;
+  }
+  if (static_cast<unsigned long long>(parsed) >
+      static_cast<unsigned long long>(
+          std::numeric_limits<std::size_t>::max())) {
+    return false;
+  }
+  if (out) {
+    *out = static_cast<std::size_t>(parsed);
+  }
+  return true;
+}
+
+[[nodiscard]] std::size_t require_channel_size(const std::string &raw,
+                                               const char *field_name,
+                                               const std::string &channel_label,
+                                               bool require_positive) {
+  std::size_t out = 0;
+  if (!parse_required_size(raw, &out) || (require_positive && out == 0)) {
+    throw std::runtime_error("invalid " + std::string(field_name) + "='" + raw +
+                             "' for " + channel_label);
+  }
+  return out;
+}
+
+[[nodiscard]] bool valid_readonly_normalization_policy(std::string_view raw) {
+  const std::string value = lowercase_ascii(trim_ascii(raw));
+  return value.empty() || value == "none" || value == "raw" || value == "off" ||
+         value == "disabled" || value == "log_returns";
+}
+
+[[nodiscard]] std::int64_t canonical_exchange_time_ms(std::int64_t raw_time) {
+  constexpr std::int64_t kUnixTimeMicrosecondThreshold = 100000000000000LL;
+  while (raw_time >= kUnixTimeMicrosecondThreshold ||
+         raw_time <= -kUnixTimeMicrosecondThreshold) {
+    raw_time /= 1000;
+  }
+  return raw_time;
+}
+
+[[nodiscard]] std::int64_t parse_kline_time_field(std::string_view raw,
+                                                  const fs::path &csv_path,
+                                                  std::size_t line_number,
+                                                  const char *field_name) {
+  std::int64_t parsed = 0;
+  if (!parse_int64(raw, &parsed)) {
+    throw std::runtime_error("invalid kline " + std::string(field_name) +
+                             " in " + csv_path.string() + " line " +
+                             std::to_string(line_number));
+  }
+  return canonical_exchange_time_ms(parsed);
+}
+
+void validate_kline_double_field(std::string_view raw, const fs::path &csv_path,
+                                 std::size_t line_number,
+                                 const char *field_name) {
+  const std::string value = trim_ascii(raw);
+  std::size_t consumed = 0;
+  try {
+    (void)std::stod(value, &consumed);
+  } catch (const std::exception &ex) {
+    throw std::runtime_error("invalid kline " + std::string(field_name) +
+                             " in " + csv_path.string() + " line " +
+                             std::to_string(line_number) + ": " + ex.what());
+  }
+  if (consumed != value.size()) {
+    throw std::runtime_error("invalid kline " + std::string(field_name) +
+                             " in " + csv_path.string() + " line " +
+                             std::to_string(line_number));
+  }
+}
+
+void validate_kline_int32_field(std::string_view raw, const fs::path &csv_path,
+                                std::size_t line_number,
+                                const char *field_name) {
+  const std::string value = trim_ascii(raw);
+  std::size_t consumed = 0;
+  long long parsed = 0;
+  try {
+    parsed = std::stoll(value, &consumed);
+  } catch (const std::exception &ex) {
+    throw std::runtime_error("invalid kline " + std::string(field_name) +
+                             " in " + csv_path.string() + " line " +
+                             std::to_string(line_number) + ": " + ex.what());
+  }
+  if (consumed != value.size() ||
+      parsed <
+          static_cast<long long>(std::numeric_limits<std::int32_t>::min()) ||
+      parsed >
+          static_cast<long long>(std::numeric_limits<std::int32_t>::max())) {
+    throw std::runtime_error("invalid kline " + std::string(field_name) +
+                             " in " + csv_path.string() + " line " +
+                             std::to_string(line_number));
+  }
+}
+
+[[nodiscard]] readonly_kline_csv_record_t
+parse_kline_csv_record_readonly(std::string_view line, const fs::path &csv_path,
+                                std::size_t line_number) {
+  std::vector<std::string_view> fields;
+  fields.reserve(12);
+  std::size_t begin = 0;
+  while (begin <= line.size()) {
+    const std::size_t end = line.find(',', begin);
+    fields.push_back(line.substr(begin, end == std::string_view::npos
+                                            ? std::string_view::npos
+                                            : end - begin));
+    if (end == std::string_view::npos) {
+      break;
+    }
+    begin = end + 1;
+  }
+  if (fields.size() != 12) {
+    throw std::runtime_error(
+        "incorrect kline CSV field count in " + csv_path.string() + " line " +
+        std::to_string(line_number) + ": expected 12, got " +
+        std::to_string(fields.size()));
+  }
+
+  validate_kline_double_field(fields[1], csv_path, line_number, "open_price");
+  validate_kline_double_field(fields[2], csv_path, line_number, "high_price");
+  validate_kline_double_field(fields[3], csv_path, line_number, "low_price");
+  validate_kline_double_field(fields[4], csv_path, line_number, "close_price");
+  validate_kline_double_field(fields[5], csv_path, line_number, "volume");
+  validate_kline_double_field(fields[7], csv_path, line_number,
+                              "quote_asset_volume");
+  validate_kline_int32_field(fields[8], csv_path, line_number,
+                             "number_of_trades");
+  validate_kline_double_field(fields[9], csv_path, line_number,
+                              "taker_buy_base_volume");
+  validate_kline_double_field(fields[10], csv_path, line_number,
+                              "taker_buy_quote_volume");
+
+  return readonly_kline_csv_record_t{
+      .open_time =
+          parse_kline_time_field(fields[0], csv_path, line_number, "open_time"),
+      .close_time = parse_kline_time_field(fields[6], csv_path, line_number,
+                                           "close_time"),
+  };
+}
+
+[[nodiscard]] long double effective_readonly_tolerance(long double a,
+                                                       long double b,
+                                                       long double abs_tol,
+                                                       long double rel_tol) {
+  const long double scale =
+      std::max(1.0L, std::max(std::fabs(a), std::fabs(b)));
+  return abs_tol + rel_tol * scale;
+}
+
+[[nodiscard]] bool readonly_near(long double a, long double b,
+                                 long double abs_tol, long double rel_tol) {
+  return std::fabs(a - b) <=
+         effective_readonly_tolerance(a, b, abs_tol, rel_tol);
+}
+
+[[nodiscard]] std::int64_t checked_round_key(long double key,
+                                             const fs::path &csv_path) {
+  if (!std::isfinite(key) ||
+      key <
+          static_cast<long double>(std::numeric_limits<std::int64_t>::min()) ||
+      key >
+          static_cast<long double>(std::numeric_limits<std::int64_t>::max())) {
+    throw std::runtime_error("kline key overflow while reading " +
+                             csv_path.string());
+  }
+  return static_cast<std::int64_t>(std::llround(key));
+}
+
+[[nodiscard]] std::int64_t rounded_readonly_steps_or_throw(
+    long double steps, const fs::path &csv_path, std::size_t line_number,
+    const char *context_label, long double abs_tol, long double rel_tol) {
+  constexpr std::int64_t kMaxGapFillSteps = 10000000;
+  if (!std::isfinite(steps)) {
+    throw std::runtime_error("non-finite kline step ratio in " +
+                             csv_path.string() + " line " +
+                             std::to_string(line_number));
+  }
+  const long double i64_max =
+      static_cast<long double>(std::numeric_limits<std::int64_t>::max());
+  if (std::fabs(steps) > i64_max) {
+    throw std::runtime_error("kline step ratio overflow in " +
+                             csv_path.string() + " line " +
+                             std::to_string(line_number));
+  }
+  const auto rounded = static_cast<std::int64_t>(std::llround(steps));
+  if (rounded <= 0 || rounded > kMaxGapFillSteps) {
+    throw std::runtime_error("invalid kline rounded step count in " +
+                             csv_path.string() + " line " +
+                             std::to_string(line_number));
+  }
+  const long double rounded_ld = static_cast<long double>(rounded);
+  const long double residual = std::fabs(steps - rounded_ld);
+  const long double allowed =
+      effective_readonly_tolerance(steps, rounded_ld, abs_tol, rel_tol);
+  if (residual > allowed) {
+    throw std::runtime_error("non-integer kline step ratio out of tolerance (" +
+                             std::string(context_label) + ") in " +
+                             csv_path.string() + " line " +
+                             std::to_string(line_number));
+  }
+  return rounded;
+}
+
+[[nodiscard]] long double infer_readonly_regular_delta(
+    const std::vector<readonly_kline_csv_record_t> &records,
+    const fs::path &csv_path, std::size_t bootstrap_deltas, long double abs_tol,
+    long double rel_tol) {
+  if (records.empty()) {
+    throw std::runtime_error("no valid kline records in " + csv_path.string());
+  }
+  const std::size_t target_count = std::max<std::size_t>(1, bootstrap_deltas);
+  std::vector<long double> positive_deltas;
+  positive_deltas.reserve(target_count);
+  auto anchor = records.front();
+  for (std::size_t i = 1; i < records.size(); ++i) {
+    const auto &curr = records[i];
+    const long double raw_delta = static_cast<long double>(curr.close_time) -
+                                  static_cast<long double>(anchor.close_time);
+    const long double open_delta = static_cast<long double>(curr.open_time) -
+                                   static_cast<long double>(anchor.open_time);
+    long double delta = raw_delta;
+    if (!readonly_near(open_delta, 0.0L, abs_tol, rel_tol) &&
+        open_delta > 0.0L) {
+      delta = open_delta;
+    }
+    if (delta < 0.0L) {
+      throw std::runtime_error("kline key_value must be non-decreasing in " +
+                               csv_path.string());
+    }
+    if (!readonly_near(delta, 0.0L, abs_tol, rel_tol)) {
+      positive_deltas.push_back(delta);
+      if (positive_deltas.size() >= target_count) {
+        break;
+      }
+    }
+    anchor = curr;
+  }
+  if (positive_deltas.empty()) {
+    throw std::runtime_error("could not infer positive kline key delta from " +
+                             csv_path.string());
+  }
+  const long double regular_delta =
+      *std::min_element(positive_deltas.begin(), positive_deltas.end());
+  if (!std::isfinite(regular_delta) || regular_delta <= 0.0L) {
+    throw std::runtime_error("invalid kline regular delta in " +
+                             csv_path.string());
+  }
+  return regular_delta;
+}
+
+[[nodiscard]] readonly_channel_key_domain_t read_kline_key_domain_readonly(
+    const fs::path &csv_path, std::size_t input_length,
+    std::size_t future_length, std::size_t bootstrap_deltas,
+    long double abs_tol, long double rel_tol) {
+  std::ifstream in(csv_path);
+  if (!in.is_open()) {
+    throw std::runtime_error("could not open kline CSV for read-only cursor "
+                             "derivation: " +
+                             csv_path.string());
+  }
+  std::vector<readonly_kline_csv_record_t> records;
+  std::string line;
+  std::size_t line_number = 0;
+  while (std::getline(in, line)) {
+    ++line_number;
+    if (trim_ascii(line).empty()) {
+      continue;
+    }
+    records.push_back(
+        parse_kline_csv_record_readonly(line, csv_path, line_number));
+  }
+  if (!in.eof()) {
+    throw std::runtime_error("failed while reading kline CSV for read-only "
+                             "cursor derivation: " +
+                             csv_path.string());
+  }
+  if (records.empty()) {
+    throw std::runtime_error("no valid kline records in " + csv_path.string());
+  }
+
+  const long double regular_delta = infer_readonly_regular_delta(
+      records, csv_path, bootstrap_deltas, abs_tol, rel_tol);
+  std::vector<std::int64_t> keys;
+  keys.reserve(records.size());
+
+  auto previous = records.front();
+  long double previous_resolved_key =
+      static_cast<long double>(previous.close_time);
+  bool have_anchor = true;
+  for (std::size_t i = 1; i < records.size(); ++i) {
+    const auto &current = records[i];
+    long double kv0 = previous_resolved_key;
+    long double kv1 = static_cast<long double>(current.close_time);
+    long double current_delta = kv1 - kv0;
+    if (readonly_near(current_delta, 0.0L, abs_tol, rel_tol)) {
+      previous = current;
+      previous_resolved_key = kv1;
+      have_anchor = true;
+      continue;
+    }
+    if (current_delta < 0.0L) {
+      throw std::runtime_error("kline key_value must be non-decreasing in " +
+                               csv_path.string());
+    }
+
+    std::int64_t delta_steps = 0;
+    try {
+      delta_steps = rounded_readonly_steps_or_throw(
+          current_delta / regular_delta, csv_path, i + 1, "regular-increment",
+          abs_tol, rel_tol);
+    } catch (const std::exception &) {
+      const long double alt_kv0 =
+          static_cast<long double>(previous.open_time) + regular_delta - 1.0L;
+      const long double alt_kv1 =
+          static_cast<long double>(current.open_time) + regular_delta - 1.0L;
+      const long double alt_delta = alt_kv1 - alt_kv0;
+      if (alt_delta <= 0.0L) {
+        throw;
+      }
+      delta_steps = rounded_readonly_steps_or_throw(
+          alt_delta / regular_delta, csv_path, i + 1,
+          "open-time-recovered-increment", abs_tol, rel_tol);
+      kv0 = alt_kv0;
+      kv1 = alt_kv1;
+    }
+
+    for (std::int64_t step_index = 0; step_index < delta_steps; ++step_index) {
+      const long double key =
+          step_index == 0
+              ? kv0
+              : kv0 + static_cast<long double>(step_index) * regular_delta;
+      keys.push_back(checked_round_key(key, csv_path));
+    }
+    previous = current;
+    previous_resolved_key = kv1;
+    have_anchor = true;
+  }
+
+  if (!have_anchor) {
+    throw std::runtime_error("no valid kline anchor found in " +
+                             csv_path.string());
+  }
+  keys.push_back(checked_round_key(previous_resolved_key, csv_path));
+  if (keys.empty()) {
+    throw std::runtime_error("empty kline key domain in " + csv_path.string());
+  }
+  for (std::size_t i = 1; i < keys.size(); ++i) {
+    if (keys[i] < keys[i - 1]) {
+      throw std::runtime_error("kline key domain is not non-decreasing in " +
+                               csv_path.string());
+    }
+  }
+
+  readonly_channel_key_domain_t out{};
+  out.keys = std::move(keys);
+  out.left = out.keys.front();
+  out.right = out.keys.back();
+  out.step = out.keys.size() == 1 ? 1 : out.keys[1] - out.keys[0];
+  if (out.step <= 0) {
+    throw std::runtime_error("kline key domain has non-positive step in " +
+                             csv_path.string());
+  }
+  if (out.keys.size() < input_length + future_length) {
+    throw std::runtime_error("kline dataset too small for read-only cursor "
+                             "derivation: " +
+                             csv_path.string());
+  }
+  out.input_length = input_length;
+  out.future_length = future_length;
+  out.valid_left = out.left + static_cast<std::int64_t>(
+                                  input_length > 0 ? (input_length - 1) : 0) *
+                                  out.step;
+  out.valid_right =
+      out.right - static_cast<std::int64_t>(future_length) * out.step;
+  if (out.valid_right < out.valid_left) {
+    throw std::runtime_error("kline channel has empty valid anchor domain in " +
+                             csv_path.string());
+  }
+  return out;
+}
+
+[[nodiscard]] std::int64_t align_up_to_readonly_grid(std::int64_t x,
+                                                     std::int64_t step,
+                                                     std::int64_t base) {
+  if (step <= 0) {
+    return x;
+  }
+  std::int64_t r = (x - base) % step;
+  if (r < 0) {
+    r += step;
+  }
+  if (r == 0) {
+    return x;
+  }
+  return x + (step - r);
+}
+
+[[nodiscard]] std::int64_t align_down_to_readonly_grid(std::int64_t x,
+                                                       std::int64_t step,
+                                                       std::int64_t base) {
+  if (step <= 0) {
+    return x;
+  }
+  std::int64_t r = (x - base) % step;
+  if (r < 0) {
+    r += step;
+  }
+  return x - r;
+}
+
+[[nodiscard]] std::size_t readonly_steps_between_inclusive(std::int64_t left,
+                                                           std::int64_t right,
+                                                           std::int64_t step) {
+  if (right < left || step <= 0) {
+    return 0;
+  }
+  return static_cast<std::size_t>((right - left) / step) + 1;
+}
+
+[[nodiscard]] std::size_t
+find_closest_readonly_key_index(const std::vector<std::int64_t> &keys,
+                                std::int64_t target) {
+  if (keys.empty()) {
+    throw std::runtime_error("empty key domain in read-only cursor derivation");
+  }
+  if (target <= keys.front()) {
+    return 0;
+  }
+  if (target >= keys.back()) {
+    return keys.size() - 1;
+  }
+  const auto upper = std::upper_bound(keys.begin(), keys.end(), target);
+  return static_cast<std::size_t>(std::distance(keys.begin(), upper) - 1);
+}
+
+[[nodiscard]] bool
+channel_can_fetch_anchor_readonly(const readonly_channel_key_domain_t &channel,
+                                  std::int64_t anchor_key) {
+  if (channel.input_length == 0 || channel.keys.empty()) {
+    return false;
+  }
+  const std::size_t index =
+      find_closest_readonly_key_index(channel.keys, anchor_key);
+  const std::size_t future_available = channel.keys.size() - 1 - index;
+  if (channel.future_length > future_available) {
+    return false;
+  }
+  if (index + 1 < channel.input_length) {
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] readonly_edge_anchor_domain_t derive_edge_anchor_domain_readonly(
+    const cuwacunu::ujcamei::source::contract::source_spec_t &source_spec,
+    const cuwacunu::ujcamei::source::registry::instrument_signature_t
+        &edge_signature) {
+  using cuwacunu::ujcamei::source::registry::
+      instrument_signature_compact_string;
+  using cuwacunu::ujcamei::source::registry::types::enum_to_string;
+
+  if (trim_ascii(edge_signature.record_type) != "kline") {
+    throw std::runtime_error(
+        "read-only Lattice source cursor derivation "
+        "supports kline edge instruments only: " +
+        instrument_signature_compact_string(edge_signature));
+  }
+
+  readonly_edge_anchor_domain_t out{};
+  std::size_t matched_sources = 0;
+  for (const auto &channel : source_spec.channel_forms) {
+    if (!text_is_true(channel.active)) {
+      continue;
+    }
+    if (trim_ascii(channel.record_type) != "kline") {
+      continue;
+    }
+    const std::string channel_label =
+        "interval=" + enum_to_string(channel.interval) +
+        " record_type=" + trim_ascii(channel.record_type);
+    const std::size_t input_length = require_channel_size(
+        channel.input_length, "input_length", channel_label, true);
+    const std::size_t future_length = require_channel_size(
+        channel.future_length, "future_length", channel_label, false);
+    if (!valid_readonly_normalization_policy(channel.normalization_policy)) {
+      throw std::runtime_error("unsupported normalization policy '" +
+                               channel.normalization_policy + "' for " +
+                               channel_label);
+    }
+    const auto matching_sources =
+        source_spec.filter_source_forms(edge_signature, channel.interval);
+    if (matching_sources.empty()) {
+      throw std::runtime_error(
+          "no source row matched edge instrument for " + channel_label + ": " +
+          instrument_signature_compact_string(edge_signature));
+    }
+    for (const auto &source : matching_sources) {
+      if (trim_ascii(source.record_type) != "kline") {
+        continue;
+      }
+      auto domain = read_kline_key_domain_readonly(
+          fs::path(source.source), input_length, future_length,
+          source_spec.csv_bootstrap_deltas, source_spec.csv_step_abs_tol,
+          source_spec.csv_step_rel_tol);
+      out.max_input_length = std::max(out.max_input_length, input_length);
+      out.max_future_length = std::max(out.max_future_length, future_length);
+      out.channels.push_back(std::move(domain));
+      ++matched_sources;
+    }
+  }
+  if (matched_sources == 0 || out.channels.empty()) {
+    throw std::runtime_error(
+        "no kline datasets matched edge instrument for "
+        "read-only cursor derivation: " +
+        instrument_signature_compact_string(edge_signature));
+  }
+
+  std::int64_t inter_left = out.channels.front().valid_left;
+  std::int64_t inter_right = out.channels.front().valid_right;
+  std::size_t grid_ref_idx = 0;
+  std::int64_t selected_step = out.channels.front().step;
+  for (std::size_t i = 0; i < out.channels.size(); ++i) {
+    const auto &channel = out.channels[i];
+    inter_left = std::max(inter_left, channel.valid_left);
+    inter_right = std::min(inter_right, channel.valid_right);
+    if (channel.step < selected_step) {
+      selected_step = channel.step;
+      grid_ref_idx = i;
+    }
+  }
+  if (inter_right < inter_left) {
+    throw std::runtime_error(
+        "empty intersection across kline channels for "
+        "read-only cursor derivation: " +
+        instrument_signature_compact_string(edge_signature));
+  }
+  const std::int64_t base = out.channels[grid_ref_idx].valid_left;
+  out.step = selected_step;
+  out.left = align_up_to_readonly_grid(inter_left, out.step, base);
+  out.right = align_down_to_readonly_grid(inter_right, out.step, base);
+  out.count = readonly_steps_between_inclusive(out.left, out.right, out.step);
+  if (out.count == 0) {
+    throw std::runtime_error(
+        "empty aligned kline grid for read-only cursor "
+        "derivation: " +
+        instrument_signature_compact_string(edge_signature));
+  }
+  return out;
+}
+
+[[nodiscard]] std::string derive_source_cursor_token_from_source_spec(
+    const cuwacunu::ujcamei::source::contract::source_spec_t &source_spec,
+    const std::string &graph_order_fingerprint) {
+  namespace dataloader = cuwacunu::ujcamei::source::retrieval::dataloader;
+
+  const auto source_identity = derive_source_graph_identity(source_spec);
+  const auto derived_graph_order_fingerprint =
+      source_identity.graph.computed_graph_order_fingerprint();
+  if (!graph_order_fingerprint.empty() &&
+      graph_order_fingerprint != derived_graph_order_fingerprint) {
+    throw std::runtime_error(
+        "graph fingerprint changed while deriving active source cursor");
+  }
+
+  std::unordered_map<std::string, readonly_edge_anchor_domain_t> edge_domains;
+  edge_domains.reserve(source_identity.graph.edge_ids.size());
+  for (const auto &edge_id : source_identity.graph.edge_ids) {
+    const auto signature = source_identity.edge_instruments.find(edge_id);
+    if (signature == source_identity.edge_instruments.end()) {
+      throw std::runtime_error(
+          "missing edge instrument while deriving active source cursor: " +
+          edge_id);
+    }
+    edge_domains.emplace(edge_id, derive_edge_anchor_domain_readonly(
+                                      source_spec, signature->second));
+  }
+
+  std::int64_t common_left = 0;
+  std::int64_t common_right = 0;
+  bool first_edge = true;
+  for (const auto &edge_id : source_identity.graph.edge_ids) {
+    const auto found = edge_domains.find(edge_id);
+    if (found == edge_domains.end() || found->second.count == 0) {
+      throw std::runtime_error(
+          "missing edge domain while deriving active source cursor: " +
+          edge_id);
+    }
+    const auto &domain = found->second;
+    if (first_edge) {
+      common_left = domain.left;
+      common_right = domain.right;
+      first_edge = false;
+    } else {
+      common_left = std::max(common_left, domain.left);
+      common_right = std::min(common_right, domain.right);
+    }
+  }
+  if (first_edge || common_right < common_left) {
+    throw std::runtime_error(
+        "empty common graph anchor coverage while deriving active source "
+        "cursor");
+  }
+
+  dataloader::graph_anchor_cursor_report_t<std::int64_t> report{};
+  report.graph_order_fingerprint = derived_graph_order_fingerprint;
+  report.edge_ids.assign(source_identity.graph.edge_ids.begin(),
+                         source_identity.graph.edge_ids.end());
+  report.reference_edge_id = source_identity.graph.edge_ids.front();
+  report.require_all_edges = true;
+  report.include_future = true;
+  report.require_future = true;
+  report.validate_anchor_fetch = true;
+  report.common_left_key = common_left;
+  report.common_right_key = common_right;
+
+  const auto reference_found = edge_domains.find(report.reference_edge_id);
+  if (reference_found == edge_domains.end()) {
+    throw std::runtime_error(
+        "reference edge domain missing while deriving active source cursor");
+  }
+  const auto &reference = reference_found->second;
+  report.reference_left_key = reference.left;
+  report.reference_right_key = reference.right;
+  report.reference_key_step = reference.step;
+
+  for (const auto &edge_id : source_identity.graph.edge_ids) {
+    const auto &domain = edge_domains.at(edge_id);
+    report.max_input_length =
+        std::max(report.max_input_length, domain.max_input_length);
+    report.max_future_length =
+        std::max(report.max_future_length, domain.max_future_length);
+  }
+
+  auto edge_covers_anchor = [&](const readonly_edge_anchor_domain_t &domain,
+                                std::int64_t anchor_key) {
+    return domain.count > 0 && domain.left <= anchor_key &&
+           anchor_key <= domain.right;
+  };
+  auto edge_fetches_anchor = [&](const readonly_edge_anchor_domain_t &domain,
+                                 std::int64_t anchor_key) {
+    if (!edge_covers_anchor(domain, anchor_key)) {
+      return false;
+    }
+    for (const auto &channel : domain.channels) {
+      if (!channel_can_fetch_anchor_readonly(channel, anchor_key)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  std::vector<std::int64_t> anchor_keys;
+  anchor_keys.reserve(reference.count);
+  for (std::size_t i = 0; i < reference.count; ++i) {
+    ++report.candidate_anchor_count;
+    const std::int64_t anchor_key =
+        reference.left + static_cast<std::int64_t>(i) * reference.step;
+    if (anchor_key < common_left || anchor_key > common_right) {
+      ++report.skipped_outside_common_range;
+      continue;
+    }
+    bool all_cover = true;
+    for (const auto &edge_id : source_identity.graph.edge_ids) {
+      if (!edge_covers_anchor(edge_domains.at(edge_id), anchor_key)) {
+        all_cover = false;
+        break;
+      }
+    }
+    if (!all_cover) {
+      ++report.skipped_missing_edge_coverage;
+      continue;
+    }
+    bool all_fetch = true;
+    for (const auto &edge_id : source_identity.graph.edge_ids) {
+      if (!edge_fetches_anchor(edge_domains.at(edge_id), anchor_key)) {
+        all_fetch = false;
+        break;
+      }
+    }
+    if (!all_fetch) {
+      ++report.skipped_failed_fetch_probe;
+      continue;
+    }
+    anchor_keys.push_back(anchor_key);
+  }
+  std::sort(anchor_keys.begin(), anchor_keys.end());
+  const auto before_unique = anchor_keys.size();
+  anchor_keys.erase(std::unique(anchor_keys.begin(), anchor_keys.end()),
+                    anchor_keys.end());
+  report.duplicate_anchor_count = before_unique - anchor_keys.size();
+  report.accepted_anchor_count = anchor_keys.size();
+  report.anchor_keys = std::move(anchor_keys);
+  if (report.anchor_keys.empty()) {
+    throw std::runtime_error(
+        "no valid graph edge anchors while deriving active source cursor");
+  }
+  return report.cursor_token();
+}
+
 void overlay_active_identity_from_config(
     const fs::path &config_path, target::lattice_target_active_identity_t *id) {
   if (!id) {
     return;
   }
   const auto config = parse_kv_file(config_path);
+  try {
+    const auto source_spec =
+        cuwacunu::ujcamei::source::contract::decode_source_spec_from_config(
+            config_path.string());
+    const auto source_identity = derive_source_graph_identity(source_spec);
+    const std::string graph_order_fingerprint =
+        source_identity.graph.computed_graph_order_fingerprint();
+    const std::string source_cursor_token =
+        derive_source_cursor_token_from_source_spec(source_spec,
+                                                    graph_order_fingerprint);
+    id->graph_order_fingerprint = graph_order_fingerprint;
+    id->source_cursor_token = source_cursor_token;
+  } catch (const std::exception &) {
+    id->graph_order_fingerprint.clear();
+    id->source_cursor_token.clear();
+    // Leave source identity unresolved so readiness targets fail closed instead
+    // of falling back to stale runtime identity from another source universe.
+  }
   if (id->protocol_id.empty()) {
     const fs::path protocol_dsl_path = config_path_or_default_sibling(
         config, config_path, "kikijyeba_protocol_dsl_path",

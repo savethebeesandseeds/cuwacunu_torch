@@ -368,8 +368,11 @@ void test_channel_specs_decode_and_validate() {
       vicreg_net_bnf.find("HISTORY_DROPOUT_PROB") == std::string::npos ||
       mtf_dsl_bnf.find("MTF_JEPA_MAE_VICREG") == std::string::npos ||
       mtf_net_bnf.find("MTF_JEPA_MAE_VICREG_NET") == std::string::npos ||
-      mtf_net_bnf.find("TARGET_EMA_TAU") == std::string::npos ||
-      mtf_net_bnf.find("LAMBDA_GLOBAL_VICREG") == std::string::npos ||
+      mtf_net_bnf.find("TIME_SCALES") == std::string::npos ||
+      mtf_jkimyei_bnf.find("TARGET_EMA_TAU") == std::string::npos ||
+      mtf_jkimyei_bnf.find("LAMBDA_GLOBAL_VICREG") == std::string::npos ||
+      mtf_jkimyei_bnf.find("AUGMENTATION_PROFILE") == std::string::npos ||
+      mtf_jkimyei_bnf.find("TIME_DILATION_MIN") == std::string::npos ||
       channel_mdn_dsl_bnf.find("MDN") == std::string::npos ||
       channel_mdn_net_bnf.find("MDN_NET") == std::string::npos ||
       channel_mdn_net_bnf.find("GLOBAL_CONTEXT_DIM") == std::string::npos ||

@@ -1,0 +1,9 @@
+<instruction> ::= {<runtime_probe>} ;
+<runtime_probe> ::= "RUNTIME_PROBE" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<key>         ::= "PROBE_ID" | "PROBE_KIND" | "ENABLED" | "RECORD_SCHEMA" | "STREAM_LEAF" | "EMIT_LIFECYCLE" | "EMIT_SCALAR_METRICS" | "EMIT_REPORT_METRICS" | "EMIT_ARTIFACTS" | "EMIT_WARNINGS" ;
+<value>       ::= <value_char> {<value_char>} ;
+<value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "/" ;
+<line_end>    ::= [<whitespace>] <break_block> ;
+<break_block> ::= {<newline>} ;
+<whitespace>  ::= {<empty>} ;

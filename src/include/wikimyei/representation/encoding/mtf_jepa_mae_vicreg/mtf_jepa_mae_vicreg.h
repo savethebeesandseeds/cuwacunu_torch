@@ -82,6 +82,26 @@ struct mtf_jepa_mae_vicreg_config_t {
   bool mask_same_channel_block{false};
   double max_context_target_time_overlap{0.50};
 
+  std::string augmentation_profile{"unset"};
+  double gaussian_jitter_std{0.0};
+  double feature_dropout_prob{0.0};
+  double history_dropout_prob{0.0};
+  int64_t time_crop_jitter_max{0};
+  double time_dilation_min{1.0};
+  double time_dilation_max{1.0};
+  double time_warp_max{0.0};
+  double amplitude_scale_min{1.0};
+  double amplitude_scale_max{1.0};
+  double amplitude_shift_std{0.0};
+  double frequency_mask_ratio{0.0};
+  double frequency_jitter_std{0.0};
+  double phase_jitter_max{0.0};
+  double channel_dropout_prob{0.0};
+  double cross_channel_dropout_prob{0.0};
+  double node_dropout_prob{0.0};
+  double edge_dropout_prob{0.0};
+  double magnitude_normalization_noise_std{0.0};
+
   torch::Dtype dtype{torch::kFloat32};
   torch::Device device{torch::kCPU};
 };
@@ -287,6 +307,13 @@ inline void validate_probability(double value, const char *name) {
   }
 }
 
+inline void validate_drop_probability(double value, const char *name) {
+  if (!std::isfinite(value) || value < 0.0 || value >= 1.0) {
+    throw std::runtime_error(std::string("[mtf_jepa_mae_vicreg] invalid ") +
+                             name);
+  }
+}
+
 inline std::vector<int64_t>
 resolved_scale_strides(const mtf_jepa_mae_vicreg_config_t &config) {
   if (config.scale_strides.empty()) {
@@ -300,7 +327,8 @@ resolved_scale_strides(const mtf_jepa_mae_vicreg_config_t &config) {
   return config.scale_strides;
 }
 
-inline void validate_config(const mtf_jepa_mae_vicreg_config_t &config) {
+inline void
+validate_architecture_config(const mtf_jepa_mae_vicreg_config_t &config) {
   if (config.channel_count <= 0 || config.history_length <= 0 ||
       config.input_width <= 0 || config.d_model <= 0 ||
       config.latent_dim <= 0 || config.projector_dim <= 0 ||
@@ -328,6 +356,10 @@ inline void validate_config(const mtf_jepa_mae_vicreg_config_t &config) {
           "[mtf_jepa_mae_vicreg] time scale and stride must be positive");
     }
   }
+}
+
+inline void
+validate_training_config(const mtf_jepa_mae_vicreg_config_t &config) {
   if (!std::isfinite(config.dropout) || config.dropout < 0.0 ||
       config.dropout >= 1.0) {
     throw std::runtime_error("[mtf_jepa_mae_vicreg] invalid dropout");
@@ -347,6 +379,43 @@ inline void validate_config(const mtf_jepa_mae_vicreg_config_t &config) {
       !(config.target_ema_tau >= 0.0 && config.target_ema_tau <= 1.0)) {
     throw std::runtime_error("[mtf_jepa_mae_vicreg] invalid scalar option");
   }
+  if (config.augmentation_profile.empty()) {
+    throw std::runtime_error(
+        "[mtf_jepa_mae_vicreg] augmentation_profile is required");
+  }
+  if (config.gaussian_jitter_std < 0.0 || config.time_crop_jitter_max < 0 ||
+      config.time_dilation_min <= 0.0 || config.time_dilation_max <= 0.0 ||
+      config.time_dilation_min > config.time_dilation_max ||
+      config.amplitude_scale_min <= 0.0 || config.amplitude_scale_max <= 0.0 ||
+      config.amplitude_scale_min > config.amplitude_scale_max ||
+      config.amplitude_shift_std < 0.0 || config.frequency_jitter_std < 0.0 ||
+      config.phase_jitter_max < 0.0 ||
+      config.magnitude_normalization_noise_std < 0.0) {
+    throw std::runtime_error(
+        "[mtf_jepa_mae_vicreg] invalid augmentation scalar option");
+  }
+  validate_drop_probability(config.feature_dropout_prob,
+                            "feature_dropout_prob");
+  validate_drop_probability(config.history_dropout_prob,
+                            "history_dropout_prob");
+  validate_probability(config.time_warp_max, "time_warp_max");
+  validate_drop_probability(config.frequency_mask_ratio,
+                            "frequency_mask_ratio");
+  validate_drop_probability(config.channel_dropout_prob,
+                            "channel_dropout_prob");
+  validate_drop_probability(config.cross_channel_dropout_prob,
+                            "cross_channel_dropout_prob");
+  validate_drop_probability(config.node_dropout_prob, "node_dropout_prob");
+  if (config.edge_dropout_prob != 0.0) {
+    throw std::runtime_error(
+        "[mtf_jepa_mae_vicreg] edge_dropout_prob is not supported by the "
+        "current MTF channel-node input");
+  }
+}
+
+inline void validate_config(const mtf_jepa_mae_vicreg_config_t &config) {
+  validate_architecture_config(config);
+  validate_training_config(config);
 }
 
 inline mtf_input_t

@@ -1112,6 +1112,13 @@ this under `lattice_panel.lattice_certificate_states`. If the target is still an
 artifact-readiness surface, Marshal remains read-only and non-dispatchable; the
 no-lookahead and bundle states can pass while the dispatch path is still blocked
 by `non_dispatchable_artifact_readiness`.
+When a dispatchable policy-execution handoff target provides that structured
+state, Marshal projects the claim-bound certificate digest, evidence snapshot,
+provenance closure, anchor range, contract digest, and consumed
+artifact/checkpoint closures into the Runtime handoff as
+`policy_execution_input_lock_fields`. `policy_training_artifact_ready` itself
+remains proof-only; it should not be used as the pre-execution dispatch target
+that creates the first policy-training fact.
 
 Every target-driver run emits a ledger with the driver policy digest,
 per-iteration Lattice target-deficit digest, suggested-wave digest, Runtime

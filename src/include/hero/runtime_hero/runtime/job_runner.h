@@ -12,14 +12,17 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "hero/config_path_defaults.h"
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
+#include "hero/runtime_hero/runtime/job_events_probe_sidecar.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/runtime_hero/runtime/job_manifest.h"
 #include "hero/runtime_hero/runtime/job_state.h"
+#include "hero/runtime_hero/runtime/probe_settings.h"
 #include "hero/runtime_hero/runtime/terminal_facts.h"
 #include "hero/runtime_hero/runtime/wave_plan.h"
 #include "jkimyei/training/inference/channel_graph_first_inference_launcher.h"
@@ -41,6 +44,7 @@ struct job_runner_options_t {
   bool compute_alignment_diagnostics{true};
   bool display_mdn_model{false};
   bool write_report{true};
+  bool write_probe_records{false};
   bool write_replay_artifacts{true};
   bool replay_require_direct_accounting_numeraire_valuation_edges{true};
   std::size_t batch_size{0};
@@ -168,6 +172,7 @@ job_dir_has_runtime_artifacts(const std::filesystem::path &job_dir) {
       job_dir / "job.state",
       job_dir / "channel_representation.report",
       job_dir / "channel_inference.report",
+      job_dir / job_events_probe::k_job_events_probe_stream_leaf,
       job_dir / "runtime.result.fact",
       job_dir / "runtime.checkpoint_io.fact",
       job_dir / "runtime.health_measurement.fact",
@@ -808,6 +813,23 @@ private:
     manifest.runtime_handoff_digest = options_.runtime_handoff_digest;
     manifest.marshal_target_driver_run_id =
         options_.marshal_target_driver_run_id;
+    auto probe_stream_config =
+        job_events_probe::job_events_probe_stream_config_t{};
+    const auto probe_catalog =
+        probe_settings::load_runtime_probe_catalog_from_config(config_path_);
+    const bool probe_catalog_requests_job_events =
+        probe_settings::select_enabled_job_events_probe(probe_catalog,
+                                                        &probe_stream_config);
+    const bool probe_records_requested =
+        options_.write_probe_records || probe_catalog_requests_job_events;
+    if (probe_records_requested && !bundle.wave_settings.debug) {
+      throw std::runtime_error(
+          "[kikijyeba_job_runner] Runtime probes require active "
+          "WAVE_SETTINGS.MODE to include debug");
+    }
+    manifest.probe_sidecar_enabled = probe_records_requested;
+    manifest.probe_record_schema = probe_stream_config.record_schema;
+    manifest.probe_stream_leaf = probe_stream_config.stream_leaf;
     const auto runtime_root =
         options_.job_dir.empty()
             ? job_runner_detail::default_job_root_for_config(config_path_)
@@ -820,6 +842,15 @@ private:
       job_dir = job_runner_detail::reserve_immutable_attempt_job_dir(
           runtime_root, &manifest);
     } else {
+      const auto probe_stream_path =
+          job_events_probe::probe_stream_path_for_job_dir(job_dir,
+                                                          probe_stream_config);
+      if (manifest.probe_sidecar_enabled &&
+          std::filesystem::exists(probe_stream_path)) {
+        throw std::runtime_error(
+            "[kikijyeba_job_runner] refusing to overwrite existing job_dir: " +
+            job_dir.string());
+      }
       job_runner_detail::prepare_explicit_job_dir(job_dir, &manifest);
     }
     job_runner_detail::ensure_job_dir(job_dir);
@@ -841,6 +872,9 @@ private:
         job_runner_detail::delegated_report_path_for_job(job_dir,
                                                          resolved_job_kind);
     write_job_manifest_file(result.manifest_path, manifest);
+    auto probe_summary = job_events_probe::make_write_summary(
+        manifest.probe_sidecar_enabled, job_dir, probe_stream_config);
+    job_events_probe::write_job_started_event(manifest, &probe_summary);
 
     try {
       if (resolved_job_kind == runtime_job_kind_t::channel_inference_mdn &&
@@ -850,31 +884,45 @@ private:
             "[kikijyeba_job_runner] Channel MDN run/eval requires "
             "INPUT_MDN_CHECKPOINT");
       }
+      job_events_probe::write_job_progress_event(
+          manifest, &probe_summary, "delegate_start", "running",
+          runtime_job_kind_name(resolved_job_kind));
       result.state = run_channel_delegate(
           std::move(builder), manifest, wave_plan, result.delegated_report_path,
-          job_dir, resolved_job_kind, train_target);
+          job_dir, resolved_job_kind, train_target, &probe_summary);
+      job_events_probe::write_job_progress_event(
+          manifest, &probe_summary, "delegate_complete", "completed",
+          runtime_job_kind_name(resolved_job_kind));
       write_job_state_file(result.state_path, result.state);
       terminal_facts::write_terminal_fact_sidecars(job_dir, manifest,
                                                    &result.state);
       job_runner_detail::write_lattice_fact_sidecars(job_dir, &result.state);
+      job_events_probe::write_job_final_events(job_dir, manifest, result.state,
+                                               &probe_summary);
+      job_events_probe::apply_summary_to_state(probe_summary, &result.state);
       write_job_state_file(result.state_path, result.state);
       return result;
     } catch (const std::exception &ex) {
       result.state = make_failed_job_state(manifest, wave_plan, ex.what());
       terminal_facts::write_terminal_fact_sidecars(job_dir, manifest,
                                                    &result.state);
+      job_events_probe::write_job_final_events(job_dir, manifest, result.state,
+                                               &probe_summary);
+      job_events_probe::apply_summary_to_state(probe_summary, &result.state);
       write_job_state_file(result.state_path, result.state);
       throw;
     }
   }
 
-  [[nodiscard]] job_state_t
-  run_channel_delegate(channel_builder_t builder,
-                       const job_manifest_t &manifest,
-                       const wave_plan_t &wave_plan,
-                       const std::filesystem::path &delegated_report_path,
-                       const std::filesystem::path &job_dir,
-                       runtime_job_kind_t job_kind, bool train_target) const {
+  [[nodiscard]] job_state_t run_channel_delegate(
+      channel_builder_t builder, const job_manifest_t &manifest,
+      const wave_plan_t &wave_plan,
+      const std::filesystem::path &delegated_report_path,
+      const std::filesystem::path &job_dir, runtime_job_kind_t job_kind,
+      bool train_target,
+      job_events_probe::job_events_probe_write_summary_t *probe_summary) const {
+    const auto probe_snapshot_fallback_state =
+        make_initial_job_state(manifest, wave_plan);
     switch (job_kind) {
     case runtime_job_kind_t::channel_representation_vicreg: {
       cuwacunu::jkimyei::training::representation::
@@ -886,6 +934,16 @@ private:
       launcher_options.write_report = options_.write_report;
       launcher_options.report_path = delegated_report_path;
       launcher_options.runtime_report_mode = options_.runtime_report_mode;
+      if (probe_summary != nullptr && probe_summary->enabled &&
+          probe_summary->config.emit_report_metrics) {
+        launcher_options.learning_probe_report_sink =
+            [&manifest, &probe_snapshot_fallback_state,
+             probe_summary](std::string_view report_text) {
+              job_events_probe::write_learning_report_snapshot_events(
+                  manifest, probe_snapshot_fallback_state, probe_summary,
+                  report_text);
+            };
+      }
       cuwacunu::jkimyei::training::representation::
           channel_graph_first_representation_launcher_t<DatatypeT>
               launcher(std::move(builder), launcher_options);
@@ -902,6 +960,16 @@ private:
       launcher_options.write_report = options_.write_report;
       launcher_options.report_path = delegated_report_path;
       launcher_options.runtime_report_mode = options_.runtime_report_mode;
+      if (probe_summary != nullptr && probe_summary->enabled &&
+          probe_summary->config.emit_report_metrics) {
+        launcher_options.learning_probe_report_sink =
+            [&manifest, &probe_snapshot_fallback_state,
+             probe_summary](std::string_view report_text) {
+              job_events_probe::write_learning_report_snapshot_events(
+                  manifest, probe_snapshot_fallback_state, probe_summary,
+                  report_text);
+            };
+      }
       cuwacunu::jkimyei::training::representation::
           mtf_jepa_mae_vicreg_graph_first_launcher_t<DatatypeT>
               launcher(std::move(builder), launcher_options);
@@ -918,6 +986,23 @@ private:
       launcher_options.write_report = options_.write_report;
       launcher_options.report_path = delegated_report_path;
       launcher_options.runtime_report_mode = options_.runtime_report_mode;
+      if (probe_summary != nullptr && probe_summary->enabled &&
+          probe_summary->config.emit_report_metrics) {
+        launcher_options.learning_probe_report_sink =
+            [&manifest, &probe_snapshot_fallback_state,
+             probe_summary](std::string_view report_text) {
+              job_events_probe::write_learning_report_snapshot_events(
+                  manifest, probe_snapshot_fallback_state, probe_summary,
+                  report_text);
+            };
+      }
+      if (probe_summary != nullptr && probe_summary->enabled &&
+          probe_summary->config.emit_artifacts) {
+        launcher_options.representation_edge_feature_probe_path =
+            job_dir / "representation_edge_features.probe";
+        launcher_options.mdn_edge_context_feature_probe_path =
+            job_dir / "mdn_edge_context_features.probe";
+      }
       namespace replay = cuwacunu::kikijyeba::environment::replay;
       using launcher_t = cuwacunu::jkimyei::training::inference::
           channel_graph_first_inference_launcher_t<DatatypeT>;
@@ -997,6 +1082,22 @@ private:
       const auto report = launcher.run();
       auto state = make_completed_job_state(manifest, wave_plan, report,
                                             options_.dry_run);
+      state.representation_edge_feature_probe_written =
+          report.representation_edge_feature_probe_written;
+      state.representation_edge_feature_probe_path =
+          report.representation_edge_feature_probe_path;
+      state.representation_edge_feature_probe_row_count =
+          report.representation_edge_feature_probe_row_count;
+      state.representation_edge_feature_probe_error =
+          report.representation_edge_feature_probe_error;
+      state.mdn_edge_context_feature_probe_written =
+          report.mdn_edge_context_feature_probe_written;
+      state.mdn_edge_context_feature_probe_path =
+          report.mdn_edge_context_feature_probe_path;
+      state.mdn_edge_context_feature_probe_row_count =
+          report.mdn_edge_context_feature_probe_row_count;
+      state.mdn_edge_context_feature_probe_error =
+          report.mdn_edge_context_feature_probe_error;
       if (replay_artifacts_written) {
         state.replay_artifacts_written = true;
         state.replay_batch_index_path =

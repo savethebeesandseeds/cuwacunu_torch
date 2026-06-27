@@ -32,6 +32,11 @@ HERO_ENVIRONMENT_OBJS := \
 
 HERO_LATTICE_OBJS := \
   $(OUTPUT_PATH)/common/hero_lattice_tools.o \
+  $(OUTPUT_PATH)/common/source_contract.o \
+  $(OUTPUT_PATH)/common/source_contract_decode.o \
+  $(OUTPUT_PATH)/common/source_registry_decoder.o \
+  $(OUTPUT_PATH)/common/retrieval_channel_decoder.o \
+  $(OUTPUT_PATH)/common/graph_topology_decoder.o \
   $(OUTPUT_PATH)/common/runtime_lls.o \
   $(OUTPUT_PATH)/common/lattice.o \
   $(OUTPUT_PATH)/common/core/utils.o \

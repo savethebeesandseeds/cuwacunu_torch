@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -21,8 +22,8 @@
 #include <torch/torch.h>
 
 #include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
-#include "kikijyeba/protocol/pipeline_builder.h"
 #include "hero/runtime_hero/runtime/wave_settings.h"
+#include "kikijyeba/protocol/pipeline_builder.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/channel_node_stream_adapter.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/mtf_jepa_mae_vicreg.h"
@@ -35,6 +36,7 @@ struct mtf_jepa_mae_vicreg_graph_first_launcher_options_t {
   bool train_target{true};
   bool write_report{false};
   std::filesystem::path report_path{};
+  std::function<void(std::string_view)> learning_probe_report_sink{};
   cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
       runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
                               runtime_report_mode_t::normal};
@@ -84,11 +86,18 @@ struct mtf_jepa_mae_vicreg_graph_first_report_t {
   int64_t num_predictor_layers{0};
   int64_t num_decoder_layers{0};
   int64_t num_heads{0};
+  std::string augmentation_profile{};
   double dropout{std::numeric_limits<double>::quiet_NaN()};
+  double mask_ratio_time{std::numeric_limits<double>::quiet_NaN()};
+  double mask_ratio_frequency{std::numeric_limits<double>::quiet_NaN()};
+  double mask_ratio_channel{std::numeric_limits<double>::quiet_NaN()};
+  double min_context_ratio{std::numeric_limits<double>::quiet_NaN()};
   double lambda_jepa{std::numeric_limits<double>::quiet_NaN()};
   double lambda_mae{std::numeric_limits<double>::quiet_NaN()};
   double lambda_tf_align{std::numeric_limits<double>::quiet_NaN()};
   double lambda_vicreg{std::numeric_limits<double>::quiet_NaN()};
+  double lambda_global_vicreg{std::numeric_limits<double>::quiet_NaN()};
+  double lambda_channel_vicreg{std::numeric_limits<double>::quiet_NaN()};
   bool use_frequency_tokens{true};
   bool use_mae_decoder{true};
   bool use_jepa_loss{true};
@@ -98,6 +107,32 @@ struct mtf_jepa_mae_vicreg_graph_first_report_t {
   bool use_channel_vicreg{false};
   double target_ema_tau{std::numeric_limits<double>::quiet_NaN()};
   bool use_target_ema{true};
+  bool couple_time_frequency_masks{false};
+  bool mask_same_window_across_domains{false};
+  bool mask_same_channel_block{false};
+  double max_context_target_time_overlap{
+      std::numeric_limits<double>::quiet_NaN()};
+  double gaussian_jitter_std{std::numeric_limits<double>::quiet_NaN()};
+  double feature_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
+  double history_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
+  int64_t time_crop_jitter_max{0};
+  double time_dilation_min{std::numeric_limits<double>::quiet_NaN()};
+  double time_dilation_max{std::numeric_limits<double>::quiet_NaN()};
+  double time_warp_max{std::numeric_limits<double>::quiet_NaN()};
+  double amplitude_scale_min{std::numeric_limits<double>::quiet_NaN()};
+  double amplitude_scale_max{std::numeric_limits<double>::quiet_NaN()};
+  double amplitude_shift_std{std::numeric_limits<double>::quiet_NaN()};
+  double frequency_mask_ratio{std::numeric_limits<double>::quiet_NaN()};
+  double frequency_jitter_std{std::numeric_limits<double>::quiet_NaN()};
+  double phase_jitter_max{std::numeric_limits<double>::quiet_NaN()};
+  double channel_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
+  double cross_channel_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
+  double node_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
+  double edge_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
+  double magnitude_normalization_noise_std{
+      std::numeric_limits<double>::quiet_NaN()};
+  double augmented_feature_retention_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
   std::size_t effective_batch_size{0};
   std::string batch_size_source{};
   std::string dtype{};
@@ -273,11 +308,18 @@ struct mtf_jepa_mae_vicreg_graph_first_report_t {
     oss << "num_predictor_layers=" << num_predictor_layers << "\n";
     oss << "num_decoder_layers=" << num_decoder_layers << "\n";
     oss << "num_heads=" << num_heads << "\n";
+    oss << "augmentation_profile=" << augmentation_profile << "\n";
     oss << "dropout=" << dropout << "\n";
+    oss << "mask_ratio_time=" << mask_ratio_time << "\n";
+    oss << "mask_ratio_frequency=" << mask_ratio_frequency << "\n";
+    oss << "mask_ratio_channel=" << mask_ratio_channel << "\n";
+    oss << "min_context_ratio=" << min_context_ratio << "\n";
     oss << "lambda_jepa=" << lambda_jepa << "\n";
     oss << "lambda_mae=" << lambda_mae << "\n";
     oss << "lambda_tf_align=" << lambda_tf_align << "\n";
     oss << "lambda_vicreg=" << lambda_vicreg << "\n";
+    oss << "lambda_global_vicreg=" << lambda_global_vicreg << "\n";
+    oss << "lambda_channel_vicreg=" << lambda_channel_vicreg << "\n";
     oss << "use_frequency_tokens=" << (use_frequency_tokens ? "true" : "false")
         << "\n";
     oss << "use_mae_decoder=" << (use_mae_decoder ? "true" : "false") << "\n";
@@ -291,6 +333,35 @@ struct mtf_jepa_mae_vicreg_graph_first_report_t {
         << "\n";
     oss << "target_ema_tau=" << target_ema_tau << "\n";
     oss << "use_target_ema=" << (use_target_ema ? "true" : "false") << "\n";
+    oss << "couple_time_frequency_masks="
+        << (couple_time_frequency_masks ? "true" : "false") << "\n";
+    oss << "mask_same_window_across_domains="
+        << (mask_same_window_across_domains ? "true" : "false") << "\n";
+    oss << "mask_same_channel_block="
+        << (mask_same_channel_block ? "true" : "false") << "\n";
+    oss << "max_context_target_time_overlap=" << max_context_target_time_overlap
+        << "\n";
+    oss << "gaussian_jitter_std=" << gaussian_jitter_std << "\n";
+    oss << "feature_dropout_prob=" << feature_dropout_prob << "\n";
+    oss << "history_dropout_prob=" << history_dropout_prob << "\n";
+    oss << "time_crop_jitter_max=" << time_crop_jitter_max << "\n";
+    oss << "time_dilation_min=" << time_dilation_min << "\n";
+    oss << "time_dilation_max=" << time_dilation_max << "\n";
+    oss << "time_warp_max=" << time_warp_max << "\n";
+    oss << "amplitude_scale_min=" << amplitude_scale_min << "\n";
+    oss << "amplitude_scale_max=" << amplitude_scale_max << "\n";
+    oss << "amplitude_shift_std=" << amplitude_shift_std << "\n";
+    oss << "frequency_mask_ratio=" << frequency_mask_ratio << "\n";
+    oss << "frequency_jitter_std=" << frequency_jitter_std << "\n";
+    oss << "phase_jitter_max=" << phase_jitter_max << "\n";
+    oss << "channel_dropout_prob=" << channel_dropout_prob << "\n";
+    oss << "cross_channel_dropout_prob=" << cross_channel_dropout_prob << "\n";
+    oss << "node_dropout_prob=" << node_dropout_prob << "\n";
+    oss << "edge_dropout_prob=" << edge_dropout_prob << "\n";
+    oss << "magnitude_normalization_noise_std="
+        << magnitude_normalization_noise_std << "\n";
+    oss << "augmented_feature_retention_fraction="
+        << augmented_feature_retention_fraction << "\n";
     oss << "effective_batch_size=" << effective_batch_size << "\n";
     oss << "batch_size_source=" << batch_size_source << "\n";
     oss << "dtype=" << dtype << "\n";
@@ -515,6 +586,312 @@ inline std::string optional_key_to_string(const std::optional<KeyT> &value) {
   std::ostringstream oss;
   oss << *value;
   return oss.str();
+}
+
+[[nodiscard]] inline double random_unit_scalar(const torch::Device &device) {
+  (void)device;
+  return torch::rand({1}, torch::TensorOptions().device(torch::kCPU))
+      .template item<double>();
+}
+
+[[nodiscard]] inline int64_t random_i64_inclusive(int64_t min_value,
+                                                  int64_t max_value) {
+  if (min_value >= max_value) {
+    return min_value;
+  }
+  return torch::randint(
+             min_value, max_value + 1, {1},
+             torch::TensorOptions().dtype(torch::kInt64).device(torch::kCPU))
+      .template item<int64_t>();
+}
+
+inline void apply_mask_keep(torch::Tensor &mask, const torch::Tensor &data,
+                            double keep_probability,
+                            std::initializer_list<int64_t> shape) {
+  if (keep_probability >= 1.0) {
+    return;
+  }
+  const auto keep =
+      torch::rand(shape, data.options()).lt(keep_probability).expand_as(data);
+  mask = mask.logical_and(keep);
+}
+
+inline void clear_temporal_roll_boundary(torch::Tensor &data,
+                                         torch::Tensor &mask, int64_t shift) {
+  if (shift == 0 || data.size(2) <= 0) {
+    return;
+  }
+  const auto width = std::min<int64_t>(std::abs(shift), data.size(2));
+  if (shift > 0) {
+    data.narrow(/*dim=*/2, /*start=*/0, width).zero_();
+    mask.narrow(/*dim=*/2, /*start=*/0, width).fill_(false);
+  } else {
+    data.narrow(/*dim=*/2, /*start=*/data.size(2) - width, width).zero_();
+    mask.narrow(/*dim=*/2, /*start=*/mask.size(2) - width, width).fill_(false);
+  }
+}
+
+[[nodiscard]] inline std::pair<torch::Tensor, torch::Tensor>
+temporal_shift_without_wrap(const torch::Tensor &data,
+                            const torch::Tensor &mask, int64_t shift) {
+  auto shifted_data = torch::roll(data, {shift}, {2});
+  auto shifted_mask = torch::roll(mask, {shift}, {2});
+  clear_temporal_roll_boundary(shifted_data, shifted_mask, shift);
+  return {shifted_data, shifted_mask};
+}
+
+[[nodiscard]] inline double valid_fraction(const torch::Tensor &mask) {
+  if (!mask.defined() || mask.numel() == 0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return mask.to(torch::kBool).sum().template item<double>() /
+         static_cast<double>(mask.numel());
+}
+
+[[nodiscard]] inline std::pair<torch::Tensor, torch::Tensor>
+temporal_resample_linear(const torch::Tensor &data, const torch::Tensor &mask,
+                         const std::vector<double> &source_positions) {
+  TORCH_CHECK(data.dim() == 4 && mask.dim() == 4,
+              "[mtf_jepa_mae_vicreg_graph_first_launcher] temporal resample "
+              "expects rank-4 tensors");
+  const int64_t h = data.size(2);
+  TORCH_CHECK(static_cast<int64_t>(source_positions.size()) == h,
+              "[mtf_jepa_mae_vicreg_graph_first_launcher] temporal source "
+              "position count mismatch");
+  auto out = torch::zeros_like(data);
+  auto out_mask = torch::zeros_like(mask);
+  for (int64_t t = 0; t < h; ++t) {
+    const double src = source_positions[static_cast<std::size_t>(t)];
+    if (!std::isfinite(src) || src < 0.0 || src > static_cast<double>(h - 1)) {
+      continue;
+    }
+    const int64_t lo = static_cast<int64_t>(std::floor(src));
+    const int64_t hi = std::min<int64_t>(lo + 1, h - 1);
+    const double weight_hi = src - static_cast<double>(lo);
+    const auto lo_data = data.narrow(/*dim=*/2, lo, /*length=*/1);
+    const auto lo_mask = mask.narrow(/*dim=*/2, lo, /*length=*/1);
+    if (hi == lo || weight_hi <= 1e-12) {
+      out.narrow(/*dim=*/2, t, /*length=*/1).copy_(lo_data);
+      out_mask.narrow(/*dim=*/2, t, /*length=*/1).copy_(lo_mask);
+      continue;
+    }
+    const auto hi_data = data.narrow(/*dim=*/2, hi, /*length=*/1);
+    const auto hi_mask = mask.narrow(/*dim=*/2, hi, /*length=*/1);
+    const auto sampled = lo_data * (1.0 - weight_hi) + hi_data * weight_hi;
+    out.narrow(/*dim=*/2, t, /*length=*/1).copy_(sampled);
+    out_mask.narrow(/*dim=*/2, t, /*length=*/1)
+        .copy_(lo_mask.logical_and(hi_mask));
+  }
+  return {out, out_mask};
+}
+
+[[nodiscard]] inline std::vector<double>
+make_time_dilation_positions(int64_t history_length, double scale) {
+  std::vector<double> positions(static_cast<std::size_t>(history_length), 0.0);
+  if (history_length <= 1) {
+    return positions;
+  }
+  const double center = static_cast<double>(history_length - 1) * 0.5;
+  for (int64_t t = 0; t < history_length; ++t) {
+    positions[static_cast<std::size_t>(t)] =
+        center + (static_cast<double>(t) - center) / scale;
+  }
+  return positions;
+}
+
+[[nodiscard]] inline std::vector<double>
+make_time_warp_positions(int64_t history_length, double max_fraction) {
+  std::vector<double> positions(static_cast<std::size_t>(history_length), 0.0);
+  if (history_length <= 1 || max_fraction <= 0.0) {
+    for (int64_t t = 0; t < history_length; ++t) {
+      positions[static_cast<std::size_t>(t)] = static_cast<double>(t);
+    }
+    return positions;
+  }
+  constexpr double kTwoPi = 6.28318530717958647692;
+  const double amplitude =
+      random_unit_scalar(torch::Device(torch::kCPU)) * max_fraction *
+      static_cast<double>(std::max<int64_t>(1, history_length - 1));
+  const double phase = random_unit_scalar(torch::Device(torch::kCPU)) * kTwoPi;
+  const double denom =
+      static_cast<double>(std::max<int64_t>(1, history_length - 1));
+  for (int64_t t = 0; t < history_length; ++t) {
+    const double x = static_cast<double>(t);
+    positions[static_cast<std::size_t>(t)] =
+        x + amplitude * std::sin((kTwoPi * x / denom) + phase);
+  }
+  return positions;
+}
+
+inline void apply_frequency_domain_augmentations(torch::Tensor &data,
+                                                 const torch::Tensor &mask,
+                                                 double mask_ratio,
+                                                 double jitter_std) {
+  if ((mask_ratio <= 0.0 && jitter_std <= 0.0) || data.size(2) <= 1) {
+    return;
+  }
+  const auto clean = torch::where(mask, data, torch::zeros_like(data));
+  auto spectrum = at::fft_rfft(clean, data.size(2), /*dim=*/2);
+  const int64_t b = data.size(0);
+  const int64_t c = data.size(1);
+  const int64_t bins = spectrum.size(2);
+  const int64_t f = data.size(3);
+  auto gain = torch::ones({b, c, bins, f}, data.options());
+  if (mask_ratio > 0.0) {
+    auto keep = torch::rand({b, c, bins, 1}, data.options())
+                    .ge(mask_ratio)
+                    .to(data.dtype());
+    keep.narrow(/*dim=*/2, /*start=*/0, /*length=*/1).fill_(1.0);
+    gain = gain * keep.expand_as(gain);
+  }
+  if (jitter_std > 0.0) {
+    auto jitter = (torch::ones({b, c, bins, 1}, data.options()) +
+                   torch::randn({b, c, bins, 1}, data.options()) * jitter_std)
+                      .clamp_min(0.0);
+    jitter.narrow(/*dim=*/2, /*start=*/0, /*length=*/1).fill_(1.0);
+    gain = gain * jitter.expand_as(gain);
+  }
+  spectrum = spectrum * gain.to(spectrum.dtype());
+  const auto augmented = at::fft_irfft(spectrum, data.size(2), /*dim=*/2);
+  data = torch::where(mask, augmented, torch::zeros_like(data));
+}
+
+template <typename InputT>
+inline void
+apply_node_identity_dropout(torch::Tensor &mask, const torch::Tensor &data,
+                            const InputT &input, double drop_probability) {
+  if (drop_probability <= 0.0) {
+    return;
+  }
+  if constexpr (requires { input.node_index; }) {
+    TORCH_CHECK(input.node_index.defined() &&
+                    input.node_index.numel() == data.size(0),
+                "[mtf_jepa_mae_vicreg_graph_first_launcher] node dropout "
+                "requires node_index per flattened sample");
+    const auto node_index_cpu =
+        input.node_index.to(torch::kCPU).to(torch::kInt64).contiguous();
+    const auto max_node = node_index_cpu.max().template item<int64_t>();
+    const auto node_index = node_index_cpu.to(data.device());
+    const auto keep_by_node =
+        torch::rand({max_node + 1}, data.options()).ge(drop_probability);
+    const auto keep = keep_by_node.index_select(/*dim=*/0, node_index)
+                          .reshape({data.size(0), 1, 1, 1})
+                          .expand_as(data);
+    mask = mask.logical_and(keep);
+  } else {
+    TORCH_CHECK(false,
+                "[mtf_jepa_mae_vicreg_graph_first_launcher] node dropout "
+                "requires graph node_index metadata");
+  }
+}
+
+template <typename InputT>
+[[nodiscard]] inline cuwacunu::wikimyei::representation::encoding::
+    mtf_jepa_mae_vicreg::mtf_input_t
+    apply_mtf_training_augmentations(
+        const InputT &input,
+        const cuwacunu::wikimyei::representation::encoding::
+            mtf_jepa_mae_vicreg::mtf_jepa_mae_vicreg_config_t &config) {
+  namespace mtf =
+      cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg;
+  TORCH_CHECK(input.data.defined(),
+              "[mtf_jepa_mae_vicreg_graph_first_launcher] input data missing");
+  auto data = input.data;
+  auto mask = input.feature_mask.defined()
+                  ? input.feature_mask.to(torch::kBool)
+                  : torch::ones(data.sizes(), torch::TensorOptions()
+                                                  .dtype(torch::kBool)
+                                                  .device(data.device()));
+  TORCH_CHECK(data.dim() == 4,
+              "[mtf_jepa_mae_vicreg_graph_first_launcher] expected "
+              "[B_flat,C,Hx,F] input");
+  auto out = torch::where(mask, data, torch::zeros_like(data));
+  const int64_t b = out.size(0);
+  const int64_t c = out.size(1);
+  const int64_t h = out.size(2);
+  const int64_t f = out.size(3);
+  const double initial_valid_fraction = valid_fraction(mask);
+
+  const auto scale_width =
+      config.amplitude_scale_max - config.amplitude_scale_min;
+  if (scale_width > 0.0 || config.amplitude_scale_min != 1.0) {
+    const auto scale = torch::rand({b, c, 1, 1}, out.options()) * scale_width +
+                       config.amplitude_scale_min;
+    out = out * scale;
+  }
+  if (config.magnitude_normalization_noise_std > 0.0) {
+    const auto scale = torch::ones({b, c, 1, 1}, out.options()) +
+                       torch::randn({b, c, 1, 1}, out.options()) *
+                           config.magnitude_normalization_noise_std;
+    out = out * scale;
+  }
+  if (config.amplitude_shift_std > 0.0) {
+    out = out + torch::randn({b, c, 1, 1}, out.options()) *
+                    config.amplitude_shift_std;
+  }
+  if (config.gaussian_jitter_std > 0.0) {
+    out = out + torch::randn_like(out) * config.gaussian_jitter_std;
+  }
+  apply_frequency_domain_augmentations(out, mask, config.frequency_mask_ratio,
+                                       config.frequency_jitter_std);
+
+  if (config.time_crop_jitter_max > 0) {
+    const auto shift = random_i64_inclusive(-config.time_crop_jitter_max,
+                                            config.time_crop_jitter_max);
+    if (shift != 0) {
+      auto shifted = temporal_shift_without_wrap(out, mask, shift);
+      out = std::move(shifted.first);
+      mask = std::move(shifted.second);
+    }
+  }
+  const double dilation_span =
+      config.time_dilation_max - config.time_dilation_min;
+  const double sampled_dilation =
+      dilation_span > 0.0 ? config.time_dilation_min +
+                                random_unit_scalar(out.device()) * dilation_span
+                          : config.time_dilation_min;
+  if (std::abs(sampled_dilation - 1.0) > 1e-12) {
+    auto resampled = temporal_resample_linear(
+        out, mask, make_time_dilation_positions(h, sampled_dilation));
+    out = std::move(resampled.first);
+    mask = std::move(resampled.second);
+  }
+  if (config.time_warp_max > 0.0) {
+    auto resampled = temporal_resample_linear(
+        out, mask, make_time_warp_positions(h, config.time_warp_max));
+    out = std::move(resampled.first);
+    mask = std::move(resampled.second);
+  }
+  if (config.phase_jitter_max > 0.0 && h > 0) {
+    constexpr double kTwoPi = 6.28318530717958647692;
+    const auto max_shift = static_cast<int64_t>(std::llround(
+        config.phase_jitter_max * static_cast<double>(h) / kTwoPi));
+    if (max_shift > 0) {
+      const auto shift = random_i64_inclusive(-max_shift, max_shift);
+      if (shift != 0) {
+        auto shifted = temporal_shift_without_wrap(out, mask, shift);
+        out = std::move(shifted.first);
+        mask = std::move(shifted.second);
+      }
+    }
+  }
+
+  apply_mask_keep(mask, out, 1.0 - config.feature_dropout_prob, {b, c, h, f});
+  apply_mask_keep(mask, out, 1.0 - config.history_dropout_prob, {b, c, h, 1});
+  apply_mask_keep(mask, out, 1.0 - config.channel_dropout_prob, {b, c, 1, 1});
+  apply_mask_keep(mask, out, 1.0 - config.cross_channel_dropout_prob,
+                  {b, 1, h, f});
+  apply_node_identity_dropout(mask, out, input, config.node_dropout_prob);
+
+  const double retained_valid_fraction = valid_fraction(mask);
+  TORCH_CHECK(!(std::isfinite(initial_valid_fraction) &&
+                initial_valid_fraction > 0.0 &&
+                std::isfinite(retained_valid_fraction) &&
+                retained_valid_fraction <= 0.0),
+              "[mtf_jepa_mae_vicreg_graph_first_launcher] MTF training "
+              "augmentations removed all valid features");
+  out = torch::where(mask, out, torch::zeros_like(out));
+  return mtf::mtf_input_t{out, mask};
 }
 
 inline void ensure_parent_directory(const std::filesystem::path &path,
@@ -777,11 +1154,18 @@ public:
     out.num_predictor_layers = cfg.num_predictor_layers;
     out.num_decoder_layers = cfg.num_decoder_layers;
     out.num_heads = cfg.num_heads;
+    out.augmentation_profile = cfg.augmentation_profile;
     out.dropout = cfg.dropout;
+    out.mask_ratio_time = cfg.mask_ratio_time;
+    out.mask_ratio_frequency = cfg.mask_ratio_frequency;
+    out.mask_ratio_channel = cfg.mask_ratio_channel;
+    out.min_context_ratio = cfg.min_context_ratio;
     out.lambda_jepa = cfg.lambda_jepa;
     out.lambda_mae = cfg.lambda_mae;
     out.lambda_tf_align = cfg.lambda_tf_align;
     out.lambda_vicreg = cfg.lambda_vicreg;
+    out.lambda_global_vicreg = cfg.lambda_global_vicreg;
+    out.lambda_channel_vicreg = cfg.lambda_channel_vicreg;
     out.use_frequency_tokens = cfg.use_frequency_tokens;
     out.use_mae_decoder = cfg.use_mae_decoder;
     out.use_jepa_loss = cfg.use_jepa_loss;
@@ -791,6 +1175,29 @@ public:
     out.use_channel_vicreg = cfg.use_channel_vicreg;
     out.target_ema_tau = cfg.target_ema_tau;
     out.use_target_ema = cfg.use_target_ema;
+    out.couple_time_frequency_masks = cfg.couple_time_frequency_masks;
+    out.mask_same_window_across_domains = cfg.mask_same_window_across_domains;
+    out.mask_same_channel_block = cfg.mask_same_channel_block;
+    out.max_context_target_time_overlap = cfg.max_context_target_time_overlap;
+    out.gaussian_jitter_std = cfg.gaussian_jitter_std;
+    out.feature_dropout_prob = cfg.feature_dropout_prob;
+    out.history_dropout_prob = cfg.history_dropout_prob;
+    out.time_crop_jitter_max = cfg.time_crop_jitter_max;
+    out.time_dilation_min = cfg.time_dilation_min;
+    out.time_dilation_max = cfg.time_dilation_max;
+    out.time_warp_max = cfg.time_warp_max;
+    out.amplitude_scale_min = cfg.amplitude_scale_min;
+    out.amplitude_scale_max = cfg.amplitude_scale_max;
+    out.amplitude_shift_std = cfg.amplitude_shift_std;
+    out.frequency_mask_ratio = cfg.frequency_mask_ratio;
+    out.frequency_jitter_std = cfg.frequency_jitter_std;
+    out.phase_jitter_max = cfg.phase_jitter_max;
+    out.channel_dropout_prob = cfg.channel_dropout_prob;
+    out.cross_channel_dropout_prob = cfg.cross_channel_dropout_prob;
+    out.node_dropout_prob = cfg.node_dropout_prob;
+    out.edge_dropout_prob = cfg.edge_dropout_prob;
+    out.magnitude_normalization_noise_std =
+        cfg.magnitude_normalization_noise_std;
     out.effective_batch_size = plan.effective_batch_size;
     out.batch_size_source = builder_.batch_size_source();
     out.dtype = plan.dtype;
@@ -896,6 +1303,8 @@ public:
     double condition_number_sum = 0.0;
     double isotropy_score_sum = 0.0;
     int64_t geometry_count = 0;
+    double augmentation_retention_fraction_sum = 0.0;
+    int64_t augmentation_count = 0;
 
     auto refresh_running_report = [&]() {
       if (loss_count > 0) {
@@ -933,6 +1342,11 @@ public:
         report.representation_isotropy_score =
             isotropy_score_sum / static_cast<double>(geometry_count);
       }
+      if (augmentation_count > 0) {
+        report.augmented_feature_retention_fraction =
+            augmentation_retention_fraction_sum /
+            static_cast<double>(augmentation_count);
+      }
       if (report.source_range_start >= 0 && report.source_range_end >= 0 &&
           report.wave_streamed_anchor_count > 0) {
         report.completed_anchor_start = report.source_range_start;
@@ -969,16 +1383,20 @@ public:
     };
 
     auto write_report = [&]() {
-      if (!options_.write_report) {
-        return;
-      }
       refresh_running_report();
-      report.report_written = true;
-      ++report.report_write_count;
       report.last_report_attempted_step = report.steps_attempted;
-      report.report_path = options_.report_path.string();
-      mtf_jepa_mae_vicreg_graph_first_launcher_detail::write_report_file(
-          options_.report_path, report);
+      if (!options_.report_path.empty()) {
+        report.report_path = options_.report_path.string();
+      }
+      if (options_.write_report) {
+        report.report_written = true;
+        ++report.report_write_count;
+        mtf_jepa_mae_vicreg_graph_first_launcher_detail::write_report_file(
+            options_.report_path, report);
+      }
+      if (options_.learning_probe_report_sink) {
+        options_.learning_probe_report_sink(report.to_text());
+      }
     };
 
     const int64_t max_steps = training.max_steps;
@@ -1038,7 +1456,22 @@ public:
       if (train_target) {
         model->train();
         optimizer.zero_grad();
-        output = model->forward(input.data, input.feature_mask);
+        const auto before_aug_fraction =
+            mtf_jepa_mae_vicreg_graph_first_launcher_detail::valid_fraction(
+                input.feature_mask);
+        const auto augmented = mtf_jepa_mae_vicreg_graph_first_launcher_detail::
+            apply_mtf_training_augmentations(input,
+                                             bundle.mtf_jepa_mae_vicreg.config);
+        const auto after_aug_fraction =
+            mtf_jepa_mae_vicreg_graph_first_launcher_detail::valid_fraction(
+                augmented.feature_mask);
+        if (std::isfinite(before_aug_fraction) &&
+            std::isfinite(after_aug_fraction) && before_aug_fraction > 0.0) {
+          augmentation_retention_fraction_sum +=
+              after_aug_fraction / before_aug_fraction;
+          ++augmentation_count;
+        }
+        output = model->forward(augmented.data, augmented.feature_mask);
         if (!torch::isfinite(output.loss).all().template item<bool>()) {
           ++report.nonfinite_output_count;
           ++report.skipped_batches;

@@ -3339,24 +3339,36 @@ void test_mdn_wave_preview_reads_jkimyei_model_state_inputs() {
                         "};\n");
   write_text(protocol_path, cwu01_vicreg_protocol_text());
   write_text(cursor_path, cursor_catalog_text("all_cursor", "all"));
-  write_text(jkimyei_path, "TRAINING {\n"
-                           "  TRAINING_ID = mdn_train;\n"
-                           "  TASK = mdn_expected_value_inference;\n"
-                           "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
-                           "  LEARNING_RATE = 0.001;\n"
-                           "  MAX_STEPS = 250;\n"
-                           "  BATCH_SIZE = 64;\n"
-                           "  INPUT_REPRESENTATION_CHECKPOINT = /tmp/rep.pt;\n"
-                           "  INPUT_MDN_CHECKPOINT = /tmp/mdn.pt;\n"
-                           "  TRAINING_VISIBILITY_POLICY = "
-                           "prior_generation_per_slice;\n"
-                           "  GENERATION_LANE_POLICY = "
-                           "readiness_grade_bootstrap_frozen_init_only;\n"
-                           "  VALID_FROM_POLICY = "
-                           "valid_from_anchor_gte_fit_end;\n"
-                           "  ARTIFACT_PROVENANCE_POLICY = "
-                           "transitive_influence_required;\n"
-                           "};\n");
+  write_text(jkimyei_path,
+             "TRAINING {\n"
+             "  TRAINING_ID = mdn_train;\n"
+             "  TASK = mdn_expected_value_inference;\n"
+             "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
+             "  LEARNING_RATE = 0.001;\n"
+             "  MAX_STEPS = 250;\n"
+             "  BATCH_SIZE = 64;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_LOSS_WEIGHT = 0.0;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_DIRECTION_WEIGHT = 0.0;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_RANK_WEIGHT = 0.0;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_HUBER_BETA = 0.01;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_LOGIT_SCALE = 50.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED = false;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_LOSS_WEIGHT = 0.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_DIRECTION_WEIGHT = 0.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 0.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_HUBER_BETA = 0.01;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_LOGIT_SCALE = 50.0;\n"
+             "  INPUT_REPRESENTATION_CHECKPOINT = /tmp/rep.pt;\n"
+             "  INPUT_MDN_CHECKPOINT = /tmp/mdn.pt;\n"
+             "  TRAINING_VISIBILITY_POLICY = "
+             "prior_generation_per_slice;\n"
+             "  GENERATION_LANE_POLICY = "
+             "readiness_grade_bootstrap_frozen_init_only;\n"
+             "  VALID_FROM_POLICY = "
+             "valid_from_anchor_gte_fit_end;\n"
+             "  ARTIFACT_PROVENANCE_POLICY = "
+             "transitive_influence_required;\n"
+             "};\n");
   write_text(config_path, "[UJCAMEI]\n"
                           "ujcamei_source_cursor_dsl_path = " +
                               cursor_path.string() +
@@ -3748,9 +3760,10 @@ void test_policy_training_contract_and_ppo_execute() {
                    "from accepted anchors");
 
   std::string overlapping_fractional_args = fractional_args;
-  replace_all(overlapping_fractional_args,
-              "policy_training_range_validation_fraction_80_100_92_100_min_1_v1",
-              "policy_training_range_validation_fraction_65_100_1_1_min_1_v1");
+  replace_all(
+      overlapping_fractional_args,
+      "policy_training_range_validation_fraction_80_100_92_100_min_1_v1",
+      "policy_training_range_validation_fraction_65_100_1_1_min_1_v1");
   result.clear();
   error.clear();
   check(!execute_runtime_run_json(overlapping_fractional_args, &ctx, &result,
@@ -5978,8 +5991,8 @@ void test_policy_training_contract_and_ppo_execute() {
   replace_all(bad_range_mirrors_contract_text,
               "normalization_fit_range_digest="
               "policy_training_range_train_anchor_0_1600_v1\n",
-	              "normalization_fit_range_digest="
-	              "policy_training_range_validation_anchor_1630_2100_v1\n");
+              "normalization_fit_range_digest="
+              "policy_training_range_validation_anchor_1630_2100_v1\n");
   const auto bad_range_mirrors_contract_path =
       wave_defaults_root / "policy_training.bad_range_mirror.contract";
   write_text(bad_range_mirrors_contract_path, bad_range_mirrors_contract_text);
@@ -6021,9 +6034,9 @@ void test_policy_training_contract_and_ppo_execute() {
       "policy_execution_target_anchor_begin=1630",
       "contract text should persist validation-range-derived target begin");
   require_contains(
-	      derived_target_range_contract_text,
-	      "policy_execution_target_anchor_end_exclusive=2100",
-	      "contract text should persist validation-range-derived target end");
+      derived_target_range_contract_text,
+      "policy_execution_target_anchor_end_exclusive=2100",
+      "contract text should persist validation-range-derived target end");
   auto bad_target_range_contract_text = omitted_target_range_contract_text;
   bad_target_range_contract_text +=
       "policy_execution_target_anchor_begin=1600\n";
@@ -6075,9 +6088,9 @@ void test_policy_training_contract_and_ppo_execute() {
       "embargo_purged_window_anchor_begin=1630",
       "contract text should persist target-range-derived embargo begin");
   require_contains(
-	      derived_embargo_window_contract_text,
-	      "embargo_purged_window_anchor_end_exclusive=2100",
-	      "contract text should persist target-range-derived embargo end");
+      derived_embargo_window_contract_text,
+      "embargo_purged_window_anchor_end_exclusive=2100",
+      "contract text should persist target-range-derived embargo end");
   require_contains(
       derived_embargo_window_contract_text,
       "embargo_purged_window_anchor_range_bound=true",
@@ -6581,10 +6594,10 @@ void test_policy_training_contract_and_ppo_execute() {
             "policy_execution_target_anchor_begin_bound=true\n") !=
             std::string::npos,
         "test fixture should contain policy-execution target begin bound slot");
-	  check(omitted_output_anchor_mirror_contract_text.find(
-	            "policy_execution_target_anchor_end_exclusive=2100\n") !=
-	            std::string::npos,
-	        "test fixture should contain policy-execution target end slot");
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_execution_target_anchor_end_exclusive=2100\n") !=
+            std::string::npos,
+        "test fixture should contain policy-execution target end slot");
   check(omitted_output_anchor_mirror_contract_text.find(
             "policy_execution_target_anchor_end_exclusive_bound=true\n") !=
             std::string::npos,
@@ -6592,23 +6605,23 @@ void test_policy_training_contract_and_ppo_execute() {
   check(omitted_output_anchor_mirror_contract_text.find(
             "policy_output_fit_anchor_begin=1630\n") != std::string::npos,
         "test fixture should contain policy output fit begin slot");
-	  check(omitted_output_anchor_mirror_contract_text.find(
-	            "policy_output_fit_anchor_end_exclusive=2100\n") !=
-	            std::string::npos,
-	        "test fixture should contain policy output fit end slot");
-	  check(omitted_output_anchor_mirror_contract_text.find(
-	            "policy_output_valid_from_anchor=2100\n") != std::string::npos,
-	        "test fixture should contain policy output valid-from slot");
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_output_fit_anchor_end_exclusive=2100\n") !=
+            std::string::npos,
+        "test fixture should contain policy output fit end slot");
+  check(omitted_output_anchor_mirror_contract_text.find(
+            "policy_output_valid_from_anchor=2100\n") != std::string::npos,
+        "test fixture should contain policy output valid-from slot");
   replace_all(omitted_output_anchor_mirror_contract_text,
               "policy_output_fit_anchor_begin=1630\n", "");
   replace_all(omitted_output_anchor_mirror_contract_text,
               "policy_output_fit_anchor_begin_bound=true\n", "");
-	  replace_all(omitted_output_anchor_mirror_contract_text,
-	              "policy_output_fit_anchor_end_exclusive=2100\n", "");
+  replace_all(omitted_output_anchor_mirror_contract_text,
+              "policy_output_fit_anchor_end_exclusive=2100\n", "");
   replace_all(omitted_output_anchor_mirror_contract_text,
               "policy_output_fit_anchor_end_exclusive_bound=true\n", "");
-	  replace_all(omitted_output_anchor_mirror_contract_text,
-	              "policy_output_valid_from_anchor=2100\n", "");
+  replace_all(omitted_output_anchor_mirror_contract_text,
+              "policy_output_valid_from_anchor=2100\n", "");
   replace_all(omitted_output_anchor_mirror_contract_text,
               "policy_output_valid_from_anchor_bound=true\n", "");
   const auto omitted_output_anchor_mirror_contract_path =
@@ -6634,17 +6647,17 @@ void test_policy_training_contract_and_ppo_execute() {
   require_contains(derived_output_anchor_mirror_contract_text,
                    "policy_output_fit_anchor_begin_bound=true",
                    "contract text should bind derived output fit begin");
-	  require_contains(derived_output_anchor_mirror_contract_text,
-	                   "policy_output_fit_anchor_end_exclusive=2100",
-	                   "contract text should persist output fit end from "
-	                   "policy-execution target end");
+  require_contains(derived_output_anchor_mirror_contract_text,
+                   "policy_output_fit_anchor_end_exclusive=2100",
+                   "contract text should persist output fit end from "
+                   "policy-execution target end");
   require_contains(derived_output_anchor_mirror_contract_text,
                    "policy_output_fit_anchor_end_exclusive_bound=true",
                    "contract text should bind derived output fit end");
-	  require_contains(derived_output_anchor_mirror_contract_text,
-	                   "policy_output_valid_from_anchor=2100",
-	                   "contract text should persist output valid-from from "
-	                   "policy-execution target end");
+  require_contains(derived_output_anchor_mirror_contract_text,
+                   "policy_output_valid_from_anchor=2100",
+                   "contract text should persist output valid-from from "
+                   "policy-execution target end");
   require_contains(derived_output_anchor_mirror_contract_text,
                    "policy_output_valid_from_anchor_bound=true",
                    "contract text should bind derived output valid-from");

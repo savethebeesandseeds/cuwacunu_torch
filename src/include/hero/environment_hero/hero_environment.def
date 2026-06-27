@@ -175,6 +175,12 @@ HERO_ENVIRONMENT_TOOL(
         "rollout_attempt_id": {
           "type": "string"
         },
+        "config_path": {
+          "type": "string"
+        },
+        "accounting_numeraire_node_id": {
+          "type": "string"
+        },
         "target_node_ids": {
           "type": "array",
           "items": {

@@ -1,0 +1,153 @@
+# synthetic_mdn_direct_edge_readout.v1
+
+Status: complete
+
+Question:
+
+```text
+If MDN training gets a dedicated direct edge-return readout head, does it
+recover tradable base-minus-quote direction/rank on the deterministic synthetic
+benchmark?
+```
+
+Short answer:
+
+```text
+No. The direct edge-return head is wired into the MDN, optimized as a
+first-class output, and reported by Runtime, but the train and protected-eval
+direction/rank metrics remain near random.
+```
+
+## Change Tested
+
+The MDN now emits a direct edge-return tensor:
+
+```text
+direct_edge_return: [B, N - 1, C]
+```
+
+The readout uses quote node index `0` (`SYNUSD`) and concatenates:
+
+```text
+base_context
+quote_context
+base_context - quote_context
+```
+
+for every base node and channel. The dedicated loss is configured in
+`wikimyei.inference.expected_value.mdn.jkimyei`:
+
+```text
+MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED = true
+MDN_DIRECT_EDGE_RETURN_READOUT_LOSS_WEIGHT = 100.0
+MDN_DIRECT_EDGE_RETURN_READOUT_DIRECTION_WEIGHT = 5.0
+MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 5.0
+MDN_DIRECT_EDGE_RETURN_READOUT_HUBER_BETA = 0.01
+MDN_DIRECT_EDGE_RETURN_READOUT_LOGIT_SCALE = 50.0
+```
+
+The earlier edge projection auxiliary loss was disabled for this test:
+
+```text
+MDN_EDGE_RETURN_AUXILIARY_LOSS_WEIGHT = 0.0
+MDN_EDGE_RETURN_AUXILIARY_DIRECTION_WEIGHT = 0.0
+MDN_EDGE_RETURN_AUXILIARY_RANK_WEIGHT = 0.0
+```
+
+The optimized training loss is:
+
+```text
+loss = MDN_NLL
+     + direct_edge_readout_loss_weight * SmoothL1(pred_edge, true_edge)
+     + direct_edge_readout_direction_weight * logistic_sign_loss
+     + direct_edge_readout_rank_weight * pairwise_rank_loss
+```
+
+## Runtime Jobs
+
+Representation checkpoint used:
+
+```text
+/cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg/spawns/aov_4a720ae530dfa150/jobs/train/train_core_mtf_jepa_mae_vicreg.train.channel_representation_mtf_jepa_mae_vicreg.attempt_000001/channel_representation.report.mtf_jepa_mae_vicreg.pt
+```
+
+Fresh MDN train job:
+
+```text
+job_id = train_core_channel_mdn.train.channel_inference_mdn.attempt_000003
+spawn = kur_4fa6246a85c19a20
+range = [0,730)
+steps_completed = 3500
+report = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/kur_4fa6246a85c19a20/jobs/train/train_core_channel_mdn.train.channel_inference_mdn.attempt_000003/channel_inference.report
+checkpoint = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/kur_4fa6246a85c19a20/jobs/train/train_core_channel_mdn.train.channel_inference_mdn.attempt_000003/channel_inference.report.channel_mdn.pt
+```
+
+Fresh MDN eval job:
+
+```text
+job_id = cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000001
+spawn = kur_4fa6246a85c19a20
+range = [760,1088)
+report = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/kur_4fa6246a85c19a20/jobs/run/cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000001/channel_inference.report
+replay_artifacts_written = true
+```
+
+## Results
+
+Direct edge-return readout:
+
+| Split | Direction | Pairwise Rank | Best Asset | Correlation | MAE | RMSE |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| train `[0,730)` | 0.499872 | 0.519334 | 0.342071 | -0.00121821 | 0.0235174 | 0.0329349 |
+| eval `[760,1088)` | 0.510840 | 0.557249 | 0.388211 | 0.00546659 | 0.0221558 | 0.0279358 |
+
+The original node-potential edge projection in the same eval report stayed near
+random:
+
+```text
+eval.edge_return_projection_directional_accuracy = 0.499322
+eval.edge_return_projection_pairwise_rank_accuracy = 0.467818
+eval.edge_return_projection_best_asset_agreement = 0.298780
+eval.edge_return_projection_correlation = 0.00583662
+```
+
+The direct head improves eval pairwise rank and best-asset agreement slightly
+relative to the projection path, but not enough to change the diagnosis. It is
+well below the deterministic benchmark gate:
+
+```text
+MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY = 0.95
+MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY = 0.95
+MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT = 0.60
+```
+
+## Interpretation
+
+This test closes one important hypothesis:
+
+```text
+The failure is not only that edge return was a weak auxiliary projection on the
+node-potential expected value. A dedicated edge-return readout head also fails
+to learn useful train-range direction/rank from the current MDN context.
+```
+
+The frozen-representation supervised probe remains the comparison point:
+
+```text
+frozen_representation.eval.directional_accuracy = 0.738482384824
+frozen_representation.eval.pairwise_rank_accuracy = 0.707994579946
+frozen_representation.eval.best_asset_agreement = 0.597560975610
+frozen_representation.eval.correlation = 0.622333108679
+```
+
+So useful edge signal exists in the representation probe, but the current MDN
+context/readout/training path does not extract it. The next diagnostic should
+isolate the signal path more directly:
+
+```text
+synthetic_signal_path_isolation.v1
+```
+
+That diagnostic should compare raw target transform, phase/lag oracle, frozen
+representation linear/MLP probes, and the MDN direct readout on the same
+train/eval ranges before returning to PPO tuning.

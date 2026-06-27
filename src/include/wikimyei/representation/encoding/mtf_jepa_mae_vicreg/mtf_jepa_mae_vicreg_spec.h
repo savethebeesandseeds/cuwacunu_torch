@@ -109,7 +109,7 @@ validate_mtf_jepa_mae_vicreg_spec(const mtf_jepa_mae_vicreg_spec_t &spec) {
         "[mtf_jepa_mae_vicreg_spec] INPUT_WIDTH must match kline feature "
         "width");
   }
-  detail::validate_config(spec.config);
+  detail::validate_architecture_config(spec.config);
 }
 
 inline void
@@ -130,7 +130,6 @@ decode_mtf_jepa_mae_vicreg_net_into_spec(const std::string &net_text,
   cfg.num_decoder_layers =
       kv::parse_i64(kv::required(block, "NUM_DECODER_LAYERS"));
   cfg.num_heads = kv::parse_i64(kv::required(block, "NUM_HEADS"));
-  cfg.dropout = kv::parse_double(kv::required(block, "DROPOUT"));
 
   cfg.time_scales = kv::parse_i64_list(kv::required(block, "TIME_SCALES"));
   cfg.scale_strides = kv::parse_i64_list(kv::required(block, "SCALE_STRIDES"));
@@ -140,65 +139,6 @@ decode_mtf_jepa_mae_vicreg_net_into_spec(const std::string &net_text,
       kv::parse_i64(kv::required(block, "FREQUENCY_NUM_BINS"));
   cfg.frequency_log_magnitude =
       kv::parse_bool(kv::required(block, "FREQUENCY_LOG_MAGNITUDE"));
-
-  cfg.mask_ratio_time =
-      kv::parse_double(kv::required(block, "MASK_RATIO_TIME"));
-  cfg.mask_ratio_frequency =
-      kv::parse_double(kv::required(block, "MASK_RATIO_FREQUENCY"));
-  cfg.mask_ratio_channel =
-      kv::parse_double(kv::required(block, "MASK_RATIO_CHANNEL"));
-  cfg.min_context_ratio =
-      kv::parse_double(kv::required(block, "MIN_CONTEXT_RATIO"));
-
-  cfg.lambda_jepa = kv::parse_double(kv::required(block, "LAMBDA_JEPA"));
-  cfg.lambda_mae = kv::parse_double(kv::required(block, "LAMBDA_MAE"));
-  cfg.lambda_tf_align =
-      kv::parse_double(kv::required(block, "LAMBDA_TF_ALIGN"));
-  cfg.lambda_vicreg = kv::parse_double(kv::required(block, "LAMBDA_VICREG"));
-  cfg.lambda_global_vicreg =
-      kv::parse_double(kv::required(block, "LAMBDA_GLOBAL_VICREG"));
-  cfg.lambda_channel_vicreg =
-      kv::parse_double(kv::required(block, "LAMBDA_CHANNEL_VICREG"));
-
-  cfg.vicreg_sim_weight =
-      kv::parse_double(kv::required(block, "VICREG_SIM_WEIGHT"));
-  cfg.vicreg_var_weight =
-      kv::parse_double(kv::required(block, "VICREG_VAR_WEIGHT"));
-  cfg.vicreg_cov_weight =
-      kv::parse_double(kv::required(block, "VICREG_COV_WEIGHT"));
-  cfg.vicreg_variance_floor =
-      kv::parse_double(kv::required(block, "VICREG_VARIANCE_FLOOR"));
-  cfg.vicreg_variance_epsilon =
-      kv::parse_double(kv::required(block, "VICREG_VARIANCE_EPSILON"));
-
-  cfg.target_ema_tau = kv::parse_double(kv::required(block, "TARGET_EMA_TAU"));
-  cfg.use_target_ema = kv::parse_bool(kv::required(block, "USE_TARGET_EMA"));
-  cfg.stop_gradient_target =
-      kv::parse_bool(kv::required(block, "STOP_GRADIENT_TARGET"));
-  cfg.return_diagnostics =
-      kv::parse_bool(kv::required(block, "RETURN_DIAGNOSTICS"));
-
-  cfg.use_mae_decoder = kv::parse_bool(kv::required(block, "USE_MAE_DECODER"));
-  cfg.use_jepa_loss = kv::parse_bool(kv::required(block, "USE_JEPA_LOSS"));
-  cfg.use_tf_align_loss =
-      kv::parse_bool(kv::required(block, "USE_TF_ALIGN_LOSS"));
-  cfg.use_vicreg_loss = kv::parse_bool(kv::required(block, "USE_VICREG_LOSS"));
-  cfg.use_global_vicreg =
-      kv::parse_bool(kv::required(block, "USE_GLOBAL_VICREG"));
-  cfg.use_channel_vicreg =
-      kv::parse_bool(kv::required(block, "USE_CHANNEL_VICREG"));
-  cfg.use_raw_reconstruction_targets =
-      kv::parse_bool(kv::required(block, "USE_RAW_RECONSTRUCTION_TARGETS"));
-  cfg.strict_finite_loss =
-      kv::parse_bool(kv::required(block, "STRICT_FINITE_LOSS"));
-  cfg.couple_time_frequency_masks =
-      kv::parse_bool(kv::required(block, "COUPLE_TIME_FREQUENCY_MASKS"));
-  cfg.mask_same_window_across_domains =
-      kv::parse_bool(kv::required(block, "MASK_SAME_WINDOW_ACROSS_DOMAINS"));
-  cfg.mask_same_channel_block =
-      kv::parse_bool(kv::required(block, "MASK_SAME_CHANNEL_BLOCK"));
-  cfg.max_context_target_time_overlap =
-      kv::parse_double(kv::required(block, "MAX_CONTEXT_TARGET_TIME_OVERLAP"));
 }
 
 [[nodiscard]] inline mtf_jepa_mae_vicreg_spec_t

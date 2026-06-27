@@ -1,0 +1,146 @@
+# synthetic_mdn_edge_objective_alignment.v1
+
+Status: complete
+
+Question:
+
+```text
+If MDN training directly includes an edge-return auxiliary loss, does the
+forecast stack recover tradable base-minus-quote direction/rank on the
+deterministic synthetic benchmark?
+```
+
+Short answer:
+
+```text
+No. The objective is active and Runtime emits the diagnostic fields, but the
+node-potential MDN expected-value path still does not learn the tradable edge
+direction/rank signal.
+```
+
+## Change Tested
+
+The MDN training config now explicitly owns edge-return auxiliary knobs:
+
+```text
+MDN_EDGE_RETURN_AUXILIARY_LOSS_WEIGHT = 25.0
+MDN_EDGE_RETURN_AUXILIARY_DIRECTION_WEIGHT = 0.5
+MDN_EDGE_RETURN_AUXILIARY_RANK_WEIGHT = 0.5
+MDN_EDGE_RETURN_AUXILIARY_HUBER_BETA = 0.01
+MDN_EDGE_RETURN_AUXILIARY_LOGIT_SCALE = 50.0
+```
+
+The auxiliary projection uses the same benchmark edge projection as the metric:
+
+```text
+quote_node_index = 0
+quote_node_id = SYNUSD
+base_nodes = SYNALPHA,SYNBETA,SYNGAMMA
+close_feature_index = 3
+edge_return = base_close - quote_close
+```
+
+The optimized training loss is:
+
+```text
+loss = MDN_NLL
+     + edge_return_auxiliary_loss_weight * SmoothL1(pred_edge, true_edge)
+     + edge_return_auxiliary_direction_weight * logistic_sign_loss
+     + edge_return_auxiliary_rank_weight * pairwise_rank_loss
+```
+
+## Runtime Jobs
+
+Representation checkpoint used:
+
+```text
+/cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg/spawns/aov_4a720ae530dfa150/jobs/train/train_core_mtf_jepa_mae_vicreg.train.channel_representation_mtf_jepa_mae_vicreg.attempt_000001/channel_representation.report.mtf_jepa_mae_vicreg.pt
+```
+
+Fresh MDN train job:
+
+```text
+job_id = train_core_channel_mdn.train.channel_inference_mdn.attempt_000001
+spawn = hxe_996ccb0ef42d9341
+range = [0,730)
+steps_completed = 3500
+report = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hxe_996ccb0ef42d9341/jobs/train/train_core_channel_mdn.train.channel_inference_mdn.attempt_000001/channel_inference.report
+checkpoint = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hxe_996ccb0ef42d9341/jobs/train/train_core_channel_mdn.train.channel_inference_mdn.attempt_000001/channel_inference.report.channel_mdn.pt
+```
+
+Fresh MDN eval job:
+
+```text
+job_id = cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000001
+spawn = hxe_996ccb0ef42d9341
+range = [760,1088)
+report = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hxe_996ccb0ef42d9341/jobs/run/cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000001/channel_inference.report
+```
+
+## Results
+
+| Split | Direction | Pairwise Rank | Best Asset | Correlation | MAE | RMSE |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| train `[0,730)` | 0.487915 | 0.505747 | 0.352924 | -0.000884998 | 0.0219201 | 0.0277276 |
+| eval `[760,1088)` | 0.504065 | 0.519309 | 0.381098 | -0.000355394 | 0.0219391 | 0.0277446 |
+
+Auxiliary terms stayed effectively random:
+
+```text
+train.mean_edge_return_auxiliary_loss = 1.13708
+train.mean_edge_return_auxiliary_direction_loss = 0.693607
+train.mean_edge_return_auxiliary_rank_loss = 0.693156
+
+eval.mean_edge_return_auxiliary_loss = 1.13736
+eval.mean_edge_return_auxiliary_direction_loss = 0.693148
+eval.mean_edge_return_auxiliary_rank_loss = 0.693147
+```
+
+The `0.693...` direction/rank values are essentially `log(2)`, which means the
+binary sign/rank terms did not learn useful separation.
+
+## Comparison
+
+Prior edge projection from the old MDN was already near random:
+
+```text
+old_mdn.eval.directional_accuracy = 0.507453
+old_mdn.eval.pairwise_rank_accuracy = 0.491531
+old_mdn.eval.best_asset_agreement = 0.295732
+old_mdn.eval.correlation = 0.00355936
+```
+
+The frozen-representation supervised edge probe was materially better:
+
+```text
+frozen_representation.eval.directional_accuracy = 0.738482384824
+frozen_representation.eval.pairwise_rank_accuracy = 0.707994579946
+frozen_representation.eval.best_asset_agreement = 0.597560975610
+frozen_representation.eval.correlation = 0.622333108679
+```
+
+So the representation appears to expose some edge signal, but this MDN readout
+and objective still do not convert it into tradable edge forecasts.
+
+## Interpretation
+
+The result narrows the failure:
+
+```text
+Not proven:
+  representation has no signal.
+
+Now shown:
+  a light edge auxiliary term on the MDN node-potential expected value is not
+  sufficient to recover edge direction/rank.
+```
+
+The next likely fix is not PPO tuning. It is a stronger forecast-side change:
+
+```text
+synthetic_mdn_direct_edge_readout.v1
+```
+
+That milestone should test a dedicated edge-return readout/head, or an
+edge-space forecast head, where edge return is a first-class supervised output
+instead of only an auxiliary projection of node potentials.

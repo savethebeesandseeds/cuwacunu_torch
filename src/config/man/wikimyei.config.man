@@ -86,6 +86,18 @@ nonstandard grammar overrides.
 
 `src/config/.config` section: `[JKIMYEI]`
 
+- `wikimyei_inference_expected_value_mdn_jkimyei_path`
+  - Default grammar:
+    `grammar/wikimyei.inference.expected_value.mdn.jkimyei.bnf`.
+  - Channel-context MDN training profile. It requires
+    `TASK = channel_inference_mdn` and owns optimizer/report cadence plus
+    forecast-side training losses.
+  - Edge-return objective controls are training settings, not network-shape
+    settings. `MDN_EDGE_RETURN_AUXILIARY_*` applies auxiliary base-minus-quote
+    losses to the node-potential expected-value projection.
+    `MDN_DIRECT_EDGE_RETURN_READOUT_*` enables and weights the dedicated direct
+    edge-return readout head. Non-MDN `.jkimyei` profiles must leave these
+    fields disabled/zero.
 - `wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path`
   - Default grammar:
     `grammar/wikimyei.policy.portfolio.graph_node_allocation.jkimyei.bnf`.

@@ -84,6 +84,25 @@ historical-world profiles: they drive reset/step/reward over a replay source
 and call Cajtucu paper execution. The replay Environment DSL owns stable replay
 world/action numerics such as initial equity, max per-node target weight, and
 L1 turnover bound.
+Runtime probes are configured through the active config's
+`runtime_probes_dsl_path`, not in the wave catalog. Enabling
+`job_events` in that explicitly referenced catalog asks Runtime to append
+the job-local `runtime.job_events.probe` stream; configs that omit
+`runtime_probes_dsl_path` do not inherit the canonical probe catalog.
+Attachment still requires the selected wave `MODE` to include `debug`. The
+stream is for probes and charting only; it is not a Lattice fact, dispatch
+authority, proof authority, or replacement for reports, checkpoints, Runtime
+terminal facts, Marshal handoffs, or Lattice proofs.
+Learning-diagnostic records are classifications derived from job-state progress
+counters and job-local component reports. Graph-first representation and MDN
+launchers also append report snapshots at their `REPORT_EVERY` cadence, so the
+same `runtime.job_events.probe` stream can show loss and forecast/oracle metric
+evolution over `step`. They preserve the `job_events` probe kind and add stable
+series names for representation training/collapse, representation augmentation
+settings, MDN/forecast training, forecast-oracle checks, and policy/PPO metrics
+when those values are present in the report. These records are for plotting and
+diagnosis only; they do not change Lattice readiness or Marshal dispatch
+decisions.
 The default graph-first path is now the strict channel-preserving pair:
 `wikimyei.representation.encoding.vicreg` and
 `wikimyei.inference.expected_value.mdn`. The MDN path consumes the
@@ -332,6 +351,22 @@ MDN run/evaluation also requires
 `INPUT_MDN_CHECKPOINT`; the runtime rejects evaluation with a fresh untrained
 channel-context MDN.
 
+MDN forecast-side edge-return training controls live in
+`wikimyei.inference.expected_value.mdn.jkimyei`, not in the `.net` architecture
+file. `MDN_EDGE_RETURN_AUXILIARY_*` weights base-minus-quote losses applied to
+the node-potential expected-value projection. `MDN_DIRECT_EDGE_RETURN_READOUT_*`
+enables and weights the dedicated direct edge-return readout head
+(`direct_edge_return:[B,N-1,C]`). The training-spec decoder rejects these knobs
+on non-MDN `.jkimyei` tasks and requires the direct readout to be enabled before
+any direct-readout loss weight can be nonzero.
+
+For synthetic benchmark diagnostics, probe-enabled non-training MDN debug waves
+may also write `representation_edge_features.probe` and
+`mdn_edge_context_features.probe` in the job directory. These files expose the
+pre-MDN representation edge features and post-MDN-trunk edge context features
+used by local benchmark scripts. They are diagnostic probe artifacts only, not
+Lattice facts, Marshal receipts, or readiness evidence.
+
 `wikimyei.representation.vicreg.net` owns both architecture and VICReg objective
 settings. Loss weights, variance floor, loss epsilon, minimum valid rows,
 non-finite loss policy, and augmentation probabilities must be declared there;
@@ -343,8 +378,18 @@ surface.
 `wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei` define the separate
 experimental MTF-JEPA-MAE-VICReg representation family. These files register
 `wikimyei.representation.encoding.mtf_jepa_mae_vicreg` as its own component
-identity and training surface. They do not replace the production VICReg/MDN
-defaults and they do not make downstream forecast or MDN claims.
+identity and training surface. For this family, `.net` is the architecture and
+tokenization surface only; MTF objective weights, masking policy, EMA behavior,
+and training augmentations are explicit `.jkimyei` settings and are folded into
+the protocol contract after the training spec is decoded. They do not replace
+the production VICReg/MDN defaults and they do not make downstream forecast or
+MDN claims.
+
+MTF train-time augmentation is intentionally conservative: temporal dilation and
+warp use non-wrapping interpolation over the history axis, frequency mask/jitter
+operate on FFT bins before tokenization, and node dropout uses graph node
+identity metadata from the channel-node adapter. Edge dropout is declared but
+must remain `0.0` until the MTF trainer carries graph-edge metadata.
 
 Protocol variants live under `kikijyeba.protocol.*.dsl` and are selected by
 `[KIKIJYEBA].kikijyeba_protocol_dsl_path` in `.config`. The default protocol is
@@ -395,9 +440,11 @@ canonical `src/config/.config` or pass `--profile long_train_operator` to
 reset enabled with explicit confirmation and an unlimited Runtime process
 timeout.
 
-Reusable wave profiles now live inside the single canonical wave catalog:
+Reusable wave profiles and Runtime probe definitions now live in adjacent
+catalogs:
 
 - `src/config/hero.runtime.wave.dsl`
+- `src/config/hero.runtime.probes.dsl`
 - `src/config/ujcamei.source.cursor.dsl`
 - checked-in wave ids include `train_core_vicreg`,
   `train_core_mtf_jepa_mae_vicreg`, `train_core_channel_mdn`,
@@ -425,6 +472,13 @@ execution may still adjust the effective launch range through Runtime handoff wa
 fields, or the equivalent `cuwacunu_exec --source-range ...` flags, without
 mutating the wave, cursor, or split catalogs. Effective ranges are not protocol
 identity.
+
+The same config points `[HERO].runtime_probes_dsl_path` at
+`hero.runtime.probes.dsl`. That catalog may declare many probes; the first
+supported kind is `job_events`, and enabled probes still require the
+selected wave to include `debug` in `MODE`. Benchmark or temporary configs must
+declare their own probe catalog path when they want this stream; there is no
+implicit fallback to the canonical catalog.
 
 The learned-policy activation request is derived by Runtime from the active
 `policy_training_ppo_v0` wave. There is no checked-in policy-training
@@ -669,8 +723,32 @@ form for the current artifact-proof scope and may be inherited through a
 `OVER_SPLIT=validation_holdout`. The default target catalog declares the first
 cwu_02v validation-scope artifact proofs as `target_transform_contract_ready`,
 `forecast_baseline_artifact_ready`, `forecast_eval_artifact_ready`,
-`observer_belief_artifact_ready`, and `allocation_artifact_ready`. Policy gates
-are still disabled:
+`observer_belief_artifact_ready`, and `allocation_artifact_ready`.
+The synthetic continuous-chart benchmark has one narrow non-dispatch diagnostic
+target, `TARGET_CLASS=synthetic_forecast_oracle_gate`, which must use
+`SUBJECT_FACT_FAMILY=forecast_eval` and
+`PROOF_KIND=synthetic_forecast_oracle_accuracy_bound`. It first requires the
+ordinary clean forecast-eval artifact proof, then checks feature-aware
+thresholds against fields emitted in the certified forecast-eval fact:
+`MAX_ORACLE_PRICE_EV_MAE`, `MAX_ORACLE_PRICE_EV_RMSE`,
+`MAX_ORACLE_ACTIVITY_EV_MAE`, `MAX_ORACLE_ACTIVITY_EV_RMSE`, and
+`MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY`. The legacy aggregate oracle fields
+remain parseable for compatibility, but the benchmark decision is centered on
+price/activity magnitude and close-return sign rather than one aggregate
+directional score. Missing feature-aware oracle metrics are inconclusive
+`missing_report`, not success.
+The same benchmark also has `TARGET_CLASS=synthetic_edge_return_projection_oracle_gate`
+for the projected tradable edge question. It must use
+`SUBJECT_FACT_FAMILY=forecast_eval` and
+`PROOF_KIND=synthetic_edge_return_projection_oracle_bound`, then checks
+base-minus-quote close-return projection metrics with
+`MAX_ORACLE_EDGE_RETURN_EV_MAE`, `MAX_ORACLE_EDGE_RETURN_EV_RMSE`,
+`MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY`,
+`MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY`,
+`MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT`, and
+`MIN_ORACLE_EDGE_RETURN_CORRELATION`. Missing edge-projection fields are
+`missing_report`, not success.
+Policy gates are still disabled:
 `LATTICE_POLICY_GATE` currently accepts only `forecast_quality_acceptance` and
 `allocation_acceptance` reservations with `ENABLED=false`, and each reservation
 must bind to the matching artifact-readiness proof target. Reserved gates must
@@ -832,6 +910,10 @@ component's training `SEED` (`vicreg_training.seed` or
 An explicit train-wave `SOURCE_ORDER=sequential` is allowed for
 reproducible/debug runs, but Runtime reports it as a warning because stochastic
 graph-anchor train loading is disabled.
+`hero.runtime.probes.dsl` does not change graph-anchor selection, model
+mutation, component identity, or Lattice proof state. It only defines optional
+Runtime visibility probes, and any enabled probe requires a debug wave
+before Runtime attaches it.
 Targets may now require exposure coverage over explicit anchor-index ranges or
 forbid checkpoint exposure overlap with protected ranges. Those checks are
 evaluated from the checkpoint exposure closure and fail as `exposure_failed`

@@ -14,6 +14,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "kikijyeba/environment/policy/allocation.h"
@@ -193,6 +195,7 @@ struct fixture_paths_t {
   std::filesystem::path protocol_dsl{};
   std::filesystem::path cursor_dsl{};
   std::filesystem::path wave_dsl{};
+  std::filesystem::path probes_dsl{};
   std::filesystem::path vicreg_jkimyei{};
   std::filesystem::path mtf_jkimyei{};
   std::filesystem::path channel_mdn_jkimyei{};
@@ -266,7 +269,8 @@ fixture_paths_t make_config_fixture(
     const std::string &target = "wikimyei.inference.expected_value.mdn",
     const std::string &wave_mode = "run | debug",
     const std::string &protocol_id_override = {},
-    const std::string &wave_protocol_override = {}) {
+    const std::string &wave_protocol_override = {},
+    bool job_events_enabled = false, bool include_probe_catalog = true) {
   fixture_paths_t out{};
   out.dir = make_tmp_dir(label);
   const auto btc_csv = out.dir / "BTCUSDT.csv";
@@ -283,7 +287,11 @@ fixture_paths_t make_config_fixture(
   const auto graph_dsl = out.dir / "kikijyeba.topology.graph.dsl";
   out.protocol_dsl = out.dir / "kikijyeba.protocol.dsl";
   out.cursor_dsl = out.dir / "ujcamei.source.cursor.dsl";
+  const auto source_splits_dsl = out.dir / "ujcamei.source.splits.dsl";
+  const auto lattice_split_policy_dsl =
+      out.dir / "hero.lattice.split_policy.dsl";
   out.wave_dsl = out.dir / "hero.runtime.wave.dsl";
+  out.probes_dsl = out.dir / "hero.runtime.probes.dsl";
   const auto vicreg_dsl = out.dir / "wikimyei.representation.vicreg.dsl";
   const auto vicreg_net = out.dir / "wikimyei.representation.vicreg.net";
   const auto mtf_dsl =
@@ -420,12 +428,47 @@ fixture_paths_t make_config_fixture(
                  ";\n"
                  "  SOURCE_CURSOR_ID = runtime_test_cursor;\n"
                  "};\n");
+  write_text(
+      out.probes_dsl,
+      std::string("RUNTIME_PROBE {\n"
+                  "  PROBE_ID = job_events;\n"
+                  "  PROBE_KIND = job_events;\n"
+                  "  ENABLED = ") +
+          (job_events_enabled ? "true" : "false") +
+          ";\n"
+          "  RECORD_SCHEMA = kikijyeba.runtime.job_events.probe_record.v1;\n"
+          "  STREAM_LEAF = runtime.job_events.probe;\n"
+          "  EMIT_LIFECYCLE = true;\n"
+          "  EMIT_SCALAR_METRICS = true;\n"
+          "  EMIT_REPORT_METRICS = true;\n"
+          "  EMIT_ARTIFACTS = true;\n"
+          "  EMIT_WARNINGS = true;\n"
+          "};\n");
   write_text(out.cursor_dsl,
              std::string("UJCAMEI_SOURCE_CURSOR {\n"
                          "  CURSOR_ID = runtime_test_cursor;\n"
                          "  SOURCE_CURSOR_KIND = graph_anchor;\n"
                          "  SOURCE_CURSOR_SCOPE = wave_batch;\n") +
                  wave_range + "};\n");
+  write_text(source_splits_dsl, "UJCAMEI_SOURCE_SPLIT_CATALOG {\n"
+                                "  CATALOG_ID = graph_anchor_splits_v1;\n"
+                                "  CURSOR_DOMAIN = ujcamei.graph_anchor;\n"
+                                "};\n"
+                                "UJCAMEI_SOURCE_SPLIT {\n"
+                                "  SPLIT_ID = train_core;\n"
+                                "  ROLE = train;\n"
+                                "  SELECTOR = fraction_range;\n"
+                                "  BEGIN_FRACTION = 0/1;\n"
+                                "  END_FRACTION = 1/1;\n"
+                                "  MIN_COUNT = 1;\n"
+                                "};\n");
+  write_text(lattice_split_policy_dsl,
+             "LATTICE_SPLIT_POLICY {\n"
+             "  POLICY_ID = graph_anchor_holdout_v1;\n"
+             "  SOURCE_SPLIT_CATALOG_ID = graph_anchor_splits_v1;\n"
+             "  PURGE_LEFT_CONTEXT = auto_from_Hx;\n"
+             "  PURGE_RIGHT_FUTURE = auto_from_Hf;\n"
+             "};\n");
 
   write_text(out.protocol_dsl,
              "PROTOCOL {\n"
@@ -503,43 +546,11 @@ fixture_paths_t make_config_fixture(
                       "  NUM_PREDICTOR_LAYERS = 1;\n"
                       "  NUM_DECODER_LAYERS = 1;\n"
                       "  NUM_HEADS = 2;\n"
-                      "  DROPOUT = 0.0;\n"
                       "  TIME_SCALES = 2;\n"
                       "  SCALE_STRIDES = 1;\n"
                       "  USE_FREQUENCY_TOKENS = true;\n"
                       "  FREQUENCY_NUM_BINS = 4;\n"
                       "  FREQUENCY_LOG_MAGNITUDE = true;\n"
-                      "  MASK_RATIO_TIME = 0.50;\n"
-                      "  MASK_RATIO_FREQUENCY = 0.30;\n"
-                      "  MASK_RATIO_CHANNEL = 0.0;\n"
-                      "  MIN_CONTEXT_RATIO = 0.25;\n"
-                      "  LAMBDA_JEPA = 1.0;\n"
-                      "  LAMBDA_MAE = 0.25;\n"
-                      "  LAMBDA_TF_ALIGN = 0.10;\n"
-                      "  LAMBDA_VICREG = 0.05;\n"
-                      "  LAMBDA_GLOBAL_VICREG = 1.0;\n"
-                      "  LAMBDA_CHANNEL_VICREG = 1.0;\n"
-                      "  VICREG_SIM_WEIGHT = 25.0;\n"
-                      "  VICREG_VAR_WEIGHT = 25.0;\n"
-                      "  VICREG_COV_WEIGHT = 1.0;\n"
-                      "  VICREG_VARIANCE_FLOOR = 1.0;\n"
-                      "  VICREG_VARIANCE_EPSILON = 0.0001;\n"
-                      "  TARGET_EMA_TAU = 0.996;\n"
-                      "  USE_TARGET_EMA = true;\n"
-                      "  STOP_GRADIENT_TARGET = true;\n"
-                      "  RETURN_DIAGNOSTICS = true;\n"
-                      "  USE_MAE_DECODER = true;\n"
-                      "  USE_JEPA_LOSS = true;\n"
-                      "  USE_TF_ALIGN_LOSS = true;\n"
-                      "  USE_VICREG_LOSS = true;\n"
-                      "  USE_GLOBAL_VICREG = true;\n"
-                      "  USE_CHANNEL_VICREG = false;\n"
-                      "  USE_RAW_RECONSTRUCTION_TARGETS = true;\n"
-                      "  STRICT_FINITE_LOSS = true;\n"
-                      "  COUPLE_TIME_FREQUENCY_MASKS = true;\n"
-                      "  MASK_SAME_WINDOW_ACROSS_DOMAINS = true;\n"
-                      "  MASK_SAME_CHANNEL_BLOCK = false;\n"
-                      "  MAX_CONTEXT_TARGET_TIME_OVERLAP = 0.50;\n"
                       "};\n");
   write_text(channel_mdn_dsl,
              "MDN {\n"
@@ -611,6 +622,57 @@ fixture_paths_t make_config_fixture(
              "  VALID_FROM_POLICY = valid_from_anchor_gte_fit_end;\n"
              "  ARTIFACT_PROVENANCE_POLICY = "
              "transitive_influence_required;\n"
+             "  AUGMENTATION_PROFILE = runtime_fixture_light_v1;\n"
+             "  DROPOUT = 0.0;\n"
+             "  MASK_RATIO_TIME = 0.10;\n"
+             "  MASK_RATIO_FREQUENCY = 0.05;\n"
+             "  MASK_RATIO_CHANNEL = 0.0;\n"
+             "  MIN_CONTEXT_RATIO = 0.75;\n"
+             "  LAMBDA_JEPA = 1.0;\n"
+             "  LAMBDA_MAE = 0.25;\n"
+             "  LAMBDA_TF_ALIGN = 0.10;\n"
+             "  LAMBDA_VICREG = 0.05;\n"
+             "  LAMBDA_GLOBAL_VICREG = 0.25;\n"
+             "  LAMBDA_CHANNEL_VICREG = 1.0;\n"
+             "  VICREG_SIM_WEIGHT = 25.0;\n"
+             "  VICREG_VAR_WEIGHT = 25.0;\n"
+             "  VICREG_COV_WEIGHT = 1.0;\n"
+             "  VICREG_VARIANCE_FLOOR = 1.0;\n"
+             "  VICREG_VARIANCE_EPSILON = 0.0001;\n"
+             "  TARGET_EMA_TAU = 0.990;\n"
+             "  USE_TARGET_EMA = true;\n"
+             "  STOP_GRADIENT_TARGET = true;\n"
+             "  RETURN_DIAGNOSTICS = true;\n"
+             "  USE_MAE_DECODER = true;\n"
+             "  USE_JEPA_LOSS = true;\n"
+             "  USE_TF_ALIGN_LOSS = true;\n"
+             "  USE_VICREG_LOSS = true;\n"
+             "  USE_GLOBAL_VICREG = true;\n"
+             "  USE_CHANNEL_VICREG = false;\n"
+             "  USE_RAW_RECONSTRUCTION_TARGETS = true;\n"
+             "  STRICT_FINITE_LOSS = true;\n"
+             "  COUPLE_TIME_FREQUENCY_MASKS = false;\n"
+             "  MASK_SAME_WINDOW_ACROSS_DOMAINS = false;\n"
+             "  MASK_SAME_CHANNEL_BLOCK = false;\n"
+             "  MAX_CONTEXT_TARGET_TIME_OVERLAP = 0.50;\n"
+             "  GAUSSIAN_JITTER_STD = 0.0;\n"
+             "  FEATURE_DROPOUT_PROB = 0.0;\n"
+             "  HISTORY_DROPOUT_PROB = 0.0;\n"
+             "  TIME_CROP_JITTER_MAX = 0;\n"
+             "  TIME_DILATION_MIN = 1.0;\n"
+             "  TIME_DILATION_MAX = 1.0;\n"
+             "  TIME_WARP_MAX = 0.0;\n"
+             "  AMPLITUDE_SCALE_MIN = 1.0;\n"
+             "  AMPLITUDE_SCALE_MAX = 1.0;\n"
+             "  AMPLITUDE_SHIFT_STD = 0.0;\n"
+             "  FREQUENCY_MASK_RATIO = 0.0;\n"
+             "  FREQUENCY_JITTER_STD = 0.0;\n"
+             "  PHASE_JITTER_MAX = 0.0;\n"
+             "  CHANNEL_DROPOUT_PROB = 0.0;\n"
+             "  CROSS_CHANNEL_DROPOUT_PROB = 0.0;\n"
+             "  NODE_DROPOUT_PROB = 0.0;\n"
+             "  EDGE_DROPOUT_PROB = 0.0;\n"
+             "  MAGNITUDE_NORMALIZATION_NOISE_STD = 0.0;\n"
              "};\n");
   write_text(channel_mdn_jkimyei,
              "TRAINING {\n"
@@ -628,6 +690,17 @@ fixture_paths_t make_config_fixture(
              "  REPORT_EVERY = 1;\n"
              "  VALIDATION_EVERY = 0;\n"
              "  SEED = 31;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_LOSS_WEIGHT = 0.0;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_DIRECTION_WEIGHT = 0.0;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_RANK_WEIGHT = 0.0;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_HUBER_BETA = 0.01;\n"
+             "  MDN_EDGE_RETURN_AUXILIARY_LOGIT_SCALE = 50.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED = false;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_LOSS_WEIGHT = 0.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_DIRECTION_WEIGHT = 0.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 0.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_HUBER_BETA = 0.01;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_LOGIT_SCALE = 50.0;\n"
              "  FREEZE_REPRESENTATION = true;\n"
              "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
              "  INPUT_MDN_CHECKPOINT = ;\n"
@@ -639,6 +712,14 @@ fixture_paths_t make_config_fixture(
              "  ARTIFACT_PROVENANCE_POLICY = "
              "transitive_influence_required;\n"
              "};\n");
+
+  const std::string probe_config_entries =
+      include_probe_catalog ? std::string("runtime_probes_dsl_bnf_path = "
+                                          "/cuwacunu/src/config/grammar/"
+                                          "hero.runtime.probes.dsl.bnf\n"
+                                          "runtime_probes_dsl_path = ") +
+                                  out.probes_dsl.string() + "\n"
+                            : std::string{};
 
   write_text(
       out.config,
@@ -660,6 +741,11 @@ fixture_paths_t make_config_fixture(
           "ujcamei_source_cursor_dsl_path = " +
           out.cursor_dsl.string() +
           "\n"
+          "ujcamei_source_splits_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/ujcamei.source.splits.dsl.bnf\n"
+          "ujcamei_source_splits_dsl_path = " +
+          source_splits_dsl.string() +
+          "\n"
           "\n"
           "[KIKIJYEBA]\n"
           "kikijyeba_protocol_dsl_bnf_path = "
@@ -676,7 +762,11 @@ fixture_paths_t make_config_fixture(
           "runtime_wave_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/hero.runtime.wave.dsl.bnf\n"
           "runtime_wave_dsl_path = " +
-          out.wave_dsl.string() +
+          out.wave_dsl.string() + "\n" + probe_config_entries +
+          "lattice_split_policy_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/hero.lattice.split_policy.dsl.bnf\n"
+          "lattice_split_policy_dsl_path = " +
+          lattice_split_policy_dsl.string() +
           "\n\n"
           "[WIKIMYEI]\n"
           "wikimyei_expression_nodelift_srl_dsl_bnf_path = "
@@ -758,6 +848,19 @@ void replace_once(std::string &text, const std::string &needle,
   const auto pos = text.find(needle);
   check(pos != std::string::npos, "expected text replacement needle missing");
   text.replace(pos, needle.size(), replacement);
+}
+
+std::size_t count_occurrences(std::string_view text, std::string_view needle) {
+  if (needle.empty()) {
+    return 0;
+  }
+  std::size_t count = 0;
+  std::size_t pos = 0;
+  while ((pos = text.find(needle, pos)) != std::string_view::npos) {
+    ++count;
+    pos += needle.size();
+  }
+  return count;
 }
 
 void configure_vicreg_train_smoke(const fixture_paths_t &fixture) {
@@ -1269,6 +1372,309 @@ void test_inference_dry_run_writes_manifest_and_state() {
             dry_run_exposure_text.find("completed_anchor_end=0") !=
                 std::string::npos,
         "dry-run exposure fact has no completed anchor range");
+}
+
+void test_probe_catalog_sidecar_writes_visibility_records() {
+  const auto fixture = make_config_fixture(
+      "probe_sidecar", "  SOURCE_RANGE = all;\n",
+      "wikimyei.inference.expected_value.mdn", "run | debug", {}, {}, true);
+  const auto job_dir = fixture.dir / "job";
+  runtime::job_runner_options_t options{};
+  options.job_kind = runtime::runtime_job_kind_t::channel_inference_mdn;
+  options.dry_run = true;
+  options.batch_size = 2;
+  options.job_dir = job_dir;
+
+  const auto result =
+      runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
+  const auto stream_path =
+      job_dir / runtime::job_events_probe::k_job_events_probe_stream_leaf;
+  check(result.manifest.probe_sidecar_enabled,
+        "probe catalog enables sidecar in manifest");
+  check(result.state.probe_sidecar_enabled,
+        "probe catalog enables sidecar in state");
+  check(result.state.probe_records_written,
+        "probe sidecar writes at least one record");
+  check(result.state.probe_record_error.empty(),
+        "probe sidecar reports no write error");
+  check(result.state.probe_record_count >= 8,
+        "probe sidecar writes lifecycle, metric, and artifact records");
+  check(result.state.probe_stream_path == stream_path.string(),
+        "state records probe stream path");
+  check(std::filesystem::exists(stream_path), "probe stream file exists");
+
+  const auto manifest_text = read_text(result.manifest_path);
+  check(manifest_text.find("probe_sidecar_enabled=true") != std::string::npos,
+        "manifest text records probe sidecar enabled");
+  check(manifest_text.find("probe_record_schema="
+                           "kikijyeba.runtime.job_events.probe_record.v1") !=
+            std::string::npos,
+        "manifest text records probe record schema");
+
+  const auto state_text = read_text(result.state_path);
+  check(state_text.find("probe_sidecar_enabled=true") != std::string::npos,
+        "state text records probe sidecar enabled");
+  check(state_text.find("probe_records_written=true") != std::string::npos,
+        "state text records probe records written");
+  check(state_text.find("probe_record_count=") != std::string::npos,
+        "state text records probe record count");
+
+  const auto stream_text = read_text(stream_path);
+  check(stream_text.find("record_schema="
+                         "kikijyeba.runtime.job_events.probe_record.v1") !=
+            std::string::npos,
+        "probe stream records schema");
+  check(stream_text.find("authority=visibility_only") != std::string::npos,
+        "probe records are visibility-only");
+  check(stream_text.find("proof_authority=false") != std::string::npos,
+        "probe records are not proof authority");
+  check(stream_text.find("dispatch_authority=false") != std::string::npos,
+        "probe records are not dispatch authority");
+  check(stream_text.find("lattice_fact=false") != std::string::npos,
+        "probe records are not lattice facts");
+  check(stream_text.find("event_kind=job.lifecycle.started") !=
+            std::string::npos,
+        "probe stream records job start");
+  check(stream_text.find("event_kind=job.progress.phase") != std::string::npos,
+        "probe stream records progress phase events");
+  check(stream_text.find("phase=delegate_start") != std::string::npos,
+        "probe stream records delegate start progress");
+  check(stream_text.find("phase=delegate_complete") != std::string::npos,
+        "probe stream records delegate complete progress");
+  check(stream_text.find("event_kind=job.lifecycle.dry_run") !=
+            std::string::npos,
+        "probe stream records dry-run completion");
+  check(stream_text.find("event_kind=job.metric.scalar") != std::string::npos,
+        "probe stream records scalar metrics");
+  check(stream_text.find("event_kind=forecast.training.metric") !=
+            std::string::npos,
+        "probe stream records classified forecast training diagnostics");
+  check(stream_text.find("phase=learning_diagnostics") != std::string::npos,
+        "classified learning diagnostics use a stable probe phase");
+  check(stream_text.find("metric_source=learning_diagnostics") !=
+            std::string::npos,
+        "classified learning diagnostics use a stable metric source");
+  check(stream_text.find("series_id=forecast.training.metric."
+                         "steps_completed") != std::string::npos,
+        "classified learning diagnostics carry plot-ready series ids");
+  check(stream_text.find("component_id=") != std::string::npos,
+        "classified learning diagnostics carry component identity");
+  check(stream_text.find("metric_name=steps_completed") != std::string::npos,
+        "probe stream records step metrics");
+  check(stream_text.find("series_id=job_state.steps_completed") !=
+            std::string::npos,
+        "probe metric events carry stable series ids");
+  check(stream_text.find("step=0") != std::string::npos,
+        "probe metric events carry chart step axis");
+  check(stream_text.find("anchor_begin=0") != std::string::npos &&
+            stream_text.find("anchor_end=4") != std::string::npos,
+        "probe metric events carry accepted-anchor chart axes");
+  check(stream_text.find("event_kind=job.artifact.published") !=
+            std::string::npos,
+        "probe stream records artifact publication");
+  check(stream_text.find("artifact_kind=runtime_result_fact") !=
+            std::string::npos,
+        "probe stream records Runtime fact publication");
+  check(stream_text.find("artifact_kind=lattice_exposure_fact") !=
+            std::string::npos,
+        "probe stream records Lattice sidecar publication");
+  check(stream_text.find("protocol_contract_fingerprint=" +
+                         result.manifest.protocol_contract_fingerprint) !=
+            std::string::npos,
+        "probe records bind protocol contract fingerprint");
+  check(stream_text.find("dock_binding_fingerprint=" +
+                         result.manifest.dock_binding_fingerprint) !=
+            std::string::npos,
+        "probe records bind dock fingerprint");
+}
+
+void test_probe_catalog_sidecar_writes_learning_timeseries_records() {
+  const auto fixture = make_config_fixture(
+      "probe_sidecar_learning_timeseries", "  SOURCE_RANGE = all;\n",
+      "wikimyei.inference.expected_value.mdn", "train | debug", {}, {}, true);
+  auto mdn_training = read_text(fixture.channel_mdn_jkimyei);
+  replace_once(mdn_training, "  MAX_STEPS = 0;\n", "  MAX_STEPS = 2;\n");
+  write_text(fixture.channel_mdn_jkimyei, mdn_training);
+
+  const auto job_dir = fixture.dir / "job";
+  runtime::job_runner_options_t options{};
+  options.job_kind = runtime::runtime_job_kind_t::channel_inference_mdn;
+  options.dry_run = false;
+  options.batch_size = 2;
+  options.job_dir = job_dir;
+
+  const auto result =
+      runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
+  const auto stream_path =
+      job_dir / runtime::job_events_probe::k_job_events_probe_stream_leaf;
+  check(result.state.status == "completed",
+        "learning time-series probe fixture completes");
+  check(std::filesystem::exists(stream_path),
+        "learning time-series probe stream file exists");
+
+  const auto stream_text = read_text(stream_path);
+  check(count_occurrences(stream_text,
+                          "series_id=forecast.training.metric.last_loss") >= 2,
+        "learning diagnostics record repeated forecast loss samples");
+  check(stream_text.find("step=1") != std::string::npos &&
+            stream_text.find("step=2") != std::string::npos,
+        "learning diagnostics record evolving chart steps");
+  check(stream_text.find("event_kind=forecast.oracle.metric") !=
+            std::string::npos,
+        "learning diagnostics include forecast oracle metrics when available");
+  check(stream_text.find("metric_source=learning_diagnostics") !=
+            std::string::npos,
+        "learning time-series records keep diagnostics metric source");
+  check(stream_text.find("anchor_begin=0") != std::string::npos &&
+            stream_text.find("anchor_end=4") != std::string::npos,
+        "learning time-series records carry resolved accepted-anchor axes");
+}
+
+void test_learning_probe_fraction_range_uses_resolved_anchor_axes() {
+  runtime::job_state_t state{};
+  state.resolved_anchor_index_begin = 0;
+  state.resolved_anchor_index_end = 730;
+
+  const std::unordered_map<std::string, std::string> report{
+      {"source_anchor_count", "1170"},
+      {"source_range_start", "0"},
+      {"source_range_end", "1170"},
+      {"completed_anchor_start", "0"},
+      {"completed_anchor_end", "1170"},
+      {"requested_anchor_index_begin", "-1"},
+      {"requested_anchor_index_end", "-1"},
+  };
+
+  check(runtime::job_events_probe::learning_anchor_begin(state, report) == "0",
+        "fraction-range learning probes keep resolved anchor begin");
+  check(runtime::job_events_probe::learning_anchor_end(state, report) == "730",
+        "fraction-range learning probes keep resolved anchor end");
+
+  state.resolved_anchor_index_begin = 760;
+  state.resolved_anchor_index_end = 1088;
+  check(runtime::job_events_probe::learning_anchor_begin(state, report) ==
+                "760" &&
+            runtime::job_events_probe::learning_anchor_end(state, report) ==
+                "1088",
+        "fraction-range eval probes do not fall back to full accepted range");
+}
+
+void test_missing_probe_config_does_not_attach_sidecar() {
+  const auto fixture = make_config_fixture(
+      "probe_config_missing", "  SOURCE_RANGE = all;\n",
+      "wikimyei.inference.expected_value.mdn", "run", {}, {}, true, false);
+  const auto job_dir = fixture.dir / "job";
+  runtime::job_runner_options_t options{};
+  options.job_kind = runtime::runtime_job_kind_t::channel_inference_mdn;
+  options.dry_run = true;
+  options.batch_size = 2;
+  options.job_dir = job_dir;
+
+  const auto result =
+      runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
+  const auto stream_path =
+      job_dir / runtime::job_events_probe::k_job_events_probe_stream_leaf;
+  check(!result.manifest.probe_sidecar_enabled,
+        "missing probe catalog path does not enable sidecar");
+  check(!result.state.probe_sidecar_enabled,
+        "missing probe catalog path leaves state sidecar disabled");
+  check(!result.state.probe_records_written,
+        "missing probe catalog path writes no probe records");
+  check(!std::filesystem::exists(stream_path),
+        "missing probe catalog path creates no probe stream");
+}
+
+void test_disabled_probe_catalog_writes_no_sidecar() {
+  const auto fixture = make_config_fixture(
+      "probe_catalog_disabled", "  SOURCE_RANGE = all;\n",
+      "wikimyei.inference.expected_value.mdn", "run | debug", {}, {}, false);
+  const auto job_dir = fixture.dir / "job";
+  runtime::job_runner_options_t options{};
+  options.job_kind = runtime::runtime_job_kind_t::channel_inference_mdn;
+  options.dry_run = true;
+  options.batch_size = 2;
+  options.job_dir = job_dir;
+
+  const auto result =
+      runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
+  const auto stream_path =
+      job_dir / runtime::job_events_probe::k_job_events_probe_stream_leaf;
+  check(!result.manifest.probe_sidecar_enabled,
+        "disabled probe catalog leaves manifest sidecar disabled");
+  check(!result.state.probe_sidecar_enabled,
+        "disabled probe catalog leaves state sidecar disabled");
+  check(!std::filesystem::exists(stream_path),
+        "disabled probe catalog creates no probe stream");
+}
+
+void test_probe_sidecar_requires_debug_wave() {
+  const auto fixture = make_config_fixture(
+      "probe_sidecar_requires_debug", "  SOURCE_RANGE = all;\n",
+      "wikimyei.inference.expected_value.mdn", "run", {}, {}, true);
+  runtime::job_runner_options_t options{};
+  options.job_kind = runtime::runtime_job_kind_t::channel_inference_mdn;
+  options.dry_run = true;
+  options.batch_size = 2;
+  options.job_dir = fixture.dir / "job";
+
+  bool threw = false;
+  try {
+    (void)runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
+  } catch (const std::exception &ex) {
+    threw = std::string(ex.what()).find(
+                "Runtime probes require active WAVE_SETTINGS.MODE to "
+                "include debug") != std::string::npos;
+  }
+  check(threw, "enabled probe catalog requires debug wave mode");
+  check(!std::filesystem::exists(options.job_dir),
+        "debug-gate failure does not create job directory");
+}
+
+void expect_probe_catalog_rejection(const std::string &dsl,
+                                    const std::string &needle,
+                                    const std::string &message) {
+  bool threw = false;
+  try {
+    (void)runtime::probe_settings::decode_runtime_probe_catalog_from_dsl(dsl);
+  } catch (const std::exception &ex) {
+    threw = std::string(ex.what()).find(needle) != std::string::npos;
+  }
+  check(threw, message);
+}
+
+void test_probe_catalog_validation_rejects_bad_inputs() {
+  expect_probe_catalog_rejection(
+      "RUNTIME_PROBE {\n"
+      "  PROBE_ID = job_events;\n"
+      "  PROBE_KIND = job_events;\n"
+      "  ENABLED = maybe;\n"
+      "};\n",
+      "ENABLED must be true or false",
+      "probe catalog rejects invalid boolean values");
+
+  expect_probe_catalog_rejection(
+      "RUNTIME_PROBE {\n"
+      "  PROBE_ID = job_events;\n"
+      "  PROBE_KIND = job_events;\n"
+      "  ENABLED = true;\n"
+      "  STREAM_LEAF = ..;\n"
+      "};\n",
+      "STREAM_LEAF must not contain parent traversal",
+      "probe catalog rejects parent traversal stream leaves");
+
+  expect_probe_catalog_rejection(
+      "RUNTIME_PROBE {\n"
+      "  PROBE_ID = job_events_a;\n"
+      "  PROBE_KIND = job_events;\n"
+      "  ENABLED = true;\n"
+      "};\n"
+      "RUNTIME_PROBE {\n"
+      "  PROBE_ID = job_events_b;\n"
+      "  PROBE_KIND = job_events;\n"
+      "  ENABLED = true;\n"
+      "};\n",
+      "multiple enabled job_events probes",
+      "probe catalog rejects duplicate enabled sidecars");
 }
 
 void test_representation_dry_run_anchor_range() {
@@ -3599,6 +4005,13 @@ void test_explicit_job_dir_refuses_overwrite() {
 int main() {
   try {
     test_inference_dry_run_writes_manifest_and_state();
+    test_probe_catalog_sidecar_writes_visibility_records();
+    test_probe_catalog_sidecar_writes_learning_timeseries_records();
+    test_learning_probe_fraction_range_uses_resolved_anchor_axes();
+    test_missing_probe_config_does_not_attach_sidecar();
+    test_disabled_probe_catalog_writes_no_sidecar();
+    test_probe_sidecar_requires_debug_wave();
+    test_probe_catalog_validation_rejects_bad_inputs();
     test_representation_dry_run_anchor_range();
     test_representation_dry_run_source_key_range();
     test_source_range_launch_overlay();

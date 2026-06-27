@@ -1,0 +1,93 @@
+# synthetic_feature_aware_forecast_oracle_gate.v1
+
+Status: complete
+
+Target:
+
+```text
+synthetic_forecast_oracle_accuracy_ready
+TARGET_CLASS = synthetic_forecast_oracle_gate
+SUBJECT_FACT_FAMILY = forecast_eval
+PROOF_KIND = synthetic_forecast_oracle_accuracy_bound
+```
+
+Purpose:
+
+```text
+Replace the old aggregate synthetic forecast oracle decision with a
+feature-aware gate:
+
+  price magnitude error: open/high/low/close expected-value features
+  activity magnitude error: volume/count/quote-volume/taker-volume/taker-quote
+  close-return direction: close expected-value sign only
+```
+
+Thresholds:
+
+```text
+MAX_ORACLE_PRICE_EV_MAE = 0.02
+MAX_ORACLE_PRICE_EV_RMSE = 0.025
+MAX_ORACLE_ACTIVITY_EV_MAE = 0.07
+MAX_ORACLE_ACTIVITY_EV_RMSE = 0.10
+MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY = 0.95
+```
+
+Compatibility fields retained in the catalog:
+
+```text
+MAX_ORACLE_EV_MAE = 0.05
+MAX_ORACLE_EV_RMSE = 0.075
+MIN_ORACLE_DIRECTIONAL_ACCURACY = 0.95
+```
+
+The compatibility fields remain parseable, but the benchmark decision is now
+centered on price/activity magnitude and close-return sign. This prevents
+trivial `log1p` activity signs from hiding weak price-phase recovery inside one
+aggregate directional score.
+
+Live Lattice result:
+
+```text
+status = metric_failed
+satisfied = false
+deficit = metric:synthetic_forecast_oracle
+message = synthetic feature-aware forecast oracle close_directional_accuracy
+          below MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY: 0.500254 < 0.95
+proof_certificate_check_passed = true
+```
+
+Interpretation:
+
+```text
+The forecast-eval artifact is still provenance-clean and no-lookahead
+admissible. The failure is now specifically the close-return direction metric.
+This keeps the benchmark focused: the next investigation should diagnose why
+the certified representation/MDN forecast stack is only coin-flip level on the
+deterministic close direction before interpreting PPO policy performance.
+```
+
+Validation:
+
+```text
+clang-format:
+  src/include/hero/lattice_hero/lattice/target/lattice_target.h
+  src/include/hero/lattice_hero/lattice/target/lattice_target_evaluator.h
+  src/impl/hero/lattice_hero/hero_lattice_tools.cpp
+  src/tests/bench/kikijyeba/lattice_target/test_kikijyeba_lattice_target.cpp
+
+make -C src/tests/bench/kikijyeba/lattice_target -j12
+.build/tests/test_kikijyeba_lattice_target
+make -C src/main/hero build-lattice-hero -j12
+
+Live evaluation:
+  .build/hero/hero_lattice.mcp --global-config
+  /cuwacunu/src/config/benchmarks/synthetic_continuous_graph_v1/synthetic_benchmark.config
+  --tool hero.lattice.evaluate.deficit
+  --args-json '{"target_id":"synthetic_forecast_oracle_accuracy_ready"}'
+
+Numeric-dimension self-check:
+  target_numeric_dimension_summary.summary_self_check_passed = true
+  target_numeric_dimension_summary.dimension_count = 55
+  target_numeric_dimension_summary.maximum_direction_count = 6
+  target_numeric_dimension_summary.summary_issue_count = 0
+```

@@ -60,6 +60,20 @@ type = string
 default = cwu_02v_validation_holdout_eval_mdn
 nuance = Active WAVE_SETTINGS.WAVE_ID. Canonical multi-wave configs should set this explicitly; WAVE_SELECTION.ACTIVE_WAVE_ID is retired, and single-block fixtures may omit runtime_wave_id.
 
+[FIELD runtime_probes_dsl_bnf_path]
+key = runtime_probes_dsl_bnf_path
+scope = [HERO] global config optional override
+type = path
+default = grammar/hero.runtime.probes.dsl.bnf
+nuance = Grammar for the Runtime probe catalog.
+
+[FIELD runtime_probes_dsl_path]
+key = runtime_probes_dsl_path
+scope = [HERO] global config
+type = path
+default = hero.runtime.probes.dsl
+nuance = Runtime probe catalog. Enabled probes are visibility attachments and still require the selected WAVE_SETTINGS.MODE to include debug before Runtime attaches them.
+
 [FIELD allowed_job_roots]
 key = allowed_job_roots
 scope = Runtime Hero policy
@@ -153,6 +167,7 @@ hero.runtime.inspect.wave nuance = Policy-training WAVE_SETTINGS bind TRAIN_SPLI
 hero.runtime.job nuance = Runtime manifests split job_stable_id from immutable job_attempt_id. The stable id names the launch intent; each default execution writes a fresh attempt path so reports/checkpoints are not silently overwritten. Explicit job_dir launches fail closed when prior job artifacts are already present.
 hero.runtime.inspect.wave nuance = Cursor SOURCE_RANGE accepts all, anchor_index, or source_key; source_key uses SOURCE_KEY_BEGIN/END and is resolved by runtime to accepted graph-anchor indices before execution. SOURCE_SPLIT is preferred for durable train/validation/test windows whose semantic selectors live in the Ujcamei source split catalog.
 hero.runtime.inspect.wave nuance = SOURCE_ORDER defaults by wave action: train defaults to random_per_epoch, run defaults to sequential. random_per_epoch uses Torch RandomSampler over graph anchors without changing graph-anchor source identity and is seeded from the target component training SEED; explicit train sequential emits a source_order warning.
+hero.runtime.probes nuance = Probe definitions are active only when the active config explicitly declares runtime_probes_dsl_path. The job_events writes runtime.job_events.probe as a job-local visibility stream for lifecycle, delegate progress phases, scalar/report metrics, and artifact-publication milestones only when enabled by that probe catalog and authorized by a debug wave. Configs that omit runtime_probes_dsl_path do not inherit the canonical probe catalog. It is not a Lattice fact, proof authority, dispatch authority, or replacement for reports, checkpoints, Runtime terminal facts, Marshal handoffs, or Lattice proofs.
 hero.runtime.run mode=dry_run [runtime_handoff_path=...] [runtime_handoff_digest=...] = guarded cuwacunu_exec --dry-run of the active Runtime wave. Wave locators, launch overlays, checkpoint inputs, and Marshal lineage are derived from the Runtime handoff artifact; for active policy component waves without a contract, Runtime synthesizes the graph_node_allocation policy-training packet from the selected wave, split policy, configured policy profile, and completed compatible replay artifacts
 hero.runtime.run mode=execute = guarded cuwacunu_exec invocation or policy component contract execution; non-dry-run requires Runtime policy acceptance through allow_execute and, for training waves, allow_train_execute
 hero.runtime.replay_executor.v1 = internal low-level delegation adapter for completed Runtime jobs. It is not a Runtime tool; operators should prefer hero.environment.rollout, which validates rollout admission and delegates back to Runtime when replay execution is allowed.

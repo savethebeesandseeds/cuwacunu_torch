@@ -1,6 +1,6 @@
 <instruction> ::= "TRAINING" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
 <assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key>         ::= "TRAINING_ID" | "TASK" | "LEARNING_RATE" | "MAX_STEPS" | "BATCH_SIZE" | "GRAD_CLIP_NORM" | "CHECKPOINT_EVERY" | "REPORT_EVERY" | "SEED" ;
+<key>         ::= "TRAINING_ID" | "TASK" | "LEARNING_RATE" | "MAX_STEPS" | "BATCH_SIZE" | "GRAD_CLIP_NORM" | "CHECKPOINT_EVERY" | "REPORT_EVERY" | "SEED" | "MDN_EDGE_RETURN_AUXILIARY_LOSS_WEIGHT" | "MDN_EDGE_RETURN_AUXILIARY_DIRECTION_WEIGHT" | "MDN_EDGE_RETURN_AUXILIARY_RANK_WEIGHT" | "MDN_EDGE_RETURN_AUXILIARY_HUBER_BETA" | "MDN_EDGE_RETURN_AUXILIARY_LOGIT_SCALE" | "MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED" | "MDN_DIRECT_EDGE_RETURN_READOUT_LOSS_WEIGHT" | "MDN_DIRECT_EDGE_RETURN_READOUT_DIRECTION_WEIGHT" | "MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT" | "MDN_DIRECT_EDGE_RETURN_READOUT_HUBER_BETA" | "MDN_DIRECT_EDGE_RETURN_READOUT_LOGIT_SCALE" ;
 <value>       ::= {<value_char>} ;
 <value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "+" | "/" ;
 <line_end>    ::= [<whitespace>] <break_block> ;

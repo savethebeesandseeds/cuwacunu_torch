@@ -1,0 +1,148 @@
+synthetic_edge_return_projection_oracle_gate.v1
+================================================
+
+Status: implemented, fresh evidence evaluated, metric failed.
+
+Purpose
+-------
+
+This benchmark gate asks whether the forecast stack recovers the tradable
+synthetic edge-return signal, not only raw node-feature signs.
+
+The v1 projection is:
+
+```text
+quote node index: 0
+quote node id:    SYNUSD
+base node ids:    SYNALPHA,SYNBETA,SYNGAMMA
+close feature:    target feature index 3
+predicted edge:   expected_close(base) - expected_close(quote)
+realized edge:    realized_close(base) - realized_close(quote)
+```
+
+Implemented Evidence Path
+-------------------------
+
+Fresh channel-MDN train/eval reports now emit:
+
+```text
+edge_return_projection_schema
+edge_return_projection_quote_node_index
+edge_return_projection_quote_node_id
+edge_return_projection_base_node_ids
+edge_return_projection_close_feature_index
+edge_return_projection_valid_count
+edge_return_projection_ev_mae
+edge_return_projection_ev_rmse
+edge_return_projection_signed_error
+edge_return_projection_directional_accuracy
+edge_return_projection_correlation
+edge_return_projection_pairwise_rank_valid_count
+edge_return_projection_pairwise_rank_accuracy
+edge_return_projection_best_asset_valid_count
+edge_return_projection_best_asset_agreement
+edge_return_projection_valid_count_per_edge
+edge_return_projection_directional_accuracy_per_edge
+edge_return_projection_valid_count_per_channel
+edge_return_projection_directional_accuracy_per_channel
+```
+
+Runtime copies these fields into `runtime.result.fact`, and Lattice carries
+them in `lattice.forecast_eval.fact`.
+
+Lattice Target
+--------------
+
+```text
+TARGET_ID = synthetic_edge_return_projection_oracle_ready
+TARGET_CLASS = synthetic_edge_return_projection_oracle_gate
+SUBJECT_FACT_FAMILY = forecast_eval
+PROOF_KIND = synthetic_edge_return_projection_oracle_bound
+UPSTREAM_TARGET_ID = channel_mdn_certified_replay_expansion_eval_ready
+OVER_SPLIT = certified_replay_expansion_eval
+MAX_ORACLE_EDGE_RETURN_EV_MAE = 0.05
+MAX_ORACLE_EDGE_RETURN_EV_RMSE = 0.075
+MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY = 0.95
+MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY = 0.95
+MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT = 0.60
+MIN_ORACLE_EDGE_RETURN_CORRELATION = 0.25
+WAVE_MODE = none
+PLAN_MAX_ATTEMPTS = 0
+```
+
+Current Durable Evidence Result
+-------------------------------
+
+The rebuilt Runtime executor emitted fresh projection evidence, and the rebuilt
+Lattice binary evaluated the new target against that evidence:
+
+```text
+target_id = synthetic_edge_return_projection_oracle_ready
+status = metric_failed
+proof_certificate_check_passed = true
+deficit = metric:synthetic_edge_return_projection_oracle
+certificate_ref = cert_37de59706418
+certificate_digest = 37de597064185a9c
+```
+
+Fresh source evidence:
+
+```text
+job_id = cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000005
+anchor_range = [760,1088)
+lattice_forecast_eval_fact_digest = 5bbbd212b8c78549
+runtime_result_fact_digest = 211edfdfed13acf4
+forecast_eval_target_fact_digest = 8bbf94c81514c45b
+projection_valid_count = 2952
+projection_valid_count_per_edge = 984,984,984
+projection_valid_count_per_channel = 984,984,984
+```
+
+The edge magnitude errors are finite and inside the current loose thresholds:
+
+```text
+edge_return_projection_ev_mae = 0.0219482   <= 0.05
+edge_return_projection_ev_rmse = 0.0277461  <= 0.075
+edge_return_projection_signed_error = -0.0003166
+```
+
+The tradable edge direction/ranking quality is near random and fails the oracle
+thresholds:
+
+```text
+edge_return_projection_directional_accuracy = 0.507453 < 0.95
+edge_return_projection_pairwise_rank_accuracy = 0.491531 < 0.95
+edge_return_projection_best_asset_agreement = 0.295732 < 0.60
+edge_return_projection_correlation = 0.00355936 < 0.25
+edge_return_projection_directional_accuracy_per_edge = 0.465447,0.510163,0.546748
+edge_return_projection_directional_accuracy_per_channel = 0.494919,0.515244,0.512195
+```
+
+Interpretation: the missing-evidence blocker is closed. The current
+representation/MDN stack can emit projection evidence, and Lattice can score it,
+but the projected tradable edge signal is effectively not learned on the
+protected eval range.
+
+Validation Performed
+--------------------
+
+```text
+make -C src/main/hero build-lattice-hero -j12
+make -C src/main/hero build-marshal-hero -j12
+make -C src/main/hero build-runtime-hero -j12
+make -C src/main/exec build-cuwacunu-exec -j12
+temporarily set synthetic_benchmark.config runtime_wave_id=cwu_02v_certified_replay_eval_mdn
+hero.runtime.run mode=dry_run selected cwu_02v_certified_replay_eval_mdn
+hero.runtime.run mode=execute with checkpoint handoff produced attempt_000005
+hero.lattice.evaluate.deficit target_id=synthetic_edge_return_projection_oracle_ready
+restored synthetic_benchmark.config runtime_wave_id=policy_training_ppo_v0
+hero.lattice.evaluate.deficit rechecked the same metric failure after config restore
+```
+
+Next Step
+---------
+
+Investigate why the representation/MDN stack has low edge-return direction and
+rank recovery on a deterministic periodic benchmark. This should happen before
+interpreting PPO policy performance as the primary failure, because the forecast
+path now fails in tradable edge space before policy optimization.

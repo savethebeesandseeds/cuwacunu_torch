@@ -185,6 +185,46 @@ LATTICE_WARN_SET {
   BELOW_VALUES = 0.95, 0.0, 10;
 };
 
+LATTICE_TARGET {
+  TARGET_ID = synthetic_forecast_oracle_accuracy_ready;
+  TARGET_CLASS = synthetic_forecast_oracle_gate;
+  PROTOCOL_ID = cwu_02v;
+  COMPONENT = wikimyei.inference.expected_value.mdn;
+  SUBJECT_FACT_FAMILY = forecast_eval;
+  PROOF_KIND = synthetic_forecast_oracle_accuracy_bound;
+  UPSTREAM_TARGET_ID = channel_mdn_certified_replay_expansion_eval_ready;
+  OVER_SPLIT = certified_replay_expansion_eval;
+  MAX_ORACLE_EV_MAE = 0.05;
+  MAX_ORACLE_EV_RMSE = 0.075;
+  MIN_ORACLE_DIRECTIONAL_ACCURACY = 0.95;
+  MAX_ORACLE_PRICE_EV_MAE = 0.02;
+  MAX_ORACLE_PRICE_EV_RMSE = 0.025;
+  MAX_ORACLE_ACTIVITY_EV_MAE = 0.07;
+  MAX_ORACLE_ACTIVITY_EV_RMSE = 0.10;
+  MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY = 0.95;
+  WAVE_MODE = none;
+  PLAN_MAX_ATTEMPTS = 0;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = synthetic_edge_return_projection_oracle_ready;
+  TARGET_CLASS = synthetic_edge_return_projection_oracle_gate;
+  PROTOCOL_ID = cwu_02v;
+  COMPONENT = wikimyei.inference.expected_value.mdn;
+  SUBJECT_FACT_FAMILY = forecast_eval;
+  PROOF_KIND = synthetic_edge_return_projection_oracle_bound;
+  UPSTREAM_TARGET_ID = channel_mdn_certified_replay_expansion_eval_ready;
+  OVER_SPLIT = certified_replay_expansion_eval;
+  MAX_ORACLE_EDGE_RETURN_EV_MAE = 0.05;
+  MAX_ORACLE_EDGE_RETURN_EV_RMSE = 0.075;
+  MIN_ORACLE_EDGE_RETURN_DIRECTIONAL_ACCURACY = 0.95;
+  MIN_ORACLE_EDGE_RETURN_PAIRWISE_RANK_ACCURACY = 0.95;
+  MIN_ORACLE_EDGE_RETURN_BEST_ASSET_AGREEMENT = 0.60;
+  MIN_ORACLE_EDGE_RETURN_CORRELATION = 0.25;
+  WAVE_MODE = none;
+  PLAN_MAX_ATTEMPTS = 0;
+};
+
 LATTICE_POLICY_GATE {
   POLICY_ID = forecast_quality_acceptance_reserved;
   POLICY_KIND = forecast_quality_acceptance;
@@ -221,6 +261,22 @@ LATTICE_TARGET_FAMILY {
   USE_PROFILE_IDS = cwu_02v_validation_policy_training_artifact_readiness, cwu_02v_validation_tsodao_settings_artifact_readiness, cwu_02v_validation_tsodao_policy_artifact_readiness, cwu_02v_validation_paper_online_artifact_readiness;
   TARGET_IDS = policy_training_artifact_ready, tsodao_settings_protection_ready, policy_acceptance_contract_ready, paper_online_readiness_contract_ready;
   SUBJECT_FACT_FAMILIES = policy_training, tsodao_settings_protection, policy_acceptance, paper_online_readiness;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = policy_execution_input_handoff_ready;
+  TARGET_CLASS = policy_execution_input_handoff;
+  PROTOCOL_ID = cwu_02v;
+  COMPONENT = wikimyei.policy.portfolio.graph_node_allocation;
+  SUBJECT_FACT_FAMILY = replay_environment;
+  PROOF_KIND = policy_execution_input_handoff_bound;
+  OVER_SPLIT = certified_replay_expansion_eval;
+  CHECKPOINT_SOURCE = none;
+  WAVE_MODE = train;
+  PLAN_MAX_ATTEMPTS = 1;
+  REQUIRE_COMPONENT_MATCH = false;
+  REQUIRE_CHECKPOINT_EXISTS = false;
+  REQUIRE_FINITE_LOSS = false;
 };
 
 LATTICE_WARN {

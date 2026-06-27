@@ -87,7 +87,9 @@ label/reward horizon semantics beyond the scalar frontier, interval-set/fold
 embargo generalization, bundle interface-stability generalization, and
 generalized artifact-production provenance.
 
-Coordination document: `not_forward_leaking_problem.md`.
+The former standalone coordination note has been folded into this roadmap and
+the Runtime/Lattice/Marshal docs. Keep the invariant here current instead of
+maintaining a second root-level design note.
 
 Range-expression follow-up: the anchor-v1 examples and current operator
 fixtures still use raw accepted-anchor index intervals such as `[0,1600)` and
@@ -218,8 +220,10 @@ policy_training_anchor_v1_performance_baseline.v1
   Completed diagnostic baseline after the green anchor-v1 policy-training path
   and refreshed after `increase_certified_replay_exposure.v2`. The selected
   policy-training fact is now `517fb94fec140323`, the Lattice certificate
-  digest is `8f85723bd45b674f`, and the baseline report lives at
-  `policy_training_anchor_v1_performance_baseline.md`. The current PPO run
+  digest is `8f85723bd45b674f`. The root-level baseline snapshot was removed;
+  use this roadmap plus the Runtime
+  `policy_training_anchor_v1_performance_profile.report` and policy-quality
+  reports for the current performance evidence. The current PPO run
   `policy_training_ppo_v0_fd91f7620c46632a.attempt_fd91f7620c46632a_1781988984173151_44435`
   consumed 17 certified replay chunks and 1047 certified replay samples over
   `[1200,2247)`, writes policy generation
@@ -267,17 +271,439 @@ synthetic_benchmark_oracle_readiness.v1
   synthetic kline-shaped CSVs so the current graph-first Runtime path can be
   exercised without adding a new active `basic` source tensor path. It defines
   three synthetic asset/numeraire instruments, active 1w/3d/1d log-return
-  channels, synthetic graph topology, train/eval/test anchor splits, candidate
-  Runtime waves, Lattice targets, deterministic data generation, and an
-  evaluation-only hindsight oracle. The materialized source set has 9 CSV files
-  with 1200 rows each. Config validation passes, Runtime status accepts
-  `synthetic_benchmark.config`, Lattice loads 4 splits and 4 targets, and a
-  `hero.runtime.run mode=dry_run` for `synthetic_train_representation` resolves
-  720 anchors and writes dry-run evidence without checkpoint writes. This is
-  benchmark infrastructure only: no MDN training, forecast/replay generation,
-  policy training, oracle comparison, policy acceptance, paper-online
-  readiness, deployment readiness, or live authority has been claimed. The next
-  bounded run goal is `synthetic_continuous_graph_benchmark_run.v1`.
+  channels, synthetic graph topology, shared train/eval/test anchor splits,
+  deterministic data generation, and an evaluation-only hindsight oracle. The
+  materialized source set has 9 CSV files with 1200 rows each. Config validation
+  passes, `synthetic_benchmark.config` reuses the shared Runtime wave and
+  Lattice target catalogs, and Runtime wave inspection selects
+  `train_core_mtf_jepa_mae_vicreg` over the shared `train_core` fractional
+  split. This is benchmark infrastructure only: no MDN training, forecast/replay
+  generation, policy training, oracle comparison, policy acceptance,
+  paper-online readiness, deployment readiness, or live authority has been
+  claimed. The next bounded run goal is
+  `synthetic_continuous_graph_benchmark_run.v1`.
+
+synthetic_protocol_diagnostic_greenpath.v1
+  First diagnostic runner is implemented at
+  `src/scripts/benchmarks/synthetic_continuous_graph_v1/run_protocol_diagnostic_greenpath.sh`.
+  It captures Config/Runtime/Lattice/Marshal preflight evidence, asks Marshal
+  for the cwu_02v representation/MDN/policy greenpath state, runs an explicit
+  policy-training Runtime dry-run through a report-local config copy, and
+  writes comparator metrics under
+  `.runtime/benchmarks/synthetic_continuous_graph_v1/diagnostic_greenpath_v1`.
+  The source-identity drift found by the initial report is fixed: Lattice now
+  derives active graph/source identity from the active config's Ujcamei source
+  spec, including edge-discovery benchmark graphs, and uses the Runtime
+  graph-anchor dataset cursor report for accepted-anchor materialization, so
+  `synthetic_benchmark.config` reports
+  `reference_edge=SYNALPHASYNUSD`, `accepted=1170`, train range `[0,760)`, and
+  eval range `[760,1088)`. The greenpath is still not runnable through policy
+  evaluation because the clean runtime has no representation/MDN reports or
+  certified MDN replay artifact yet. The checked-in durable Runtime wave
+  remains the representation-training wave, while the diagnostic report writes
+  a local `policy_training_ppo_v0` config copy for the policy dry-run probe. The
+  policy dry-run correctly fails when no completed MDN replay job matches the
+  canonical validation range. Synthetic comparators over expected eval range
+  `[760,1088)` are available: numeraire
+  `1.0`, equal-weight `1.1273`, best fixed asset `1.2220` (`SYNALPHA`),
+  one-step momentum `4.2442`, and hindsight oracle `4.3267`. These are
+  diagnostic comparators only; no policy-quality conclusion should be drawn
+  until the representation, MDN, replay, and policy stages have produced fresh
+  synthetic evidence through Marshal-aligned waves.
+
+synthetic_benchmark_marshal_aligned_greenpath.v1
+  Completed dry-run greenpath. Fresh synthetic evidence is green through
+  representation training, MDN training, certified forecast/replay generation,
+  and Marshal/Environment replay execution on `[760,1088)`. The
+  `policy_execution_input_handoff_ready` Lattice target now proves the completed
+  replay source before a `runtime.policy_training.fact` exists and exports a
+  complete execution-lock closure, including Runtime-declared forecast,
+  observer-belief, allocation-engine, replay, replay-job-dir, checkpoint, and
+  generation-vector aliases. `hero.marshal.prepare.train` with
+  `target_id=policy_execution_input_handoff_ready` now reaches
+  `dispatch_state=ready_for_execution_gate`, `blocker_bucket=none`, and
+  `runtime_dry_run.accepted=true`. Direct Runtime dry-run against the generated
+  Marshal handoff also returns `ok=true`; the synthesized PPO contract carries
+  the no-lookahead certificate digest, evidence snapshot digest, provenance
+  closure digest, target anchor range `[760,1088)`, and the bound consumed
+  artifact/checkpoint/generation-vector digests. This is still dry-run handoff
+  readiness only: it does not claim policy quality, real PPO execution,
+  paper-online readiness, deployment readiness, or live authority.
+
+policy_execution_input_handoff_target.v1
+  Implemented for the synthetic benchmark dry-run bridge. The target proves a
+  completed forecast/replay source is admissible for policy execution, exposes
+  structured `no_lookahead_artifact_provenance.v1` state, and lets Marshal
+  materialize a complete Runtime policy-execution lock without making
+  `policy_training_artifact_ready` dispatchable. Real execute-mode PPO training
+  and the first durable `runtime.policy_training.fact` remain separate
+  performance/evaluation work and must still use the Marshal-aligned handoff.
+
+synthetic_periodic_oracle_protocol_capability.v1
+  Implemented the definitive benchmark harness for answering whether cwu_02v can
+  win on simple deterministic periodic continuous charts. The generator now
+  emits zero-drift periodic log-price CSVs with explicit cycle sufficiency:
+  1200 rows, 1170 accepted anchors, train `[0,730)`, embargo gap `[730,760)`,
+  eval `[760,1088)`, holdout `[1088,1170)`, and minimum slow-period cycles of
+  60.83 train, 27.33 eval, and 6.83 holdout. The harness writes
+  `artifacts/synthetic_periodic_chart_manifest.v1.report`, computes a non-causal
+  hindsight oracle, causal/reference baselines, probes Config/Runtime/Lattice/
+  Marshal through the durable `synthetic_benchmark.config`, and emits
+  `synthetic_periodic_oracle_protocol_capability.v1.report` under
+  `.runtime/benchmarks/synthetic_continuous_graph_v1/periodic_oracle_capability_v1`.
+  Current normalized result is `fail`: chart sufficiency is true, protocol
+  probes complete, PPO execution produced a policy-quality report, and the
+  policy underperformed both benchmark thresholds after normalizing its
+  numeraire equity by the report's `numeraire_only.v1` baseline. The current eval
+  references are hindsight oracle `2192.8818`, equal-weight `1.1015`, best fixed
+  asset `1.1085` (`SYNALPHA`), and causal one-step momentum `186.9066`. The
+  current PPO policy final equity is `10096.1` from initial `10000`, i.e. growth
+  multiple `1.00961`, giving `policy_vs_oracle_ratio=0.000460403291` and
+  `policy_vs_best_causal_baseline_ratio=0.005401682584`.
+  A fresh Marshal-aligned run on 2026-06-23 first confirmed the hardening gate:
+  upstream training through adjacent `[0,760)` correctly failed
+  `channel_mdn_certified_replay_expansion_eval_ready` with
+  `leakage:protected_split`, because protected eval range `[731,1089)`
+  intersected upstream observed-input and target-supervision footprints. The
+  benchmark now uses a local standard `ujcamei.source.splits.dsl` catalog whose
+  `train_core` ends at `73/117` of accepted anchors, materializing `[0,730)` for
+  the current synthetic data and leaving the required `[730,760)` gap. A fresh
+  run completed representation `[0,730)` for 3000 optimizer steps, MDN
+  `[0,730)` for 3500 optimizer steps, and certified-replay eval `[760,1088)`.
+  Fresh Lattice evaluation of
+  `channel_mdn_certified_replay_expansion_eval_ready` returned `satisfied=true`,
+  `proof_certificate_check_passed=true`, coverage fraction `1.0`, and protected
+  split `overlap_found=false`. The split/frontier blocker is closed.
+  Fresh policy handoff preflight is now aligned: the
+  `policy_execution_input_handoff_ready` target uses
+  `policy_execution_input_handoff_bound`, reports complete/admissible
+  no-lookahead provenance, passes `proof_certificate_check_passed=true`, and
+  exports a `suggested_wave` for
+  `wikimyei.policy.portfolio.graph_node_allocation train [760,1088)`. The
+  synthetic benchmark config is aligned to `runtime_wave_id=policy_training_ppo_v0`,
+  and `hero.marshal.prepare.train target_id=policy_execution_input_handoff_ready`
+  reaches `dispatch_state=ready_for_execution_gate`, `blocker_bucket=none`, and
+  `runtime_dry_run_accepted=true`. A fresh execute-mode run on 2026-06-25 wrote
+  `policy_training_ppo_v0_953fb0a6d4a17505.attempt_953fb0a6d4a17505_1782364458930185_43292`,
+  actor checkpoint digest
+  `eb19364248d36e5946ea822f0b7291f2e5fc66e0d69811126236afb391b643c8`,
+  `policy_training_anchor_v1_performance_profile.report`, and
+  `policy_quality_report.report`. It ran 328 validation samples, 1 optimizer
+  step, `validation_total_log_growth=0.00935234`,
+  `validation_final_equity_numeraire=10096.1`, and
+  `validation_invalid_action_count=318`.
+  `policy_training_artifact_ready` is still readiness-blocked, but for
+  bundle/causal closure rather than no-lookahead:
+  `artifact:policy_training_lineage`,
+  `bundle_component_missing`, `policy_execution_evidence_snapshot_mismatch`,
+  `bundle_generation_vector_mismatch`,
+  `causal_artifact_production_closure_mismatch`,
+  `causal_provenance_closure_mismatch`, and
+  `causal_provenance_subproof_incomplete`.
+  The benchmark now has a Lattice-hosted pre-policy forecast gate,
+  `synthetic_forecast_oracle_accuracy_ready`, for
+  `synthetic_forecast_oracle_accuracy_gate.v1`. This is not a separate
+  benchmark and is not a policy-quality substitute. The target class
+  `synthetic_forecast_oracle_gate` first requires the clean
+  no-lookahead-certified forecast-eval artifact path, then checks finite oracle
+  metrics against benchmark thresholds (`MAX_ORACLE_EV_MAE`,
+  `MAX_ORACLE_EV_RMSE`, and `MIN_ORACLE_DIRECTIONAL_ACCURACY`). Current
+  Lattice evidence for `channel_mdn_certified_replay_expansion_eval_ready`
+  proves the forecast eval artifact is present, generation-backed,
+  no-lookahead-admissible, and fully covered over `[760,1088)`. It also carries
+  aggregate MDN distribution evidence and finite oracle metrics. Fresh Runtime
+  evidence from
+  `cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000001`
+  writes `forecast_ev_valid_count=27552`, `ev_mae=0.035768`,
+  `ev_rmse=0.0598237`, `signed_error=-0.0216345`, aggregate
+  `directional_accuracy=0.677555`, and close-directional accuracy `0.500254`.
+  The oracle gate now reaches a real metric decision:
+  `proof_certificate_check_passed=true` and `status=metric_failed` because
+  close-directional accuracy is below `MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY=0.95`.
+  This closes the metric-emission blocker; the remaining result is
+  model-quality/performance, not missing evidence.
+
+synthetic_forecast_oracle_metric_emission.v1
+  Complete. The synthetic benchmark now has a fresh forecast-only readout before
+  policy performance is interpreted. The data remains deterministic
+  kline-shaped CSV data, registered and consumed as `record_type=kline` through
+  the normal graph-first Ujcamei/NodeLift/representation/MDN path rather than a
+  special `basic` tensor path. The current protected eval range is `[760,1088)`;
+  upstream representation and MDN checkpoints were trained only on `[0,730)`,
+  leaving the required `[730,760)` protected-footprint gap. Fresh Runtime
+  evidence from
+  `cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000005`
+  writes finite oracle metrics into the report, `runtime.result.fact`, and
+  `lattice.forecast_eval.fact`. Lattice now reaches a real metric result for
+  `synthetic_forecast_oracle_accuracy_ready`: no-lookahead/admissibility proof
+  passes, MAE/RMSE pass, and directional accuracy fails the intentionally high
+  simple-chart threshold (`0.677555 < 0.95`). This is the checkpoint before the
+  next tangent: the system is no longer blocked by missing forecast metrics; the
+  next investigation is why the forecast stack is only partially recovering the
+  deterministic periodic signal. Do not reinterpret this as policy failure yet,
+  because the policy capability question still needs an explicit PPO execution
+  and policy-vs-oracle performance report.
+
+synthetic_forecast_semantics_diagnostic.v1
+  Complete. Fresh Runtime evidence from
+  `cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000007`
+  now emits per-channel, per-target-feature, per-channel-target-feature, and
+  per-node expected-value diagnostics into `channel_inference.report`,
+  `runtime.result.fact`, and `lattice.forecast_eval.fact`. The diagnostic report
+  lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_forecast_semantics_diagnostic.v1.probe`.
+  The current aggregate `directional_accuracy=0.677555` is not a clean one
+  number forecast-quality verdict: price features score `0.435721750`,
+  close-only scores `0.500254000`, and activity features score `1.000000000`.
+  The metric currently compares `expected.sign()` to `realized.sign()` over
+  normalized coordinates, so `log1p` activity features are sign-trivial while
+  the synthetic `open` coordinate is structurally near zero after
+  log-return-to-previous-close normalization. This confirms the next problem is
+  forecast metric semantics and price-phase recovery, not missing Runtime or
+  Lattice evidence. The next benchmark work should add feature-aware metrics
+  and causal baselines before interpreting PPO policy performance.
+
+synthetic_feature_aware_forecast_oracle_gate.v1
+  Complete. The synthetic forecast oracle target is now hardened from an
+  aggregate directional-accuracy gate into a feature-aware diagnostic. The
+  target catalog declares price magnitude thresholds
+  (`MAX_ORACLE_PRICE_EV_MAE=0.02`, `MAX_ORACLE_PRICE_EV_RMSE=0.025`),
+  activity magnitude thresholds (`MAX_ORACLE_ACTIVITY_EV_MAE=0.07`,
+  `MAX_ORACLE_ACTIVITY_EV_RMSE=0.10`), and a close-return sign threshold
+  (`MIN_ORACLE_CLOSE_DIRECTIONAL_ACCURACY=0.95`). Live Lattice evaluation now
+  classifies the current synthetic forecast failure by close-only price direction
+  rather than the misleading aggregate `directional_accuracy`, where activity
+  signs were trivial under `log1p` targets. The current result is
+  `metric_failed` with deficit `metric:synthetic_forecast_oracle`:
+  `close_directional_accuracy=0.500254 < 0.95`, while
+  `proof_certificate_check_passed=true`. The numeric-dimension vocabulary
+  self-check is also green after adding the feature-aware oracle thresholds.
+
+synthetic_edge_return_projection_oracle_gate.v1
+  Complete for the first fresh metric decision. This adds the tradable-edge
+  diagnostic requested after the close-direction failure: Runtime/MDN reports
+  emit `edge_return_projection_*` metrics by projecting expected close values
+  into base-minus-quote synthetic edge returns, and Lattice has a non-dispatch
+  `synthetic_edge_return_projection_oracle_ready` target over `forecast_eval`
+  facts. The gate first requires the same clean forecast-eval artifact and
+  no-lookahead proof, then checks edge MAE/RMSE, edge directional accuracy,
+  pairwise rank accuracy, best-asset agreement, and edge correlation. Old
+  forecast-eval facts still fail closed as `missing_report`; fresh Runtime
+  evidence from
+  `cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000005`
+  now reaches a real `metric_failed` decision:
+  `proof_certificate_check_passed=true`,
+  `edge_return_projection_ev_mae=0.0219482`,
+  `edge_return_projection_ev_rmse=0.0277461`,
+  `edge_return_projection_directional_accuracy=0.507453 < 0.95`,
+  `edge_return_projection_pairwise_rank_accuracy=0.491531 < 0.95`,
+  `edge_return_projection_best_asset_agreement=0.295732 < 0.60`, and
+  `edge_return_projection_correlation=0.00355936 < 0.25`. This closes the
+  missing-evidence blocker and confirms the current representation/MDN stack is
+  not recovering the deterministic synthetic signal in policy-relevant
+  edge-return space. The status report lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_edge_return_projection_oracle_gate.v1.report`.
+
+synthetic_benchmark_learning_diagnostics.v1
+  Complete. A fresh bounded Runtime path was run with `job_events` probes
+  enabled for representation and MDN learning curves. The checked-in diagnostic
+  summary lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_benchmark_learning_diagnostics.v1.probe`;
+  full job-local probe streams remain in `.runtime`.
+
+  The representation run completed 320 train-core steps over `[0,730)`.
+  Its objective moved from `last_loss=3.2351` to `last_loss=0.224892`, with
+  final `representation_effective_rank_fraction=0.719553` and finite geometry.
+  This does not prove phase recovery, but it rules out a total representation
+  training crash as the first obvious failure.
+
+  The MDN run completed 400 train-core steps using that representation
+  checkpoint. Its loss moved from `3.83776` to `0.655708`, while aggregate
+  directional accuracy ended at `0.64528`. The decisive result is that
+  policy-relevant edge-return metrics did not improve:
+  `edge_return_projection_directional_accuracy` stayed
+  `0.51441 -> 0.513742`, pairwise rank accuracy moved
+  `0.529687 -> 0.501575`, best-asset agreement ended at `0.327761`, and
+  correlation ended at `-0.00116026`.
+
+  Current diagnosis: the optimizer is not globally stuck, but the MDN/forecast
+  objective is not aligned with the deterministic tradable direction signal.
+  The next useful work is target scaling/feature weighting/objective alignment,
+  close-return projection semantics, and representation phase readout before
+  PPO tuning.
+
+job_events_probe_charting_readiness.v1
+  Split into a bounded Runtime sidecar first pass and future subscriber/chart
+  work. The first pass adds optional job-local Runtime probe records without
+  replacing reports, checkpoints, Runtime facts, Marshal handoffs, or Lattice
+  proofs. The synthetic benchmark failure makes clear that reading only terminal
+  reports is too slow and too opaque: we need to see the generated charts, model
+  targets, losses, forecast distributions,
+  edge-return projections, replay/equity traces, invalid action rates, and
+  Lattice target state while jobs run. The desired architecture should be
+  event-driven and stream-like: Runtime jobs emit structured progress and metric
+  events; subscribers consume those event streams; chart/render consumers build
+  time-series views without becoming proof authorities; and Lattice can be
+  evaluated as either a passive subscriber or a producer of target-state events.
+  Runtime probe definitions are active only when the active config
+  explicitly declares `runtime_probes_dsl_path`; configs that omit it do not
+  inherit the canonical catalog. The canonical config points at
+  `hero.runtime.probes.dsl`, which enables the `job_events`,
+  while the selected wave still has to include `debug` in `MODE` before Runtime
+  attaches enabled probes. The first sidecar stream records lifecycle,
+  delegate progress phases, terminal metrics, and artifact-publication events;
+  deeper loss/epoch/chart telemetry remains future subscriber work. The point is
+  not just visualization. It is to make long train/eval jobs inspectable,
+  diagnose stalled or random-learning behavior early,
+  and keep
+  Runtime, Lattice, Marshal, and future UI surfaces aligned around explicit
+  evidence events rather than ad hoc log scraping.
+
+  Scope to hand to a separate Codex session:
+  inventory existing probe-related code and iinuji surfaces; inspect how
+  Runtime currently writes reports, facts, job state, loss/progress lines, and
+  Lattice target evaluations; define a small event schema for job lifecycle,
+  scalar metrics, losses, checkpoint/provenance milestones, forecast/eval
+  metrics, replay/equity traces, and Lattice target-state deltas; decide which
+  charts should be available for synthetic benchmark debugging first; and
+  identify the minimum subscriber/storage path that can run without forcing a
+  premature iinuji UI rewrite. This milestone should explicitly assess whether
+  Lattice should attach as a passive subscriber of Runtime events, expose its
+  own target-state stream, or both.
+
+  Non-goals for the current thread: do not block synthetic benchmark diagnosis
+  on a full UI, do not make iinuji the source of truth before it is mature, do
+  not replace durable Runtime/Lattice facts with transient probe records, and
+  do not let visualization code become a dispatch/proof authority. This should
+  become its own bounded implementation plan once the current forecast failure
+  has a narrower root-cause hypothesis.
+
+synthetic_close_direction_failure_diagnostics.v1
+  Complete. The close-direction failure is now documented in
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_close_direction_failure_diagnostics.v1.probe`.
+  The diagnostic rules out missing provenance, insufficient deterministic
+  cycles, random raw close direction, missing forecast metrics, and a
+  single-channel-only failure. The important semantic finding is that MDN
+  feature 3 is a `channel_node_future` NodeLift gauge-node close potential, not
+  a raw edge close return. Even in that target space, a simple 1d gauge-node
+  previous-sign baseline scores `0.746951`, while the MDN eval close-direction
+  result remains `0.500254` overall and `0.508384`, `0.498476`, `0.493902`
+  by active channel.
+
+synthetic_train_range_forecast_fit_probe.v1
+  Complete. The train-range probe is recorded in
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_train_range_forecast_fit_probe.v1.probe`.
+  Runtime evaluated the trained representation/MDN checkpoints over `[0,730)`
+  through a handoff range overlay without retraining or writing a checkpoint:
+  `cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000009`.
+  The result is decisive: aggregate directional accuracy is `0.675962`, close
+  target-feature directional accuracy is `0.491438`, and MAE/RMSE are almost
+  identical to protected eval (`0.0312497`/`0.0512272` train vs.
+  `0.0312739`/`0.0512565` eval). This rules out a simple "fit train, failed
+  eval" explanation. The MDN/representation stack is not learning the close-like
+  NodeLift target direction even on the training slice. The remaining useful
+  diagnostics are target-space alignment, phase/lag recovery, and supervised
+  controls over the policy-relevant edge-return target.
+
+synthetic_benchmark_failure_root_cause.v1
+  Complete. The consolidated root-cause report is recorded in
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_benchmark_failure_root_cause.v1.report`.
+  Current conclusion: the first decisive failure is pre-policy. The synthetic
+  data has enough deterministic cycles, the forecast/replay artifact is
+  no-lookahead-clean, and PPO did execute, but the representation/MDN forecast
+  stack does not recover the benchmark's key close-like directional signal.
+  Close-direction accuracy is coin-flip on both protected eval
+  (`0.500254`) and train-range replay of the trained checkpoints (`0.491438`),
+  so the failure is not simply train-to-eval generalization. Policy quality is
+  also weak (`328` samples, `1` optimizer step, `318` invalid validation
+  actions, and growth multiple `1.00961` versus one-step-momentum `186.9066`),
+  but this is downstream of the failed forecast gate. The edge-return projection
+  gate is also weak, so the representation/MDN path is genuinely failing the
+  deterministic synthetic signal in the policy-relevant edge-return space.
+
+synthetic_direct_edge_return_supervised_probe.v1
+  First benchmark-local supervised control implemented. The report lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_direct_edge_return_supervised_probe.v1.report`.
+  It proves the raw base-minus-quote edge return is exactly recovered from the
+  NodeLift gauge-node potential projection within floating-point tolerance
+  (`eval projected_edge_max_abs_error=6.9388939039072284e-18`). A causal
+  previous-return baseline is materially better than random on eval
+  (`directional_accuracy=0.794715447154`,
+  `pairwise_rank_accuracy=0.739837398374`), while a tiny supervised linear
+  phase/lag readout solves the eval edge task perfectly
+  (`directional_accuracy=1.0`, `pairwise_rank_accuracy=1.0`,
+  `best_asset_agreement=1.0`, `correlation=1.0`). This rules out an impossible
+  edge target or projection mismatch as the primary explanation. Runtime now
+  emits job-local `representation_edge_features.probe` files on MDN jobs, and a
+  fresh train/eval frozen-representation probe has run through the same script.
+  The frozen representation is not random: eval edge directional accuracy is
+  `0.738482384824`, pairwise rank accuracy is `0.707994579946`, best-asset
+  agreement is `0.597560975610`, and correlation is `0.622333108679`. This is
+  below the previous-return baseline and far below the phase/lag oracle, but it
+  is materially better than the MDN edge projection (`directional_accuracy`
+  about `0.507453`, `correlation` about `0.00355936`). The next likely fix is
+  therefore MDN objective/readout/target-weighting alignment, possibly with an
+  explicit edge-return auxiliary objective, before PPO tuning.
+
+synthetic_mdn_edge_objective_alignment.v1
+  Complete. The report lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_mdn_edge_objective_alignment.v1.report`.
+  MDN training now has explicit `.jkimyei`-owned edge auxiliary controls and
+  Runtime reports the auxiliary losses. A full fresh Runtime train over
+  `[0,730)` completed `3500` steps using the existing representation checkpoint,
+  followed by a protected eval over `[760,1088)`. The auxiliary objective was
+  active, but it did not solve edge forecasting: train edge direction was
+  `0.487915`, pairwise rank `0.505747`, correlation `-0.000884998`; eval edge
+  direction was `0.504065`, pairwise rank `0.519309`, best-asset agreement
+  `0.381098`, and correlation `-0.000355394`. Direction/rank auxiliary losses
+  stayed around `log(2)` (`0.693...`). This narrows the next fix: a light edge
+  auxiliary projection on node-potential MDN expected values is not enough.
+  The next forecast-side milestone should test a dedicated edge-return readout
+  or first-class edge-space forecast head before PPO tuning.
+
+synthetic_mdn_direct_edge_readout.v1
+  Complete. The report lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_mdn_direct_edge_readout.v1.report`.
+  MDN now has a `.jkimyei`-owned direct edge-return readout head that emits
+  `direct_edge_return:[B,N-1,C]` from base/quote channel contexts and trains it
+  with Huber regression, logistic sign, and pairwise rank losses. A fresh
+  Runtime train over `[0,730)` completed `3500` steps using the existing
+  representation checkpoint, followed by a protected eval over `[760,1088)`.
+  The head was active, but did not recover deterministic edge direction/rank:
+  train direct edge direction was `0.499872`, pairwise rank `0.519334`, best
+  asset `0.342071`, and correlation `-0.00121821`; eval direct edge direction
+  was `0.510840`, pairwise rank `0.557249`, best asset `0.388211`, and
+  correlation `0.00546659`. This closes the hypothesis that the failure is only
+  due to weak edge supervision through the node-potential projection. The next
+  diagnostic should isolate the representation-to-MDN signal path directly:
+  target transform, phase/lag oracle, frozen representation probes, and MDN
+  context/readout behavior on the same train/eval ranges before returning to
+  PPO tuning.
+
+synthetic_signal_path_isolation.v1
+  Complete. The consolidated report lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_signal_path_isolation.v1.report`;
+  the MDN-context supervised probe report lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_mdn_context_edge_probe.v1.report`.
+  Runtime now emits `mdn_edge_context_features.probe` for non-training MDN
+  debug runs, alongside the earlier `representation_edge_features.probe`.
+  The diagnostic used fresh train/eval MDN run probes from the same frozen
+  representation and trained MDN checkpoints, combined them under
+  `.runtime/cuwacunu_exec/benchmarks/synthetic_continuous_graph_v1/synthetic_mdn_edge_context_features_train_eval.probe`,
+  and ran the same closed-form edge-return readout over the post-MDN-trunk
+  context. On protected eval `[760,1088)`, the target transform is exact, the
+  known phase/lag basis solves the task, frozen representation signal is
+  partial (`direction=0.738482384824`, `rank=0.707994579946`,
+  `best=0.597560975610`, `corr=0.622333108679`), and the MDN post-trunk context
+  still exposes similar or slightly stronger partial signal
+  (`direction=0.775745257453`, `rank=0.721544715447`, `best=0.594512195122`,
+  `corr=0.664624524143`). The trained MDN direct readout remains near random
+  (`direction=0.510840`, `rank=0.557249`, `best=0.388211`,
+  `corr=0.00546659`). This moves the primary suspect away from target
+  construction, total representation collapse, or total MDN-context destruction
+  and toward MDN training objective/readout optimization alignment and weak
+  identity/context scaffolding. Next recommended milestone:
+  `synthetic_mdn_edge_readout_training_dynamics.v1`.
 
 training_order_lattice_correctness.v1
   Anchor-v1 now proves non-anticipative artifact provenance over the concrete
@@ -555,12 +981,12 @@ policy_operator_surface_and_identity_standardization.v1
   bindings before readiness can be satisfied.
 
 component_policy_surface_reconciliation_audit.v1
-  A root audit now records the common operator model across component waves,
-  policy-training profiles, and environment replay profiles. The recommended
-  direction is partial unification: keep the three profiles separate because
-  they have different semantics, but add a future generic operator-surface
-  digest for older representation/MDN component lanes so they read closer to
-  the already-standardized policy operator surface.
+  Completed audit. The common operator model is component waves,
+  policy-training profiles, and environment replay profiles, with partial
+  unification rather than forced collapse: keep the three profiles separate
+  because they have different semantics, but expose a generic
+  operator-surface digest for older representation/MDN component lanes so they
+  read closer to the already-standardized policy operator surface.
 
 component_operator_surface_digest_contract.v1
   Representation and MDN component-wave manifests now carry

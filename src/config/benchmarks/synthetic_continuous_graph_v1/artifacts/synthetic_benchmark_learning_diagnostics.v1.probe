@@ -1,0 +1,134 @@
+# synthetic_benchmark_learning_diagnostics.v1
+
+Status: complete
+
+Question:
+
+```text
+When the synthetic continuous benchmark is run with Runtime learning probes,
+where does learning first fail?
+```
+
+Summary:
+
+```text
+The fresh bounded probe-enabled run confirms the first failing layer is still
+pre-policy, inside the representation/MDN forecast path.
+
+The representation objective learns and writes a non-degenerate checkpoint.
+The MDN objective also learns by loss, but the policy-relevant edge-return
+oracle metrics remain near random through the training curve.
+```
+
+Diagnostic scope:
+
+```text
+benchmark_id = synthetic_continuous_graph_v1
+record_type = kline
+train_anchor_range = [0,730)
+accepted_anchor_count = 1170
+representation_steps = 320
+mdn_steps = 400
+readiness_authority = false
+probe_authority = visibility_only
+```
+
+Representation probe:
+
+```text
+runtime_job_dir =
+  /cuwacunu/.runtime/benchmarks/synthetic_continuous_graph_v1/.runtime/cuwacunu_exec/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg/spawns/lbu_2999bf691561cd0b/jobs/train/train_core_mtf_jepa_mae_vicreg.train.channel_representation_mtf_jepa_mae_vicreg.attempt_000000
+
+runtime_probe_stream =
+  runtime.job_events.probe
+
+checkpoint =
+  channel_representation.report.mtf_jepa_mae_vicreg.pt
+```
+
+Representation result:
+
+```text
+status = completed
+steps_completed = 320
+last_loss_first_probe = 3.2351
+last_loss_final = 0.224892
+mean_loss = 0.543772
+representation_effective_rank_fraction_first_probe = 0.796531
+representation_effective_rank_fraction_final = 0.719553
+representation_min_dimension_variance_final = 0.00351416
+representation_max_dimension_variance_final = 0.110083
+representation_isotropy_score_final = 0.033112
+probe_record_count = 1962
+```
+
+Interpretation:
+
+```text
+Representation training is not flat or immediately broken. It reduces its own
+loss and produces finite/non-degenerate geometry. This does not prove the
+synthetic phase is encoded, but it makes a total representation-training crash
+unlikely as the first failure.
+```
+
+MDN probe:
+
+```text
+runtime_job_dir =
+  /cuwacunu/.runtime/benchmarks/synthetic_continuous_graph_v1/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/gsm_10313fa3462332b0/jobs/train/train_core_channel_mdn.train.channel_inference_mdn.attempt_000000
+
+runtime_probe_stream =
+  runtime.job_events.probe
+
+input_representation_checkpoint =
+  /cuwacunu/.runtime/benchmarks/synthetic_continuous_graph_v1/.runtime/cuwacunu_exec/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg/spawns/lbu_2999bf691561cd0b/jobs/train/train_core_mtf_jepa_mae_vicreg.train.channel_representation_mtf_jepa_mae_vicreg.attempt_000000/channel_representation.report.mtf_jepa_mae_vicreg.pt
+
+checkpoint =
+  channel_inference.report.channel_mdn.pt
+```
+
+MDN result:
+
+```text
+status = completed
+steps_completed = 400
+last_loss_first_probe = 3.83776
+last_loss_final = 0.655708
+mean_loss = 4.81398
+aggregate_directional_accuracy_final = 0.64528
+edge_return_projection_directional_accuracy_first_probe = 0.51441
+edge_return_projection_directional_accuracy_final = 0.513742
+edge_return_projection_pairwise_rank_accuracy_first_probe = 0.529687
+edge_return_projection_pairwise_rank_accuracy_final = 0.501575
+edge_return_projection_best_asset_agreement_final = 0.327761
+edge_return_projection_correlation_final = -0.00116026
+probe_record_count = 1817
+```
+
+Interpretation:
+
+```text
+The MDN optimizer is doing work: loss falls materially. But the forecast stack
+does not learn the edge-return sign/rank signal. The policy-relevant oracle
+metrics stay near random while loss improves.
+```
+
+Root-cause classification:
+
+```text
+data_generation = not_primary_blocker
+probe_infrastructure = working
+representation_training = not_first_decisive_failure
+mdn_loss_optimization = working_by_loss
+mdn_policy_relevant_signal = failing
+policy_training = downstream_of_failed_forecast_gate
+```
+
+Next diagnostic target:
+
+```text
+Inspect why MDN loss improvement does not improve edge-return sign/rank:
+target scaling, target feature weighting, MDN objective alignment, close-return
+projection semantics, representation phase readout, and simple supervised
+oracle/baseline comparisons before PPO tuning.
+```

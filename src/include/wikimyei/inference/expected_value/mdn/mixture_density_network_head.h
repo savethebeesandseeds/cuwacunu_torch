@@ -179,10 +179,66 @@ struct FeatureConditionedMdnHeadImpl : torch::nn::Module {
     auto raw_mu = raw.select(/*dim=*/4, /*index=*/1);
     auto raw_sigma = raw.select(/*dim=*/4, /*index=*/2);
     return {torch::log_softmax(raw_pi, /*dim=*/-1), raw_mu,
-            positive_sigma_from_raw(raw_sigma, sigma_floor)};
+            positive_sigma_from_raw(raw_sigma, sigma_floor), torch::Tensor{}};
   }
 };
 TORCH_MODULE(FeatureConditionedMdnHead);
+
+struct DirectEdgeReturnHeadImpl : torch::nn::Module {
+  int64_t H{0};
+  int64_t quote_node_index{0};
+  torch::nn::LayerNorm input_norm{nullptr};
+  torch::nn::Linear hidden{nullptr};
+  torch::nn::Linear projection{nullptr};
+
+  explicit DirectEdgeReturnHeadImpl(int64_t H_, int64_t quote_node_index_ = 0)
+      : H(H_), quote_node_index(quote_node_index_) {
+    TORCH_CHECK(H > 0, "[DirectEdgeReturnHead] hidden width must be positive");
+    TORCH_CHECK(quote_node_index == 0,
+                "[DirectEdgeReturnHead] v1 expects quote node index 0");
+    input_norm = register_module(
+        "input_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions(
+                          std::vector<int64_t>{3 * H})));
+    hidden = register_module("hidden", torch::nn::Linear(3 * H, H));
+    projection = register_module("projection", torch::nn::Linear(H, 1));
+    {
+      torch::NoGradGuard ng;
+      if (projection->bias.defined()) {
+        projection->bias.zero_();
+      }
+    }
+  }
+
+  // h: [B,N,C,H] -> direct head features [B,N-1,C,3H].
+  torch::Tensor edge_features(const torch::Tensor &h) {
+    TORCH_CHECK(h.defined() && h.dim() == 4,
+                "[DirectEdgeReturnHead] h must be [B,N,C,H]");
+    TORCH_CHECK(h.size(1) > 1,
+                "[DirectEdgeReturnHead] at least one base node is required");
+    TORCH_CHECK(h.size(3) == H, "[DirectEdgeReturnHead] h shape mismatch");
+    const auto B = h.size(0);
+    const auto N = h.size(1);
+    const auto C = h.size(2);
+    const auto base_count = N - 1;
+    auto quote = h.select(1, quote_node_index)
+                     .unsqueeze(1)
+                     .expand({B, base_count, C, H});
+    auto base = h.narrow(1, 1, base_count);
+    return torch::cat({base, quote, base - quote}, /*dim=*/-1).contiguous();
+  }
+
+  // h: [B,N,C,H] -> direct base-minus-quote edge return [B,N-1,C].
+  torch::Tensor forward(const torch::Tensor &h) {
+    const auto B = h.size(0);
+    const auto N = h.size(1);
+    const auto C = h.size(2);
+    const auto base_count = N - 1;
+    auto x = edge_features(h).view({B * base_count * C, 3 * H});
+    auto z = torch::silu(hidden->forward(input_norm->forward(x)));
+    return projection->forward(z).view({B, base_count, C});
+  }
+};
+TORCH_MODULE(DirectEdgeReturnHead);
 
 } // namespace mdn
 } // namespace expected_value

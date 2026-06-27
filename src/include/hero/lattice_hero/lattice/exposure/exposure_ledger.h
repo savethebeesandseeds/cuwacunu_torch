@@ -2185,6 +2185,53 @@ struct lattice_forecast_eval_fact_t {
   double ev_rmse{std::numeric_limits<double>::quiet_NaN()};
   double signed_error{std::numeric_limits<double>::quiet_NaN()};
   double directional_accuracy{std::numeric_limits<double>::quiet_NaN()};
+  std::vector<std::int64_t> forecast_ev_valid_count_per_channel{};
+  std::vector<double> ev_mae_per_channel{};
+  std::vector<double> ev_rmse_per_channel{};
+  std::vector<double> signed_error_per_channel{};
+  std::vector<double> directional_accuracy_per_channel{};
+  std::vector<std::int64_t> forecast_ev_valid_count_per_target_feature{};
+  std::vector<double> ev_mae_per_target_feature{};
+  std::vector<double> ev_rmse_per_target_feature{};
+  std::vector<double> signed_error_per_target_feature{};
+  std::vector<double> directional_accuracy_per_target_feature{};
+  std::vector<std::int64_t>
+      forecast_ev_valid_count_per_channel_target_feature{};
+  std::vector<double> ev_mae_per_channel_target_feature{};
+  std::vector<double> ev_rmse_per_channel_target_feature{};
+  std::vector<double> signed_error_per_channel_target_feature{};
+  std::vector<double> directional_accuracy_per_channel_target_feature{};
+  std::vector<std::int64_t> forecast_ev_valid_count_per_node{};
+  std::vector<double> ev_mae_per_node{};
+  std::vector<double> ev_rmse_per_node{};
+  std::vector<double> signed_error_per_node{};
+  std::vector<double> directional_accuracy_per_node{};
+  std::string edge_return_projection_schema{};
+  std::int64_t edge_return_projection_quote_node_index{-1};
+  std::string edge_return_projection_quote_node_id{};
+  std::string edge_return_projection_base_node_ids{};
+  std::int64_t edge_return_projection_close_feature_index{-1};
+  std::int64_t edge_return_projection_valid_count{0};
+  double edge_return_projection_ev_mae{
+      std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_projection_ev_rmse{
+      std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_projection_signed_error{
+      std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_projection_directional_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  double edge_return_projection_correlation{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t edge_return_projection_pairwise_rank_valid_count{0};
+  double edge_return_projection_pairwise_rank_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t edge_return_projection_best_asset_valid_count{0};
+  double edge_return_projection_best_asset_agreement{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::vector<std::int64_t> edge_return_projection_valid_count_per_edge{};
+  std::vector<double> edge_return_projection_directional_accuracy_per_edge{};
+  std::vector<std::int64_t> edge_return_projection_valid_count_per_channel{};
+  std::vector<double> edge_return_projection_directional_accuracy_per_channel{};
   double calibration_coverage{std::numeric_limits<double>::quiet_NaN()};
   std::string pit_summary{};
   std::string sigma_scale_sanity{};
@@ -2399,6 +2446,7 @@ struct lattice_allocation_engine_fact_t {
   std::string fact_type{"allocation_engine"};
   std::string parent_exposure_fact_digest{};
   std::string declared_parent_exposure_fact_digest{};
+  std::string declared_fact_digest{};
 
   std::string contract_fingerprint{};
   std::string protocol_id{};
@@ -7123,6 +7171,93 @@ make_forecast_eval_facts_from_job_dir(const std::filesystem::path &job_dir,
   fact.signed_error = first_double({"signed_error", "forecast_signed_error"});
   fact.directional_accuracy =
       first_double({"directional_accuracy", "forecast_directional_accuracy"});
+  fact.forecast_ev_valid_count_per_channel = detail::parse_i64_list_fallback(
+      first_value({"forecast_ev_valid_count_per_channel"}));
+  fact.ev_mae_per_channel =
+      detail::parse_double_list_fallback(first_value({"ev_mae_per_channel"}));
+  fact.ev_rmse_per_channel =
+      detail::parse_double_list_fallback(first_value({"ev_rmse_per_channel"}));
+  fact.signed_error_per_channel = detail::parse_double_list_fallback(
+      first_value({"signed_error_per_channel"}));
+  fact.directional_accuracy_per_channel = detail::parse_double_list_fallback(
+      first_value({"directional_accuracy_per_channel"}));
+  fact.forecast_ev_valid_count_per_target_feature =
+      detail::parse_i64_list_fallback(
+          first_value({"forecast_ev_valid_count_per_target_feature"}));
+  fact.ev_mae_per_target_feature = detail::parse_double_list_fallback(
+      first_value({"ev_mae_per_target_feature"}));
+  fact.ev_rmse_per_target_feature = detail::parse_double_list_fallback(
+      first_value({"ev_rmse_per_target_feature"}));
+  fact.signed_error_per_target_feature = detail::parse_double_list_fallback(
+      first_value({"signed_error_per_target_feature"}));
+  fact.directional_accuracy_per_target_feature =
+      detail::parse_double_list_fallback(
+          first_value({"directional_accuracy_per_target_feature"}));
+  fact.forecast_ev_valid_count_per_channel_target_feature =
+      detail::parse_i64_list_fallback(
+          first_value({"forecast_ev_valid_count_per_channel_target_feature"}));
+  fact.ev_mae_per_channel_target_feature = detail::parse_double_list_fallback(
+      first_value({"ev_mae_per_channel_target_feature"}));
+  fact.ev_rmse_per_channel_target_feature = detail::parse_double_list_fallback(
+      first_value({"ev_rmse_per_channel_target_feature"}));
+  fact.signed_error_per_channel_target_feature =
+      detail::parse_double_list_fallback(
+          first_value({"signed_error_per_channel_target_feature"}));
+  fact.directional_accuracy_per_channel_target_feature =
+      detail::parse_double_list_fallback(
+          first_value({"directional_accuracy_per_channel_target_feature"}));
+  fact.forecast_ev_valid_count_per_node = detail::parse_i64_list_fallback(
+      first_value({"forecast_ev_valid_count_per_node"}));
+  fact.ev_mae_per_node =
+      detail::parse_double_list_fallback(first_value({"ev_mae_per_node"}));
+  fact.ev_rmse_per_node =
+      detail::parse_double_list_fallback(first_value({"ev_rmse_per_node"}));
+  fact.signed_error_per_node = detail::parse_double_list_fallback(
+      first_value({"signed_error_per_node"}));
+  fact.directional_accuracy_per_node = detail::parse_double_list_fallback(
+      first_value({"directional_accuracy_per_node"}));
+  fact.edge_return_projection_schema =
+      first_value({"edge_return_projection_schema"});
+  fact.edge_return_projection_quote_node_index =
+      first_i64({"edge_return_projection_quote_node_index"}, -1);
+  fact.edge_return_projection_quote_node_id =
+      first_value({"edge_return_projection_quote_node_id"});
+  fact.edge_return_projection_base_node_ids =
+      first_value({"edge_return_projection_base_node_ids"});
+  fact.edge_return_projection_close_feature_index =
+      first_i64({"edge_return_projection_close_feature_index"}, -1);
+  fact.edge_return_projection_valid_count =
+      first_i64({"edge_return_projection_valid_count"}, 0);
+  fact.edge_return_projection_ev_mae =
+      first_double({"edge_return_projection_ev_mae"});
+  fact.edge_return_projection_ev_rmse =
+      first_double({"edge_return_projection_ev_rmse"});
+  fact.edge_return_projection_signed_error =
+      first_double({"edge_return_projection_signed_error"});
+  fact.edge_return_projection_directional_accuracy =
+      first_double({"edge_return_projection_directional_accuracy"});
+  fact.edge_return_projection_correlation =
+      first_double({"edge_return_projection_correlation"});
+  fact.edge_return_projection_pairwise_rank_valid_count =
+      first_i64({"edge_return_projection_pairwise_rank_valid_count"}, 0);
+  fact.edge_return_projection_pairwise_rank_accuracy =
+      first_double({"edge_return_projection_pairwise_rank_accuracy"});
+  fact.edge_return_projection_best_asset_valid_count =
+      first_i64({"edge_return_projection_best_asset_valid_count"}, 0);
+  fact.edge_return_projection_best_asset_agreement =
+      first_double({"edge_return_projection_best_asset_agreement"});
+  fact.edge_return_projection_valid_count_per_edge =
+      detail::parse_i64_list_fallback(
+          first_value({"edge_return_projection_valid_count_per_edge"}));
+  fact.edge_return_projection_directional_accuracy_per_edge =
+      detail::parse_double_list_fallback(first_value(
+          {"edge_return_projection_directional_accuracy_per_edge"}));
+  fact.edge_return_projection_valid_count_per_channel =
+      detail::parse_i64_list_fallback(
+          first_value({"edge_return_projection_valid_count_per_channel"}));
+  fact.edge_return_projection_directional_accuracy_per_channel =
+      detail::parse_double_list_fallback(first_value(
+          {"edge_return_projection_directional_accuracy_per_channel"}));
   fact.calibration_coverage =
       first_double({"calibration_coverage", "forecast_calibration_coverage"});
   fact.pit_summary = first_value({"pit_summary", "pit_histogram_summary"});
@@ -7347,6 +7482,93 @@ canonical_forecast_eval_fact_text(const lattice_forecast_eval_fact_t &fact) {
   out << "ev_rmse=" << fact.ev_rmse << "\n";
   out << "signed_error=" << fact.signed_error << "\n";
   out << "directional_accuracy=" << fact.directional_accuracy << "\n";
+  exposure_detail::append_i64_list(out, "forecast_ev_valid_count_per_channel",
+                                   fact.forecast_ev_valid_count_per_channel);
+  exposure_detail::append_double_list(out, "ev_mae_per_channel",
+                                      fact.ev_mae_per_channel);
+  exposure_detail::append_double_list(out, "ev_rmse_per_channel",
+                                      fact.ev_rmse_per_channel);
+  exposure_detail::append_double_list(out, "signed_error_per_channel",
+                                      fact.signed_error_per_channel);
+  exposure_detail::append_double_list(out, "directional_accuracy_per_channel",
+                                      fact.directional_accuracy_per_channel);
+  exposure_detail::append_i64_list(
+      out, "forecast_ev_valid_count_per_target_feature",
+      fact.forecast_ev_valid_count_per_target_feature);
+  exposure_detail::append_double_list(out, "ev_mae_per_target_feature",
+                                      fact.ev_mae_per_target_feature);
+  exposure_detail::append_double_list(out, "ev_rmse_per_target_feature",
+                                      fact.ev_rmse_per_target_feature);
+  exposure_detail::append_double_list(out, "signed_error_per_target_feature",
+                                      fact.signed_error_per_target_feature);
+  exposure_detail::append_double_list(
+      out, "directional_accuracy_per_target_feature",
+      fact.directional_accuracy_per_target_feature);
+  exposure_detail::append_i64_list(
+      out, "forecast_ev_valid_count_per_channel_target_feature",
+      fact.forecast_ev_valid_count_per_channel_target_feature);
+  exposure_detail::append_double_list(out, "ev_mae_per_channel_target_feature",
+                                      fact.ev_mae_per_channel_target_feature);
+  exposure_detail::append_double_list(out, "ev_rmse_per_channel_target_feature",
+                                      fact.ev_rmse_per_channel_target_feature);
+  exposure_detail::append_double_list(
+      out, "signed_error_per_channel_target_feature",
+      fact.signed_error_per_channel_target_feature);
+  exposure_detail::append_double_list(
+      out, "directional_accuracy_per_channel_target_feature",
+      fact.directional_accuracy_per_channel_target_feature);
+  exposure_detail::append_i64_list(out, "forecast_ev_valid_count_per_node",
+                                   fact.forecast_ev_valid_count_per_node);
+  exposure_detail::append_double_list(out, "ev_mae_per_node",
+                                      fact.ev_mae_per_node);
+  exposure_detail::append_double_list(out, "ev_rmse_per_node",
+                                      fact.ev_rmse_per_node);
+  exposure_detail::append_double_list(out, "signed_error_per_node",
+                                      fact.signed_error_per_node);
+  exposure_detail::append_double_list(out, "directional_accuracy_per_node",
+                                      fact.directional_accuracy_per_node);
+  out << "edge_return_projection_schema=" << fact.edge_return_projection_schema
+      << "\n";
+  out << "edge_return_projection_quote_node_index="
+      << fact.edge_return_projection_quote_node_index << "\n";
+  out << "edge_return_projection_quote_node_id="
+      << fact.edge_return_projection_quote_node_id << "\n";
+  out << "edge_return_projection_base_node_ids="
+      << fact.edge_return_projection_base_node_ids << "\n";
+  out << "edge_return_projection_close_feature_index="
+      << fact.edge_return_projection_close_feature_index << "\n";
+  out << "edge_return_projection_valid_count="
+      << fact.edge_return_projection_valid_count << "\n";
+  out << "edge_return_projection_ev_mae=" << fact.edge_return_projection_ev_mae
+      << "\n";
+  out << "edge_return_projection_ev_rmse="
+      << fact.edge_return_projection_ev_rmse << "\n";
+  out << "edge_return_projection_signed_error="
+      << fact.edge_return_projection_signed_error << "\n";
+  out << "edge_return_projection_directional_accuracy="
+      << fact.edge_return_projection_directional_accuracy << "\n";
+  out << "edge_return_projection_correlation="
+      << fact.edge_return_projection_correlation << "\n";
+  out << "edge_return_projection_pairwise_rank_valid_count="
+      << fact.edge_return_projection_pairwise_rank_valid_count << "\n";
+  out << "edge_return_projection_pairwise_rank_accuracy="
+      << fact.edge_return_projection_pairwise_rank_accuracy << "\n";
+  out << "edge_return_projection_best_asset_valid_count="
+      << fact.edge_return_projection_best_asset_valid_count << "\n";
+  out << "edge_return_projection_best_asset_agreement="
+      << fact.edge_return_projection_best_asset_agreement << "\n";
+  exposure_detail::append_i64_list(
+      out, "edge_return_projection_valid_count_per_edge",
+      fact.edge_return_projection_valid_count_per_edge);
+  exposure_detail::append_double_list(
+      out, "edge_return_projection_directional_accuracy_per_edge",
+      fact.edge_return_projection_directional_accuracy_per_edge);
+  exposure_detail::append_i64_list(
+      out, "edge_return_projection_valid_count_per_channel",
+      fact.edge_return_projection_valid_count_per_channel);
+  exposure_detail::append_double_list(
+      out, "edge_return_projection_directional_accuracy_per_channel",
+      fact.edge_return_projection_directional_accuracy_per_channel);
   out << "calibration_coverage=" << fact.calibration_coverage << "\n";
   out << "pit_summary=" << fact.pit_summary << "\n";
   out << "sigma_scale_sanity=" << fact.sigma_scale_sanity << "\n";
@@ -8304,6 +8526,7 @@ make_allocation_engine_facts_from_job_dir(
   fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
   fact.declared_parent_exposure_fact_digest =
       first_value({"parent_exposure_fact_digest"});
+  fact.declared_fact_digest = first_value({"fact_digest", "digest"});
   fact.contract_fingerprint = parent.contract_fingerprint;
   fact.protocol_id = parent.protocol_id;
   fact.graph_order_fingerprint = parent.graph_order_fingerprint;
@@ -20596,6 +20819,100 @@ make_forecast_eval_fact_from_channel_mdn_report(
       first_report_double(report, {"signed_error", "forecast_signed_error"});
   fact.directional_accuracy = first_report_double(
       report, {"directional_accuracy", "forecast_directional_accuracy"});
+  fact.forecast_ev_valid_count_per_channel =
+      exposure_detail::parse_i64_list_fallback(exposure_detail::map_get(
+          report, "forecast_ev_valid_count_per_channel"));
+  fact.ev_mae_per_channel = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "ev_mae_per_channel"));
+  fact.ev_rmse_per_channel = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "ev_rmse_per_channel"));
+  fact.signed_error_per_channel = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "signed_error_per_channel"));
+  fact.directional_accuracy_per_channel =
+      exposure_detail::parse_double_list_fallback(
+          exposure_detail::map_get(report, "directional_accuracy_per_channel"));
+  fact.forecast_ev_valid_count_per_target_feature =
+      exposure_detail::parse_i64_list_fallback(exposure_detail::map_get(
+          report, "forecast_ev_valid_count_per_target_feature"));
+  fact.ev_mae_per_target_feature = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "ev_mae_per_target_feature"));
+  fact.ev_rmse_per_target_feature = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "ev_rmse_per_target_feature"));
+  fact.signed_error_per_target_feature =
+      exposure_detail::parse_double_list_fallback(
+          exposure_detail::map_get(report, "signed_error_per_target_feature"));
+  fact.directional_accuracy_per_target_feature =
+      exposure_detail::parse_double_list_fallback(exposure_detail::map_get(
+          report, "directional_accuracy_per_target_feature"));
+  fact.forecast_ev_valid_count_per_channel_target_feature =
+      exposure_detail::parse_i64_list_fallback(exposure_detail::map_get(
+          report, "forecast_ev_valid_count_per_channel_target_feature"));
+  fact.ev_mae_per_channel_target_feature =
+      exposure_detail::parse_double_list_fallback(exposure_detail::map_get(
+          report, "ev_mae_per_channel_target_feature"));
+  fact.ev_rmse_per_channel_target_feature =
+      exposure_detail::parse_double_list_fallback(exposure_detail::map_get(
+          report, "ev_rmse_per_channel_target_feature"));
+  fact.signed_error_per_channel_target_feature =
+      exposure_detail::parse_double_list_fallback(exposure_detail::map_get(
+          report, "signed_error_per_channel_target_feature"));
+  fact.directional_accuracy_per_channel_target_feature =
+      exposure_detail::parse_double_list_fallback(exposure_detail::map_get(
+          report, "directional_accuracy_per_channel_target_feature"));
+  fact.forecast_ev_valid_count_per_node =
+      exposure_detail::parse_i64_list_fallback(
+          exposure_detail::map_get(report, "forecast_ev_valid_count_per_node"));
+  fact.ev_mae_per_node = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "ev_mae_per_node"));
+  fact.ev_rmse_per_node = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "ev_rmse_per_node"));
+  fact.signed_error_per_node = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "signed_error_per_node"));
+  fact.directional_accuracy_per_node =
+      exposure_detail::parse_double_list_fallback(
+          exposure_detail::map_get(report, "directional_accuracy_per_node"));
+  fact.edge_return_projection_schema =
+      exposure_detail::map_get(report, "edge_return_projection_schema");
+  fact.edge_return_projection_quote_node_index =
+      first_report_i64(report, {"edge_return_projection_quote_node_index"}, -1);
+  fact.edge_return_projection_quote_node_id =
+      exposure_detail::map_get(report, "edge_return_projection_quote_node_id");
+  fact.edge_return_projection_base_node_ids =
+      exposure_detail::map_get(report, "edge_return_projection_base_node_ids");
+  fact.edge_return_projection_close_feature_index = first_report_i64(
+      report, {"edge_return_projection_close_feature_index"}, -1);
+  fact.edge_return_projection_valid_count =
+      first_report_i64(report, {"edge_return_projection_valid_count"}, 0);
+  fact.edge_return_projection_ev_mae =
+      first_report_double(report, {"edge_return_projection_ev_mae"});
+  fact.edge_return_projection_ev_rmse =
+      first_report_double(report, {"edge_return_projection_ev_rmse"});
+  fact.edge_return_projection_signed_error =
+      first_report_double(report, {"edge_return_projection_signed_error"});
+  fact.edge_return_projection_directional_accuracy = first_report_double(
+      report, {"edge_return_projection_directional_accuracy"});
+  fact.edge_return_projection_correlation =
+      first_report_double(report, {"edge_return_projection_correlation"});
+  fact.edge_return_projection_pairwise_rank_valid_count = first_report_i64(
+      report, {"edge_return_projection_pairwise_rank_valid_count"}, 0);
+  fact.edge_return_projection_pairwise_rank_accuracy = first_report_double(
+      report, {"edge_return_projection_pairwise_rank_accuracy"});
+  fact.edge_return_projection_best_asset_valid_count = first_report_i64(
+      report, {"edge_return_projection_best_asset_valid_count"}, 0);
+  fact.edge_return_projection_best_asset_agreement = first_report_double(
+      report, {"edge_return_projection_best_asset_agreement"});
+  fact.edge_return_projection_valid_count_per_edge =
+      exposure_detail::parse_i64_list_fallback(exposure_detail::map_get(
+          report, "edge_return_projection_valid_count_per_edge"));
+  fact.edge_return_projection_directional_accuracy_per_edge =
+      exposure_detail::parse_double_list_fallback(exposure_detail::map_get(
+          report, "edge_return_projection_directional_accuracy_per_edge"));
+  fact.edge_return_projection_valid_count_per_channel =
+      exposure_detail::parse_i64_list_fallback(exposure_detail::map_get(
+          report, "edge_return_projection_valid_count_per_channel"));
+  fact.edge_return_projection_directional_accuracy_per_channel =
+      exposure_detail::parse_double_list_fallback(exposure_detail::map_get(
+          report, "edge_return_projection_directional_accuracy_per_channel"));
   fact.calibration_coverage = first_report_double(
       report, {"calibration_coverage", "forecast_calibration_coverage"});
   fact.mean_nll_per_channel = exposure_detail::parse_double_list_fallback(

@@ -1,0 +1,387 @@
+# synthetic_benchmark_failure_root_cause.v1
+
+Status: complete
+
+Question:
+
+```text
+Why did the current cwu_02v run fail the simple deterministic periodic
+synthetic benchmark?
+```
+
+Short answer:
+
+```text
+The first decisive failure is in the forecast stack, before policy quality can
+be interpreted as the primary cause.
+
+The representation/MDN path is no-lookahead-clean and finite, but it does not
+learn the benchmark's key close-like directional signal. The failure is already
+present on the same [0,730) anchor range used to train representation and MDN,
+so this is not merely protected-eval generalization failure.
+```
+
+## Evidence Summary
+
+Synthetic data quality is not the current blocker:
+
+```text
+row_count = 1200
+accepted_anchor_count = 1170
+train_anchor_range = [0,730)
+embargo_gap = [730,760)
+eval_anchor_range = [760,1088)
+test_anchor_range = [1088,1170)
+minimum_train_cycles = 60.833333
+minimum_eval_cycles = 27.333333
+minimum_test_cycles = 6.833333
+periodic_chart_sufficient_cycles = true
+```
+
+No-lookahead/provenance is not the forecast blocker:
+
+```text
+forecast_eval_range = [760,1088)
+influence_end = 730
+proof_certificate_check_passed = true
+```
+
+The forecast metric failure is specific:
+
+```text
+aggregate_directional_accuracy = 0.677555
+price_features_directional_accuracy = 0.435721750
+close_only_directional_accuracy = 0.500254
+activity_features_directional_accuracy = 1.000000
+```
+
+The close-like target feature is not learned on eval:
+
+```text
+feature_3.close.directional_accuracy = 0.500254
+channel_0.close_directional_accuracy = 0.508384
+channel_1.close_directional_accuracy = 0.498476
+channel_2.close_directional_accuracy = 0.493902
+```
+
+It is also not learned on the training range:
+
+```text
+train_range = [0,730)
+train_range.aggregate_directional_accuracy = 0.675962
+train_range.close_directional_accuracy = 0.491438
+
+eval_range = [760,1088)
+eval_range.aggregate_directional_accuracy = 0.677555
+eval_range.close_directional_accuracy = 0.500254
+```
+
+This rules out the simple explanation:
+
+```text
+fit train, failed eval
+```
+
+The model did not demonstrate train-range close-direction fit in the first
+place.
+
+Fresh probe-enabled learning diagnostics are recorded in:
+
+```text
+artifacts/synthetic_benchmark_learning_diagnostics.v1.probe
+```
+
+They add the learning-curve view:
+
+```text
+representation.steps_completed = 320
+representation.last_loss = 3.2351 -> 0.224892
+representation_effective_rank_fraction = 0.796531 -> 0.719553
+
+mdn.steps_completed = 400
+mdn.last_loss = 3.83776 -> 0.655708
+mdn.aggregate_directional_accuracy_final = 0.64528
+mdn.edge_return_projection_directional_accuracy = 0.51441 -> 0.513742
+mdn.edge_return_projection_pairwise_rank_accuracy = 0.529687 -> 0.501575
+mdn.edge_return_projection_best_asset_agreement_final = 0.327761
+mdn.edge_return_projection_correlation_final = -0.00116026
+```
+
+This strengthens the root-cause statement:
+
+```text
+The optimizer is not globally stalled. Representation and MDN losses move, but
+the MDN forecast learning curve does not move the policy-relevant edge-return
+sign/rank signal away from random.
+```
+
+The first explicit MDN edge-objective alignment attempt is recorded in:
+
+```text
+artifacts/synthetic_mdn_edge_objective_alignment.v1.report
+```
+
+It added `.jkimyei`-owned edge-return auxiliary losses to MDN training and ran a
+fresh Runtime train/eval comparison:
+
+```text
+train range = [0,730)
+train steps_completed = 3500
+train.edge_return_projection_directional_accuracy = 0.487915
+train.edge_return_projection_pairwise_rank_accuracy = 0.505747
+train.edge_return_projection_correlation = -0.000884998
+
+eval range = [760,1088)
+eval.edge_return_projection_directional_accuracy = 0.504065
+eval.edge_return_projection_pairwise_rank_accuracy = 0.519309
+eval.edge_return_projection_best_asset_agreement = 0.381098
+eval.edge_return_projection_correlation = -0.000355394
+eval.mean_edge_return_auxiliary_direction_loss = 0.693148
+eval.mean_edge_return_auxiliary_rank_loss = 0.693147
+```
+
+This rules out the light auxiliary-objective variant as sufficient. The next
+forecast-side suspect is the MDN readout/target parameterization itself:
+edge return likely needs a dedicated readout/head or first-class edge-space
+forecast objective rather than only an auxiliary projection through node
+potentials.
+
+## Layer-by-Layer Classification
+
+| Layer | Current finding | Evidence |
+| --- | --- | --- |
+| Synthetic data generation | Not primary blocker | Periodic cycle sufficiency is true; raw close direction is not degenerate. |
+| Kline/source path | Not primary blocker | Data flows through normal kline-shaped Ujcamei graph-first path. |
+| Split/no-lookahead | Not primary blocker | Forecast eval influence ends at 730 for eval [760,1088). |
+| Forecast target semantics | Real suspect | MDN feature 3 is a NodeLift gauge-node close potential, not direct edge close return. |
+| Representation encoding | Partial signal present, not oracle-grade | Frozen-representation edge readout reaches eval direction `0.738482384824`, rank `0.707994579946`, best-asset agreement `0.597560975610`, and correlation `0.622333108679`. |
+| MDN forecast learning | Primary failing layer | MDN loss improves, but close/edge-return direction remains coin-flip even though frozen representation features carry partial edge signal. A fresh edge-auxiliary MDN train/eval also stayed near random. |
+| Replay/environment binding | Not shown as root cause yet | Forecast/replay evidence exists and policy consumed certified replay. |
+| Policy execution | Secondary performance problem | PPO ran only 328 samples, 1 optimizer step, and validation has 318 invalid actions. |
+| Oracle/comparison logic | Not primary blocker | Policy equity is now normalized before comparison; result remains fail. |
+| Lattice artifact readiness | Separate blocker | `policy_training_artifact_ready` fails bundle/causal closure, not no-lookahead. |
+
+## Root-Cause Candidates
+
+### Candidate 1: representation-to-MDN objective/readout failure
+
+Status: leading candidate.
+
+Evidence for:
+
+```text
+MDN close_directional_accuracy ~= 0.5 on eval
+MDN close_directional_accuracy ~= 0.5 on train
+MDN edge-return projection direction/rank/correlation remain near random
+frozen representation linear edge readout is materially better than random
+raw previous-return and phase/lag baselines are substantially better than 0.5
+```
+
+Evidence against:
+
+```text
+The frozen representation readout is still below the previous-return baseline
+and far below the phase/lag oracle, so representation quality can still improve.
+```
+
+Interpretation:
+
+```text
+The representation exposes some tradable edge signal, but the MDN
+objective/readout does not preserve or use it. This points first at MDN target
+weighting, edge-space auxiliary objectives, readout capacity, and node/channel
+identity/context before PPO tuning.
+```
+
+### Candidate 2: target-space mismatch
+
+Status: strong companion suspect.
+
+Evidence for:
+
+```text
+The current close gate scores channel_node_future NodeLift gauge-node close
+potential direction.
+
+The benchmark capability/oracle is naturally about tradable edge close returns.
+```
+
+Evidence against:
+
+```text
+The NodeLift gauge-node target is itself not random: the 1d gauge-node
+previous-sign baseline scored 0.746951 in the close-direction diagnostic.
+```
+
+Interpretation:
+
+```text
+Target-space mismatch may make the benchmark gate less policy-relevant, but it
+does not fully explain why the model is coin-flip on the gauge-node close target.
+```
+
+### Candidate 3: PPO/policy undertraining or action invalidity
+
+Status: real issue, but downstream of forecast failure for this root-cause goal.
+
+Evidence for:
+
+```text
+certified_replay_sample_count = 328
+optimizer_steps = 1
+validation_invalid_action_count = 318
+policy_final_equity_growth_multiple = 1.009610000000
+policy_vs_best_causal_baseline_ratio = 0.005401682584
+policy_vs_oracle_ratio = 0.000460403291
+```
+
+Evidence against as primary cause:
+
+```text
+The forecast stack already fails the pre-policy deterministic close-direction
+gate. A poor policy is therefore expected and not the earliest failing layer.
+```
+
+Interpretation:
+
+```text
+PPO quality must be improved later, but training policy harder on weak or
+misaligned forecasts is not the first correction.
+```
+
+### Candidate 4: readiness/bundle closure mismatch
+
+Status: separate hardening blocker, not performance root cause.
+
+Evidence for:
+
+```text
+policy_training_artifact_ready primary_deficit_key = artifact:policy_training_lineage
+issues include:
+  bundle_component_missing
+  policy_execution_evidence_snapshot_mismatch
+  bundle_generation_vector_mismatch
+  causal_artifact_production_closure_mismatch
+  causal_provenance_closure_mismatch
+  causal_provenance_subproof_incomplete
+```
+
+Evidence against as performance cause:
+
+```text
+The PPO job completed and wrote a policy-quality report. The readiness closure
+blocker prevents promotion/acceptance, but it does not explain the coin-flip
+forecast close direction.
+```
+
+## Current Root-Cause Statement
+
+```text
+The synthetic benchmark failure is primarily a pre-policy forecast/model-quality
+failure. The learned representation is not random: a frozen-representation
+linear readout recovers partial deterministic edge-return signal on eval.
+However, the MDN forecast output does not preserve or use that signal; its
+policy-relevant edge-return sign/rank/correlation remain near random.
+
+The most likely immediate cause is therefore the representation-to-MDN
+objective/readout boundary: target weighting, output target choice, edge-space
+auxiliary loss, readout capacity, or missing node/channel context.
+
+Target-space impossibility is less likely after
+synthetic_direct_edge_return_supervised_probe.v1: raw base-minus-quote edge
+returns project exactly from gauge-node potentials, and a small supervised
+linear phase/lag readout solves the eval edge sign/rank task perfectly.
+```
+
+## Next Smallest Fix Or Probe
+
+The next implementation should not broadly tune PPO first.
+
+Completed follow-up target:
+
+```text
+synthetic_direct_edge_return_supervised_probe.v1
+```
+
+Purpose:
+
+```text
+Separate target/projection impossibility from representation/MDN learning
+failure by checking:
+
+  raw edge returns
+  NodeLift gauge projection identity
+  previous-return causal baseline
+  small supervised phase/lag linear readout
+  margin-conditioned sign/rank metrics
+
+before tuning PPO.
+```
+
+Result:
+
+```text
+target_transform.projection_identity_passed = true
+target_transform.eval.projected_edge_max_abs_error = 6.9388939039072284e-18
+
+eval.previous_return.directional_accuracy = 0.794715447154
+eval.previous_return.pairwise_rank_accuracy = 0.739837398374
+eval.previous_return.best_asset_agreement = 0.628048780488
+
+eval.phase_lag_linear.directional_accuracy = 1.000000000000
+eval.phase_lag_linear.pairwise_rank_accuracy = 1.000000000000
+eval.phase_lag_linear.best_asset_agreement = 1.000000000000
+eval.phase_lag_linear.correlation = 1.000000000000
+
+frozen_representation_feature_probe_status = complete
+frozen_representation_feature_probe_total_rows = 9522
+frozen_representation_feature_probe_train_rows = 6570
+frozen_representation_feature_probe_feature_count = 97
+
+frozen_representation.eval.directional_accuracy = 0.738482384824
+frozen_representation.eval.pairwise_rank_accuracy = 0.707994579946
+frozen_representation.eval.best_asset_agreement = 0.597560975610
+frozen_representation.eval.correlation = 0.622333108679
+```
+
+Interpretation:
+
+```text
+The benchmark edge target is well formed and learnable by a tiny supervised
+causal phase/lag readout. Frozen representation features carry partial edge
+signal, but the current MDN result near random edge sign/rank shows the learned
+forecast readout is still misaligned with the tradable benchmark target.
+```
+
+Next implementation:
+
+```text
+Investigate the MDN objective/readout boundary before PPO:
+
+  add or test edge-return auxiliary objectives
+  inspect target-feature weighting and scaling
+  verify node/channel identity and cross-node/cross-channel context
+  compare MDN output against the frozen-representation linear edge readout
+```
+
+## References
+
+Primary local evidence:
+
+```text
+artifacts/synthetic_periodic_chart_manifest.v1.report
+artifacts/synthetic_feature_aware_forecast_oracle_gate.v1.report
+artifacts/synthetic_forecast_semantics_diagnostic.v1.probe
+artifacts/synthetic_close_direction_failure_diagnostics.v1.probe
+artifacts/synthetic_train_range_forecast_fit_probe.v1.probe
+artifacts/synthetic_edge_return_projection_oracle_gate.v1.report
+artifacts/synthetic_direct_edge_return_supervised_probe.v1.report
+.runtime/benchmarks/synthetic_continuous_graph_v1/periodic_oracle_capability_v1/synthetic_periodic_oracle_protocol_capability.v1.report
+```
+
+Validation status:
+
+```text
+This report is a consolidation of existing fresh Runtime/Lattice/benchmark
+evidence. It does not introduce a new training run.
+```

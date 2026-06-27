@@ -373,6 +373,17 @@ fixture_paths_t make_config_fixture(const std::string &label,
                  ";\n"
                  "  VALIDATION_EVERY = 0;\n"
                  "  SEED = 31;\n"
+                 "  MDN_EDGE_RETURN_AUXILIARY_LOSS_WEIGHT = 0.0;\n"
+                 "  MDN_EDGE_RETURN_AUXILIARY_DIRECTION_WEIGHT = 0.0;\n"
+                 "  MDN_EDGE_RETURN_AUXILIARY_RANK_WEIGHT = 0.0;\n"
+                 "  MDN_EDGE_RETURN_AUXILIARY_HUBER_BETA = 0.01;\n"
+                 "  MDN_EDGE_RETURN_AUXILIARY_LOGIT_SCALE = 50.0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED = false;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_LOSS_WEIGHT = 0.0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_DIRECTION_WEIGHT = 0.0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 0.0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_HUBER_BETA = 0.01;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_LOGIT_SCALE = 50.0;\n"
                  "  FREEZE_REPRESENTATION = true;\n"
                  "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
                  "  INPUT_MDN_CHECKPOINT = ;\n"
@@ -1470,6 +1481,16 @@ void test_channel_mdn_run_mode_loads_checkpoints_without_training() {
   check(!eval_report.checkpoint_written, "MDN run no checkpoint write");
   check(eval_report.total_valid_target_count > 0, "MDN run valid targets");
   check(std::isfinite(eval_report.mean_loss), "MDN run mean loss finite");
+  check(eval_report.forecast_ev_valid_count ==
+            eval_report.total_valid_target_count,
+        "MDN run EV metric count matches valid targets");
+  check(std::isfinite(eval_report.ev_mae), "MDN run EV MAE finite");
+  check(std::isfinite(eval_report.ev_rmse), "MDN run EV RMSE finite");
+  check(std::isfinite(eval_report.signed_error), "MDN run signed error finite");
+  check(std::isfinite(eval_report.directional_accuracy) &&
+            eval_report.directional_accuracy >= 0.0 &&
+            eval_report.directional_accuracy <= 1.0,
+        "MDN run directional accuracy finite bounded");
   check(eval_report.nonfinite_output_count == 0, "MDN run finite outputs");
   check(observed_inference_batches > 0,
         "MDN run invoked inference batch observer");
@@ -1487,6 +1508,16 @@ void test_channel_mdn_run_mode_loads_checkpoints_without_training() {
         "MDN run report optimizer steps");
   check(report_text.find("checkpoint_written=false") != std::string::npos,
         "MDN run report checkpoint");
+  check(report_text.find("forecast_ev_valid_count=") != std::string::npos,
+        "MDN run report EV metric count");
+  check(report_text.find("ev_mae=") != std::string::npos,
+        "MDN run report EV MAE");
+  check(report_text.find("ev_rmse=") != std::string::npos,
+        "MDN run report EV RMSE");
+  check(report_text.find("signed_error=") != std::string::npos,
+        "MDN run report signed error");
+  check(report_text.find("directional_accuracy=") != std::string::npos,
+        "MDN run report directional accuracy");
 }
 
 void test_channel_mdn_zero_valid_targets_skip() {

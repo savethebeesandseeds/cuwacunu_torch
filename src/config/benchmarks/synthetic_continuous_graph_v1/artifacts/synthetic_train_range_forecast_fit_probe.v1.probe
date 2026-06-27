@@ -1,0 +1,85 @@
+# synthetic_train_range_forecast_fit_probe.v1
+
+Status: complete
+
+Question:
+
+```text
+Did the trained representation/MDN stack fit the deterministic training slice,
+or did it fit train but fail to generalize to the protected eval slice?
+```
+
+Method:
+
+Runtime evaluated the existing trained synthetic representation and MDN
+checkpoints over the training anchor range `[0,730)` without retraining.
+
+```text
+job_id = cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000009
+range = [0,730)
+mode = run
+checkpoint_written = false
+optimizer_steps = 0
+representation_checkpoint_loaded = true
+mdn_checkpoint_loaded = true
+runtime_handoff_id = runtime_handoff_synthetic_train_range_forecast_fit_probe_v1_execute
+```
+
+The run temporarily selected the existing MDN eval wave
+`cwu_02v_certified_replay_eval_mdn` and used a Runtime handoff range overlay for
+`[0,730)`. The benchmark config was restored to `policy_training_ppo_v0` after
+the probe.
+
+Primary report:
+
+```text
+/cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/dmi_08edf1ce084d9e39/jobs/run/cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000009/channel_inference.report
+```
+
+## Result
+
+Train-range expected-value metrics:
+
+```text
+ev_mae = 0.0312497
+ev_rmse = 0.0512272
+signed_error = -0.0126818
+directional_accuracy = 0.675962
+directional_accuracy_per_target_feature =
+  0,0.605023,0.635274,0.491438,1,1,1,1,1
+```
+
+The close-like target feature is feature `3`, matching the feature-aware
+forecast oracle gate used for the protected eval readout.
+
+Comparison against protected eval `[760,1088)`:
+
+```text
+metric                         train [0,730)   eval [760,1088)
+aggregate directional_accuracy 0.675962        0.677555
+close directional_accuracy     0.491438        0.500254
+ev_mae                         0.0312497       0.0312739
+ev_rmse                        0.0512272       0.0512565
+```
+
+## Interpretation
+
+This rules out the simple explanation that the MDN fit the training slice and
+then failed only by out-of-sample generalization. The close-direction failure is
+already present on the same anchor range used to train representation and MDN.
+
+The remaining leading explanations are:
+
+```text
+1. MDN/representation phase-learning failure on the deterministic target.
+2. Target-space mismatch: the forecast gate scores NodeLift gauge-node close
+   potential direction, while the policy question may need edge-return direction.
+3. Direction-sign metric semantics may be misaligned with the normalized target
+   coordinate or target mask.
+4. The model is optimizing NLL/magnitude well enough to keep MAE/RMSE acceptable
+   while not learning the close-direction sign.
+```
+
+The next useful diagnostic is an edge-return projection oracle gate or a
+target-space sanity probe that projects predicted node potentials back into the
+policy-relevant edge-return space.

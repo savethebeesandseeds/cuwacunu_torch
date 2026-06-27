@@ -1,0 +1,388 @@
+# synthetic_close_direction_failure_diagnostics.v1
+
+Status: complete
+
+Question:
+
+```text
+Why does the synthetic benchmark forecast stack score near random guessing on
+close-return direction?
+```
+
+Primary target:
+
+```text
+synthetic_forecast_oracle_accuracy_ready
+```
+
+Primary Runtime evidence:
+
+```text
+job_id = cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000007
+report = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/dmi_08edf1ce084d9e39/jobs/run/cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000007/channel_inference.report
+fact = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/dmi_08edf1ce084d9e39/jobs/run/cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000007/lattice.forecast_eval.fact
+target_range = [760,1088)
+horizon = 1
+proof_certificate_check_passed = true
+```
+
+## What Is Proven Not To Be The Problem
+
+### Not missing provenance
+
+Lattice reaches the forecast oracle metric gate with clean evidence:
+
+```text
+influence_complete = true
+influence_coverage_anchor_range = [760,1088)
+influence_influence_anchor_end_exclusive_max = 730
+influence_label_or_reward_availability_end_exclusive_max = 730
+proof_certificate_check_passed = true
+```
+
+The failing target is a metric failure, not a no-lookahead, generation,
+artifact, or certificate failure:
+
+```text
+status = metric_failed
+deficit = metric:synthetic_forecast_oracle
+message = close_directional_accuracy below threshold: 0.500254 < 0.95
+```
+
+### Not insufficient synthetic cycles
+
+The synthetic chart manifest says the data has enough deterministic periodic
+cycles:
+
+```text
+row_count = 1200
+accepted_anchor_count = 1170
+train_anchor_range = [0,730)
+embargo_gap_anchors = 30
+eval_anchor_range = [760,1088)
+minimum_train_cycles = 60.833333
+minimum_eval_cycles = 27.333333
+minimum_test_cycles = 6.833333
+periodic_chart_sufficient_cycles = true
+```
+
+### Not a class-imbalance explanation
+
+The raw 1d close-direction signs over the eval anchors are not degenerate:
+
+```text
+SYNALPHASYNUSD up_fraction = 0.588415
+SYNBETASYNUSD  up_fraction = 0.500000
+SYNGAMMASYNUSD up_fraction = 0.375000
+```
+
+### Not an unlearnable raw close-direction series
+
+A one-step previous-sign baseline is strong on raw edge close direction:
+
+```text
+SYNALPHASYNUSD previous_sign_accuracy = 0.832317
+SYNBETASYNUSD  previous_sign_accuracy = 0.801829
+SYNGAMMASYNUSD previous_sign_accuracy = 0.750000
+```
+
+The existing benchmark baseline report also shows that one-step momentum is a
+strong causal reference:
+
+```text
+one_step_momentum_final_equity = 186.906576675422
+best_causal_baseline_name = one_step_momentum
+```
+
+## Important Target-Semantics Finding
+
+The MDN target is not raw edge close return. The target transform fact says:
+
+```text
+target_mode = channel_node_future
+normalization_contract = identity.raw_channel_node_future.normalization.v1
+target_feature_ids = source_feature_0..source_feature_8
+```
+
+NodeLift constructs price target features as gauge-fixed node potentials from
+edge log-return observations. In code, the SRL lift solves:
+
+```text
+edge_feature ~= y_base - y_quote
+mean(y_nodes) = 0
+```
+
+Therefore feature 3 is a close-like node potential, not directly the
+instrument edge close return. This matters because the benchmark's
+`close_directional_accuracy` currently tests:
+
+```text
+sign(predicted future node close potential)
+  ==
+sign(realized future node close potential)
+```
+
+not:
+
+```text
+sign(predicted SYNALPHA/SYNUSD edge close return)
+  ==
+sign(realized SYNALPHA/SYNUSD edge close return)
+```
+
+This does not invalidate the metric, but it means the metric is checking
+phase recovery in the NodeLift target space.
+
+## Gauge-Node Baseline Check
+
+To make sure the NodeLift target itself is not random, the 1d eval close returns
+were converted into the same uniform-per-component gauge potential used by SRL:
+
+```text
+x_i = log(close_i[t+1] / close_i[t])
+y_USD = -(x_alpha + x_beta + x_gamma) / 4
+y_asset_i = x_i + y_USD
+```
+
+Using the previous gauge-node sign as a simple causal predictor gives:
+
+```text
+1d gauge-node close potentials samples = 1312
+previous_sign_accuracy = 0.746951
+
+per-node:
+  SYNUSD   = 0.728659
+  SYNALPHA = 0.765244
+  SYNBETA  = 0.771341
+  SYNGAMMA = 0.722561
+
+positive_fraction:
+  SYNUSD   = 0.487805
+  SYNALPHA = 0.570122
+  SYNBETA  = 0.469512
+  SYNGAMMA = 0.496951
+```
+
+This makes a pure "NodeLift close potential is unlearnable/random" explanation
+unlikely, at least for the 1d channel.
+
+## MDN Eval Failure
+
+The MDN expected-value evaluation on `[760,1088)` reports:
+
+```text
+aggregate_directional_accuracy = 0.677555
+price_features_directional_accuracy = 0.435721750
+close_only_directional_accuracy = 0.500254
+activity_features_directional_accuracy = 1.000000
+```
+
+The feature-aware gate correctly ignores the misleading activity-sign result
+and fails on close direction:
+
+```text
+feature_3.close.directional_accuracy = 0.500254
+feature_3.close.ev_mae = 0.0177458
+feature_3.close.ev_rmse = 0.0220297
+feature_3.close.signed_error = -0.00706685
+```
+
+The close failure is consistent across channels:
+
+```text
+channel_0.close_directional_accuracy = 0.508384
+channel_1.close_directional_accuracy = 0.498476
+channel_2.close_directional_accuracy = 0.493902
+```
+
+So this is not one bad channel. The model is effectively random on the
+close-like target feature across the active channel set.
+
+## Training Evidence
+
+The MDN checkpoint was trained, loaded, and finite:
+
+```text
+train_job_id = train_core_channel_mdn.train.channel_inference_mdn.attempt_000001
+optimizer_steps = 3500
+checkpoint_written = true
+representation_checkpoint_loaded = true
+mdn_checkpoint_loaded_for_eval = true
+finite_parameter_check = true
+nonfinite_output_count = 0
+```
+
+The original train job reports NLL/loss, not train-range expected-value
+directional metrics:
+
+```text
+train_mean_loss = -0.665341
+train_last_loss = -2.17781
+eval_mean_loss = -2.13232
+train_directional_accuracy = not emitted
+train_close_directional_accuracy = not emitted
+```
+
+A follow-up non-mutating Runtime probe evaluated the trained checkpoints over
+the train range `[0,730)`:
+
+```text
+job_id = cwu_02v_certified_replay_eval_mdn.run.channel_inference_mdn.attempt_000009
+checkpoint_written = false
+optimizer_steps = 0
+train_range_directional_accuracy = 0.675962
+train_range_close_directional_accuracy = 0.491438
+```
+
+That is effectively the same close-direction failure seen on protected eval:
+
+```text
+eval_range_close_directional_accuracy = 0.500254
+```
+
+So the evidence now points away from a pure train-to-eval generalization failure.
+The close-like NodeLift target direction is not being learned even on the train
+range.
+
+## Alignment And Representation Evidence
+
+The source cursor and target transform are internally consistent for the
+one-step eval:
+
+```text
+source_cursor_token includes Hx=30, Hf=1, accepted=1170
+target_transform.horizon = 1
+target_transform.target_mode = channel_node_future
+forecast_eval.anchor_range = [760,1088)
+forecast_eval.completed_anchor_range = [760,1088)
+```
+
+The graph-anchor batching code requires future keys to be strictly after the
+anchor key. That rules out the gross failure mode where the future target is
+not actually future-side. It does not yet prove that every policy-relevant edge
+return projection is aligned with the desired trading target; that is why the
+edge-return projection oracle remains a recommended companion gate.
+
+The representation checkpoint used by the MDN was trained on the upstream
+causal range and was non-degenerate by its own report:
+
+```text
+representation_train_range = [0,730)
+representation_optimizer_steps = 3000
+context_starved_sample_count = 0
+representation_effective_rank = 22.0267
+representation_effective_rank_fraction = 0.688334
+representation_condition_number = 34.1783
+finite_parameter_check = true
+checkpoint_written = true
+```
+
+This makes a trivial representation runtime failure unlikely, but it does not
+prove the representation encodes the synthetic phase in the way the MDN needs.
+That remains one of the main suspects.
+
+## Current Diagnosis
+
+The pipeline is working as a diagnostic instrument:
+
+```text
+Runtime emitted forecast facts.
+Lattice proved no-lookahead/provenance.
+The feature-aware oracle gate isolated the failing signal.
+```
+
+The forecast stack is not working for the benchmark's key directional signal:
+
+```text
+close-like NodeLift target direction is near random on eval.
+simple causal baselines are substantially better.
+```
+
+The strongest remaining suspects are:
+
+```text
+1. MDN/representation phase-learning failure.
+   The model does not recover the deterministic close phase on eval.
+
+2. Target-space mismatch.
+   The gate measures NodeLift gauge-node close potential direction, while the
+   policy/oracle capability question may ultimately care about edge-return
+   direction. Both are related, but not identical.
+
+3. Missing train-range EV diagnostic.
+   Without train-range close-direction metrics, we cannot yet separate
+   underfitting from generalization failure.
+
+4. Representation/MDN architecture limitations.
+   The current MDN report has node_id_embedding=false, cross_node_attention=false,
+   and cross_channel_attention=false. It may be relying entirely on the learned
+   context representation to encode node/channel phase identity.
+```
+
+## Ruled-Out Or Lower-Priority Suspects
+
+```text
+insufficient periodic cycles: ruled out
+no-lookahead/provenance failure: ruled out for this gate
+missing forecast metrics: ruled out
+activity-sign metric hiding the problem: fixed by feature-aware gate
+gross non-finite model output: ruled out
+single-channel-only failure: ruled out
+raw close direction being random: ruled out
+```
+
+## Next Decisive Probe
+
+The next goal should be:
+
+```text
+synthetic_train_range_forecast_fit_probe.v1
+```
+
+It should run or materialize the same feature-aware expected-value metrics on
+the training range `[0,730)`, using the trained representation/MDN checkpoint.
+
+Expected interpretation:
+
+```text
+If train close-direction accuracy is also near 0.5:
+  The MDN/representation path failed to fit the deterministic signal.
+
+If train close-direction accuracy is high but eval remains near 0.5:
+  The model is overfitting, the split distribution differs, or the causal
+  representation generalizes poorly.
+
+If train/eval NodeLift close potential is weak but edge-return projection is
+  strong:
+  The benchmark gate should add an edge-return projection oracle target instead
+  of relying only on node-potential close direction.
+```
+
+Recommended companion gate:
+
+```text
+synthetic_edge_return_projection_oracle_gate.v1
+```
+
+This should evaluate forecast quality in the edge-return space used by policy
+and the synthetic trading oracle:
+
+```text
+predicted edge close return = predicted_y_base_close - predicted_y_quote_close
+realized edge close return = realized_y_base_close - realized_y_quote_close
+```
+
+That gate would answer the policy-relevant question more directly while keeping
+the current node-potential gate as a lower-level model diagnostic.
+
+## Commands Used For This Diagnostic
+
+```text
+hero.lattice.evaluate.deficit synthetic_forecast_oracle_accuracy_ready
+sed/rg over attempt_000007 channel_inference.report, runtime.result.fact,
+and lattice.forecast_eval.fact
+awk over synthetic 1d kline CSVs to compute raw edge and gauge-node
+previous-sign baselines
+source inspection of SRL NodeLift gauge construction and channel MDN target
+selection
+```

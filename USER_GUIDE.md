@@ -409,8 +409,9 @@ Latest PPO execution evidence with anchor-v1 performance profile:
 - market readiness claimed: `false`
 - readiness note: diagnostic performance evidence only; this is not policy
   selection, market readiness, deployment readiness, or live authority.
-- baseline note:
-  `policy_training_anchor_v1_performance_baseline.md`
+- baseline location:
+  this guide, `ROADMAP.md`, and the job-local Runtime performance/profile
+  reports listed below
 
 Inspect the policy-environment performance reports:
 
