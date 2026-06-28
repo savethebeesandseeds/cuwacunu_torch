@@ -11,6 +11,7 @@
 #include "wikimyei/representation/encoding/vicreg/vicreg_projector.h"
 #include "wikimyei/representation/encoding/vicreg/vicreg_train_model.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -44,6 +45,105 @@ void close(double actual, double expected, double tolerance,
     throw std::runtime_error(message + " expected=" + std::to_string(expected) +
                              " actual=" + std::to_string(actual));
   }
+}
+
+std::vector<torch::Tensor>
+clone_direct_edge_head_params(const mdn::ChannelContextMdn &model) {
+  std::vector<torch::Tensor> out;
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") != std::string::npos) {
+      out.push_back(param.value().detach().clone());
+    }
+  }
+  check(!out.empty(), "MDN exposes direct-edge-head parameters");
+  return out;
+}
+
+double direct_edge_head_grad_l1(const mdn::ChannelContextMdn &model) {
+  double grad_l1 = 0.0;
+  int64_t defined_grad_count = 0;
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") == std::string::npos) {
+      continue;
+    }
+    const auto grad = param.value().grad();
+    if (!grad.defined()) {
+      continue;
+    }
+    ++defined_grad_count;
+    grad_l1 += grad.detach().abs().sum().item<double>();
+  }
+  check(defined_grad_count > 0, "direct-edge-head gradients are defined");
+  return grad_l1;
+}
+
+double
+max_direct_edge_head_param_delta(const mdn::ChannelContextMdn &model,
+                                 const std::vector<torch::Tensor> &before) {
+  double max_delta = 0.0;
+  std::size_t idx = 0;
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") == std::string::npos) {
+      continue;
+    }
+    check(idx < before.size(),
+          "direct-edge-head parameter count changed during canary");
+    const auto delta =
+        (param.value().detach() - before[idx]).abs().max().item<double>();
+    max_delta = std::max(max_delta, delta);
+    ++idx;
+  }
+  check(idx == before.size(), "direct-edge-head parameter count is stable");
+  return max_delta;
+}
+
+constexpr int64_t kDirectEdgeCanaryBatch = 16;
+constexpr int64_t kDirectEdgeCanaryNodes = 4;
+constexpr int64_t kDirectEdgeCanaryChannels = 2;
+constexpr int64_t kDirectEdgeCanaryContextDim = 5;
+constexpr int64_t kDirectEdgeCanaryTargetDim = 4;
+constexpr int64_t kDirectEdgeCanaryHorizon = 1;
+
+mdn::channel_mdn_input_t make_direct_edge_readout_canary_input() {
+  using torch::indexing::Slice;
+
+  mdn::channel_mdn_input_t input{};
+  input.context =
+      torch::randn({kDirectEdgeCanaryBatch, kDirectEdgeCanaryNodes,
+                    kDirectEdgeCanaryChannels, kDirectEdgeCanaryContextDim},
+                   torch::kFloat32);
+  input.context_mask =
+      torch::ones({kDirectEdgeCanaryBatch, kDirectEdgeCanaryNodes,
+                   kDirectEdgeCanaryChannels},
+                  torch::kBool);
+  input.future =
+      torch::zeros({kDirectEdgeCanaryBatch, kDirectEdgeCanaryNodes,
+                    kDirectEdgeCanaryChannels, kDirectEdgeCanaryTargetDim},
+                   torch::kFloat32);
+  input.future_mask =
+      torch::ones({kDirectEdgeCanaryBatch, kDirectEdgeCanaryNodes,
+                   kDirectEdgeCanaryChannels, kDirectEdgeCanaryTargetDim},
+                  torch::kBool);
+
+  const auto signal =
+      0.7 * input.context.index({Slice(), Slice(), Slice(), 0}) -
+      0.3 * input.context.index({Slice(), Slice(), Slice(), 1}) +
+      0.1 * input.context.index({Slice(), Slice(), Slice(), 2});
+  input.future.index_put_({Slice(), Slice(), Slice(), 0}, 0.1 * signal);
+  input.future.index_put_({Slice(), Slice(), Slice(), 1}, -0.2 * signal);
+  input.future.index_put_({Slice(), Slice(), Slice(), 2}, 0.05 * signal);
+  input.future.index_put_({Slice(), Slice(), Slice(), 3}, signal);
+  return input;
+}
+
+mdn::channel_context_mdn_train_options_t make_direct_edge_readout_options() {
+  mdn::channel_context_mdn_train_options_t options{};
+  options.direct_edge_return_readout_enabled = true;
+  options.direct_edge_return_readout_loss_weight = 10.0;
+  options.direct_edge_return_readout_direction_weight = 0.25;
+  options.direct_edge_return_readout_rank_weight = 0.25;
+  options.direct_edge_return_readout_logit_scale = 5.0;
+  return options;
 }
 
 void test_channel_mdn_balanced_channel_feature_loss() {
@@ -610,6 +710,76 @@ void test_channel_mdn_zero_valid_targets() {
         "zero-valid MDN batch has zero loss");
 }
 
+void test_channel_mdn_direct_edge_readout_updates_head() {
+  torch::manual_seed(131);
+  auto input = make_direct_edge_readout_canary_input();
+  auto model = mdn::ChannelContextMdn(
+      kDirectEdgeCanaryContextDim, kDirectEdgeCanaryTargetDim,
+      kDirectEdgeCanaryChannels, kDirectEdgeCanaryHorizon, 2, 16, 1);
+  auto options = make_direct_edge_readout_options();
+
+  auto before = clone_direct_edge_head_params(model);
+  mdn::channel_context_mdn_train_model_t train(model, 0.01, options);
+  const auto result = train.train_one_batch(input);
+
+  check(!result.skipped, "direct-edge-head canary batch is not skipped");
+  check(result.optimizer_step_applied,
+        "direct-edge-head canary applies optimizer step");
+  check(result.direct_edge_return_readout_loss_valid_count ==
+            kDirectEdgeCanaryBatch * (kDirectEdgeCanaryNodes - 1) *
+                kDirectEdgeCanaryChannels,
+        "direct-edge-head canary has expected valid edge targets");
+  check(
+      result.direct_edge_return_readout_loss.defined() &&
+          torch::isfinite(result.direct_edge_return_readout_loss).item<bool>(),
+      "direct-edge-head canary direct loss is finite");
+
+  const auto grad_l1 = direct_edge_head_grad_l1(train.model());
+  check(std::isfinite(grad_l1) && grad_l1 > 0.0,
+        "direct-edge-head canary produces nonzero direct-head gradients");
+  const auto max_delta =
+      max_direct_edge_head_param_delta(train.model(), before);
+  check(std::isfinite(max_delta) && max_delta > 0.0,
+        "direct-edge-head canary updates direct-head parameters");
+}
+
+void test_channel_mdn_direct_edge_readout_fixed_batch_loss_decreases() {
+  torch::manual_seed(137);
+  auto input = make_direct_edge_readout_canary_input();
+  auto model = mdn::ChannelContextMdn(
+      kDirectEdgeCanaryContextDim, kDirectEdgeCanaryTargetDim,
+      kDirectEdgeCanaryChannels, kDirectEdgeCanaryHorizon, 2, 16, 1);
+  auto options = make_direct_edge_readout_options();
+  mdn::channel_context_mdn_train_model_t train(model, 0.01, options);
+
+  double first_regression_loss = std::numeric_limits<double>::quiet_NaN();
+  double last_regression_loss = std::numeric_limits<double>::quiet_NaN();
+  for (int step = 0; step < 80; ++step) {
+    const auto result = train.train_one_batch(input);
+    check(!result.skipped,
+          "direct-edge-head fixed-batch canary is not skipped");
+    check(result.optimizer_step_applied,
+          "direct-edge-head fixed-batch canary applies optimizer step");
+    check(result.direct_edge_return_readout_regression_loss.defined() &&
+              torch::isfinite(result.direct_edge_return_readout_regression_loss)
+                  .item<bool>(),
+          "direct-edge-head fixed-batch regression loss is finite");
+    const auto current =
+        result.direct_edge_return_readout_regression_loss.item<double>();
+    if (step == 0) {
+      first_regression_loss = current;
+    }
+    last_regression_loss = current;
+  }
+
+  check(std::isfinite(first_regression_loss) &&
+            std::isfinite(last_regression_loss),
+        "direct-edge-head fixed-batch losses are finite");
+  check(last_regression_loss < 0.80 * first_regression_loss,
+        "direct-edge-head direct objective reduces on a fixed deterministic "
+        "batch");
+}
+
 void test_channel_mdn_train_model_sanitizes_masked_sentinels() {
   auto baseline = mdn::channel_mdn_input_t{};
   baseline.context = torch::randn({3, 2, 2, 5}, torch::kFloat32);
@@ -664,6 +834,8 @@ int main() {
     test_vicreg_safe_augmentations();
     test_production_assemblies();
     test_channel_mdn_zero_valid_targets();
+    test_channel_mdn_direct_edge_readout_updates_head();
+    test_channel_mdn_direct_edge_readout_fixed_batch_loss_decreases();
     test_channel_mdn_train_model_sanitizes_masked_sentinels();
     std::cout << "[test_wikimyei_vicreg_production_path] all checks "
                  "passed\n";

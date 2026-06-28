@@ -705,6 +705,27 @@ synthetic_signal_path_isolation.v1
   identity/context scaffolding. Next recommended milestone:
   `synthetic_mdn_edge_readout_training_dynamics.v1`.
 
+synthetic_mdn_edge_readout_training_dynamics.v1
+  Complete. The report lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_mdn_edge_readout_training_dynamics.v1.report`.
+  It checks that the representation probe and MDN-context probe bind identical
+  edge targets (`matched_rows=9522`, `max_abs_error=0`), that the direct
+  readout is registered, included in the model parameter optimizer, added to
+  total loss, and emitted by the MDN, and that the real Runtime train ran
+  `3500` optimizer steps with `1916478` direct-readout valid targets while
+  total loss dropped from `58.0055` to `6.50973`. Despite that, the real train
+  direct-readout curve stayed flat near random
+  (`direction_final=0.499872`, `rank_final=0.519334`,
+  `correlation_final=-0.00121821`). A targeted production-path canary now
+  proves the direct edge head receives nonzero gradients, updates parameters,
+  and can reduce direct regression loss on a fixed deterministic batch. This
+  rules out target mismatch, missing direct-head gradients, missing parameter
+  updates, total representation collapse, and total MDN-context signal loss as
+  primary explanations. The next suspect is full Runtime joint-training
+  dynamics: loss scale/schedule, competition with MDN NLL, or insufficient
+  identity/context scaffolding for the direct readout. Next recommended
+  milestone: `synthetic_mdn_direct_readout_loss_scale_ablation.v1`.
+
 training_order_lattice_correctness.v1
   Anchor-v1 now proves non-anticipative artifact provenance over the concrete
   checkpoint -> forecast_eval -> replay_environment -> policy execution path,

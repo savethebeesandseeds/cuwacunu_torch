@@ -417,6 +417,49 @@ optimization dynamics and identity/context scaffolding, not PPO tuning. The
 representation is not perfect, but this result argues against a total
 representation collapse or a total MDN-context destruction of the signal.
 
+The MDN edge-readout training-dynamics result is recorded in:
+
+```text
+artifacts/synthetic_mdn_edge_readout_training_dynamics.v1.report
+```
+
+It verifies three separate facts:
+
+```text
+target binding: passed
+source wiring: passed
+direct-head mechanical trainability: passed
+```
+
+The representation probe and MDN-context probe bind the same edge targets
+exactly (`matched_rows=9522`, `max_abs_error=0`). The direct edge head is
+registered under the MDN, included in `model_->parameters()`, contributes to
+total loss, uses quote node index `0` and close feature index `3`, and emits
+`direct_edge_return`. A targeted production-path canary also proves the head
+receives nonzero gradients, updates parameters, and reduces direct regression
+loss on a fixed deterministic batch.
+
+The real Runtime training curve remains the problem:
+
+```text
+optimizer_steps_final = 3500
+direct_readout_valid_count_final = 1916478
+last_loss_first = 58.0055
+last_loss_final = 6.50973
+
+direct_direction_first = 0.496181
+direct_direction_final = 0.499872
+direct_direction_max = 0.502505
+direct_rank_final = 0.519334
+direct_correlation_final = -0.00121821
+```
+
+So the direct-readout failure is not a missing target, missing gradient, missing
+optimizer update, total representation collapse, or total MDN-context signal
+loss. The current leading suspect is full Runtime joint-training dynamics:
+direct-readout loss scale/schedule, competition with the MDN NLL objective, or
+insufficient identity/context scaffolding for the head during normal training.
+
 ### Forecast Semantics Diagnostic
 
 The fresh semantic diagnostic is recorded in:
