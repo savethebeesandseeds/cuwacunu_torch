@@ -138,6 +138,15 @@ struct training_run_spec_t {
   double mdn_direct_edge_return_readout_rank_weight{0.0};
   double mdn_direct_edge_return_readout_huber_beta{0.01};
   double mdn_direct_edge_return_readout_logit_scale{50.0};
+  double mdn_direct_edge_return_readout_target_scale{1.0};
+  int64_t mdn_direct_edge_return_readout_warmup_steps{0};
+  double mdn_direct_edge_return_readout_warmup_nll_weight{1.0};
+  double mdn_direct_edge_return_readout_post_warmup_nll_weight{1.0};
+  bool mdn_direct_edge_return_readout_warmup_direct_head_only{false};
+  std::string mdn_direct_edge_return_readout_identity_mode{"shared"};
+  int64_t mdn_direct_edge_return_readout_base_edge_count{0};
+  int64_t mdn_direct_edge_return_readout_identity_embedding_dim{0};
+  int64_t mdn_direct_edge_return_readout_adapter_hidden_dim{0};
   bool freeze_representation{true};
   std::string input_representation_checkpoint_path{};
   std::string input_mdn_checkpoint_path{};
@@ -550,15 +559,96 @@ validate_training_run_spec(const training_run_spec_t &spec,
     training_spec_detail::validate_positive_finite(
         spec.mdn_direct_edge_return_readout_logit_scale,
         "MDN_DIRECT_EDGE_RETURN_READOUT_LOGIT_SCALE");
+    training_spec_detail::validate_positive_finite(
+        spec.mdn_direct_edge_return_readout_target_scale,
+        "MDN_DIRECT_EDGE_RETURN_READOUT_TARGET_SCALE");
+    if (spec.mdn_direct_edge_return_readout_warmup_steps < 0) {
+      throw std::runtime_error(
+          "[training_spec] MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_STEPS must "
+          "be nonnegative");
+    }
+    training_spec_detail::validate_non_negative_finite(
+        spec.mdn_direct_edge_return_readout_warmup_nll_weight,
+        "MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT");
+    training_spec_detail::validate_non_negative_finite(
+        spec.mdn_direct_edge_return_readout_post_warmup_nll_weight,
+        "MDN_DIRECT_EDGE_RETURN_READOUT_POST_WARMUP_NLL_WEIGHT");
+    const auto direct_identity_mode =
+        training_spec_detail::kv::lowercase(training_spec_detail::kv::trim(
+            spec.mdn_direct_edge_return_readout_identity_mode));
+    if (direct_identity_mode != "shared" &&
+        direct_identity_mode != "edge_embedding" &&
+        direct_identity_mode != "per_edge" &&
+        direct_identity_mode != "edge_embedding_per_edge") {
+      throw std::runtime_error("[training_spec] invalid "
+                               "MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_MODE");
+    }
+    if (spec.mdn_direct_edge_return_readout_base_edge_count < 0 ||
+        spec.mdn_direct_edge_return_readout_identity_embedding_dim < 0 ||
+        spec.mdn_direct_edge_return_readout_adapter_hidden_dim < 0) {
+      throw std::runtime_error(
+          "[training_spec] MDN direct edge-return readout identity/adapter "
+          "dimensions must be nonnegative");
+    }
+    const bool direct_readout_uses_edge_embedding =
+        direct_identity_mode == "edge_embedding" ||
+        direct_identity_mode == "edge_embedding_per_edge";
+    const bool direct_readout_uses_identity_or_per_edge =
+        direct_identity_mode != "shared";
+    if (direct_readout_uses_identity_or_per_edge &&
+        spec.mdn_direct_edge_return_readout_base_edge_count <= 0) {
+      throw std::runtime_error(
+          "[training_spec] MDN direct edge-return readout identity/per-edge "
+          "modes require MDN_DIRECT_EDGE_RETURN_READOUT_BASE_EDGE_COUNT > 0");
+    }
+    if (direct_readout_uses_edge_embedding &&
+        spec.mdn_direct_edge_return_readout_identity_embedding_dim <= 0) {
+      throw std::runtime_error(
+          "[training_spec] MDN direct edge-return readout edge-embedding "
+          "modes require "
+          "MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_EMBEDDING_DIM > 0");
+    }
+    if (!direct_readout_uses_edge_embedding &&
+        spec.mdn_direct_edge_return_readout_identity_embedding_dim != 0) {
+      throw std::runtime_error(
+          "[training_spec] "
+          "MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_EMBEDDING_DIM must be 0 "
+          "unless edge embedding mode is active");
+    }
     const bool direct_readout_has_weight =
         spec.mdn_direct_edge_return_readout_loss_weight > 0.0 ||
         spec.mdn_direct_edge_return_readout_direction_weight > 0.0 ||
         spec.mdn_direct_edge_return_readout_rank_weight > 0.0;
-    if (direct_readout_has_weight &&
+    const bool direct_readout_has_intervention =
+        direct_readout_has_weight ||
+        spec.mdn_direct_edge_return_readout_target_scale != 1.0 ||
+        spec.mdn_direct_edge_return_readout_warmup_steps != 0 ||
+        spec.mdn_direct_edge_return_readout_warmup_nll_weight != 1.0 ||
+        spec.mdn_direct_edge_return_readout_post_warmup_nll_weight != 1.0 ||
+        spec.mdn_direct_edge_return_readout_warmup_direct_head_only ||
+        direct_identity_mode != "shared" ||
+        spec.mdn_direct_edge_return_readout_base_edge_count != 0 ||
+        spec.mdn_direct_edge_return_readout_identity_embedding_dim != 0 ||
+        spec.mdn_direct_edge_return_readout_adapter_hidden_dim != 0;
+    if (direct_readout_has_intervention &&
         !spec.mdn_direct_edge_return_readout_enabled) {
       throw std::runtime_error(
-          "[training_spec] MDN direct edge-return readout weights require "
+          "[training_spec] MDN direct edge-return readout controls require "
           "MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED=true");
+    }
+    if (!direct_readout_has_weight &&
+        (spec.mdn_direct_edge_return_readout_target_scale != 1.0 ||
+         spec.mdn_direct_edge_return_readout_warmup_steps != 0 ||
+         spec.mdn_direct_edge_return_readout_warmup_nll_weight != 1.0 ||
+         spec.mdn_direct_edge_return_readout_post_warmup_nll_weight != 1.0 ||
+         spec.mdn_direct_edge_return_readout_warmup_direct_head_only ||
+         direct_identity_mode != "shared" ||
+         spec.mdn_direct_edge_return_readout_base_edge_count != 0 ||
+         spec.mdn_direct_edge_return_readout_identity_embedding_dim != 0 ||
+         spec.mdn_direct_edge_return_readout_adapter_hidden_dim != 0)) {
+      throw std::runtime_error(
+          "[training_spec] MDN direct edge-return readout intervention "
+          "controls require at least one nonzero direct-readout loss weight");
     }
   } else if (spec.mdn_edge_return_auxiliary_loss_weight != 0.0 ||
              spec.mdn_edge_return_auxiliary_direction_weight != 0.0 ||
@@ -566,7 +656,17 @@ validate_training_run_spec(const training_run_spec_t &spec,
              spec.mdn_direct_edge_return_readout_enabled ||
              spec.mdn_direct_edge_return_readout_loss_weight != 0.0 ||
              spec.mdn_direct_edge_return_readout_direction_weight != 0.0 ||
-             spec.mdn_direct_edge_return_readout_rank_weight != 0.0) {
+             spec.mdn_direct_edge_return_readout_rank_weight != 0.0 ||
+             spec.mdn_direct_edge_return_readout_target_scale != 1.0 ||
+             spec.mdn_direct_edge_return_readout_warmup_steps != 0 ||
+             spec.mdn_direct_edge_return_readout_warmup_nll_weight != 1.0 ||
+             spec.mdn_direct_edge_return_readout_post_warmup_nll_weight !=
+                 1.0 ||
+             spec.mdn_direct_edge_return_readout_warmup_direct_head_only ||
+             spec.mdn_direct_edge_return_readout_identity_mode != "shared" ||
+             spec.mdn_direct_edge_return_readout_base_edge_count != 0 ||
+             spec.mdn_direct_edge_return_readout_identity_embedding_dim != 0 ||
+             spec.mdn_direct_edge_return_readout_adapter_hidden_dim != 0) {
     throw std::runtime_error(
         "[training_spec] MDN edge-return auxiliary/readout controls are only "
         "valid for mdn_expected_value_inference");
@@ -777,6 +877,33 @@ inline void validate_training_run_spec(const training_run_spec_t &spec) {
         kv::required(block, "MDN_DIRECT_EDGE_RETURN_READOUT_HUBER_BETA"));
     spec.mdn_direct_edge_return_readout_logit_scale = kv::parse_double(
         kv::required(block, "MDN_DIRECT_EDGE_RETURN_READOUT_LOGIT_SCALE"));
+    spec.mdn_direct_edge_return_readout_target_scale = kv::parse_double(
+        kv::required(block, "MDN_DIRECT_EDGE_RETURN_READOUT_TARGET_SCALE"));
+    spec.mdn_direct_edge_return_readout_warmup_steps = kv::parse_i64(
+        kv::required(block, "MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_STEPS"));
+    spec.mdn_direct_edge_return_readout_warmup_nll_weight =
+        kv::parse_double(kv::required(
+            block, "MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT"));
+    spec.mdn_direct_edge_return_readout_post_warmup_nll_weight =
+        kv::parse_double(kv::optional(
+            block, "MDN_DIRECT_EDGE_RETURN_READOUT_POST_WARMUP_NLL_WEIGHT",
+            "1.0"));
+    spec.mdn_direct_edge_return_readout_warmup_direct_head_only =
+        kv::parse_bool(kv::required(
+            block, "MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_DIRECT_HEAD_ONLY"));
+    spec.mdn_direct_edge_return_readout_identity_mode =
+        kv::lowercase(kv::trim(kv::optional(
+            block, "MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_MODE", "shared")));
+    spec.mdn_direct_edge_return_readout_base_edge_count =
+        kv::parse_i64(kv::optional(
+            block, "MDN_DIRECT_EDGE_RETURN_READOUT_BASE_EDGE_COUNT", "0"));
+    spec.mdn_direct_edge_return_readout_identity_embedding_dim =
+        kv::parse_i64(kv::optional(
+            block, "MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_EMBEDDING_DIM",
+            "0"));
+    spec.mdn_direct_edge_return_readout_adapter_hidden_dim =
+        kv::parse_i64(kv::optional(
+            block, "MDN_DIRECT_EDGE_RETURN_READOUT_ADAPTER_HIDDEN_DIM", "0"));
   }
   spec.freeze_representation = kv::parse_bool(kv::optional(
       block, "FREEZE_REPRESENTATION",

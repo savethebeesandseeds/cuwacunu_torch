@@ -59,6 +59,18 @@ clone_direct_edge_head_params(const mdn::ChannelContextMdn &model) {
   return out;
 }
 
+std::vector<torch::Tensor>
+clone_non_direct_edge_head_params(const mdn::ChannelContextMdn &model) {
+  std::vector<torch::Tensor> out;
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") == std::string::npos) {
+      out.push_back(param.value().detach().clone());
+    }
+  }
+  check(!out.empty(), "MDN exposes non-direct-edge-head parameters");
+  return out;
+}
+
 double direct_edge_head_grad_l1(const mdn::ChannelContextMdn &model) {
   double grad_l1 = 0.0;
   int64_t defined_grad_count = 0;
@@ -94,6 +106,26 @@ max_direct_edge_head_param_delta(const mdn::ChannelContextMdn &model,
     ++idx;
   }
   check(idx == before.size(), "direct-edge-head parameter count is stable");
+  return max_delta;
+}
+
+double
+max_non_direct_edge_head_param_delta(const mdn::ChannelContextMdn &model,
+                                     const std::vector<torch::Tensor> &before) {
+  double max_delta = 0.0;
+  std::size_t idx = 0;
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") != std::string::npos) {
+      continue;
+    }
+    check(idx < before.size(),
+          "non-direct-edge-head parameter count changed during canary");
+    const auto delta =
+        (param.value().detach() - before[idx]).abs().max().item<double>();
+    max_delta = std::max(max_delta, delta);
+    ++idx;
+  }
+  check(idx == before.size(), "non-direct-edge-head parameter count is stable");
   return max_delta;
 }
 
@@ -143,6 +175,7 @@ mdn::channel_context_mdn_train_options_t make_direct_edge_readout_options() {
   options.direct_edge_return_readout_direction_weight = 0.25;
   options.direct_edge_return_readout_rank_weight = 0.25;
   options.direct_edge_return_readout_logit_scale = 5.0;
+  options.direct_edge_return_readout_target_scale = 4.0;
   return options;
 }
 
@@ -743,6 +776,48 @@ void test_channel_mdn_direct_edge_readout_updates_head() {
         "direct-edge-head canary updates direct-head parameters");
 }
 
+void test_channel_mdn_direct_edge_readout_warmup_updates_only_head() {
+  torch::manual_seed(133);
+  auto input = make_direct_edge_readout_canary_input();
+  auto model = mdn::ChannelContextMdn(
+      kDirectEdgeCanaryContextDim, kDirectEdgeCanaryTargetDim,
+      kDirectEdgeCanaryChannels, kDirectEdgeCanaryHorizon, 2, 16, 1);
+  auto options = make_direct_edge_readout_options();
+  options.direct_edge_return_readout_warmup_steps = 1;
+  options.direct_edge_return_readout_warmup_nll_weight = 0.0;
+  options.direct_edge_return_readout_post_warmup_nll_weight = 0.25;
+  options.direct_edge_return_readout_warmup_direct_head_only = true;
+
+  auto direct_before = clone_direct_edge_head_params(model);
+  auto non_direct_before = clone_non_direct_edge_head_params(model);
+  mdn::channel_context_mdn_train_model_t train(model, 0.01, options);
+  const auto result = train.train_one_batch(input);
+
+  check(result.optimizer_step_applied,
+        "direct-edge-head warmup applies optimizer step");
+  check(result.direct_edge_return_readout_warmup_active,
+        "direct-edge-head warmup is active on first step");
+  check(result.direct_edge_return_readout_direct_head_only_warmup_active,
+        "direct-edge-head-only warmup is active on first step");
+  close(result.direct_edge_return_readout_scheduled_nll_weight, 0.0, 1e-12,
+        "direct-edge-head warmup uses configured NLL weight");
+
+  const auto direct_delta =
+      max_direct_edge_head_param_delta(train.model(), direct_before);
+  const auto non_direct_delta =
+      max_non_direct_edge_head_param_delta(train.model(), non_direct_before);
+  check(std::isfinite(direct_delta) && direct_delta > 0.0,
+        "direct-edge-head warmup updates direct-head parameters");
+  close(non_direct_delta, 0.0, 1e-12,
+        "direct-edge-head warmup leaves non-direct parameters unchanged");
+
+  const auto post_warmup = train.train_one_batch(input);
+  check(!post_warmup.direct_edge_return_readout_warmup_active,
+        "direct-edge-head warmup is inactive after configured warmup steps");
+  close(post_warmup.direct_edge_return_readout_scheduled_nll_weight, 0.25,
+        1e-12, "direct-edge-head post-warmup uses configured NLL weight");
+}
+
 void test_channel_mdn_direct_edge_readout_fixed_batch_loss_decreases() {
   torch::manual_seed(137);
   auto input = make_direct_edge_readout_canary_input();
@@ -835,6 +910,7 @@ int main() {
     test_production_assemblies();
     test_channel_mdn_zero_valid_targets();
     test_channel_mdn_direct_edge_readout_updates_head();
+    test_channel_mdn_direct_edge_readout_warmup_updates_only_head();
     test_channel_mdn_direct_edge_readout_fixed_batch_loss_decreases();
     test_channel_mdn_train_model_sanitizes_masked_sentinels();
     std::cout << "[test_wikimyei_vicreg_production_path] all checks "

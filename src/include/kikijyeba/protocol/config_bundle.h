@@ -499,6 +499,27 @@ inline void append_training_contract_fields(
         << training.mdn_direct_edge_return_readout_huber_beta << "\n";
     out << prefix << "_mdn_direct_edge_return_readout_logit_scale="
         << training.mdn_direct_edge_return_readout_logit_scale << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_target_scale="
+        << training.mdn_direct_edge_return_readout_target_scale << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_warmup_steps="
+        << training.mdn_direct_edge_return_readout_warmup_steps << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_warmup_nll_weight="
+        << training.mdn_direct_edge_return_readout_warmup_nll_weight << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_post_warmup_nll_weight="
+        << training.mdn_direct_edge_return_readout_post_warmup_nll_weight
+        << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_warmup_direct_head_only="
+        << training.mdn_direct_edge_return_readout_warmup_direct_head_only
+        << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_identity_mode="
+        << training.mdn_direct_edge_return_readout_identity_mode << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_base_edge_count="
+        << training.mdn_direct_edge_return_readout_base_edge_count << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_identity_embedding_dim="
+        << training.mdn_direct_edge_return_readout_identity_embedding_dim
+        << "\n";
+    out << prefix << "_mdn_direct_edge_return_readout_adapter_hidden_dim="
+        << training.mdn_direct_edge_return_readout_adapter_hidden_dim << "\n";
   }
   out << prefix << "_checkpoint_every=" << training.checkpoint_every << "\n";
   out << prefix << "_report_every=" << training.report_every << "\n";

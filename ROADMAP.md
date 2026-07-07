@@ -726,6 +726,101 @@ synthetic_mdn_edge_readout_training_dynamics.v1
   identity/context scaffolding for the direct readout. Next recommended
   milestone: `synthetic_mdn_direct_readout_loss_scale_ablation.v1`.
 
+synthetic_mdn_runtime_training_probes.v1
+  Adds visibility-only Runtime `job_events` probe time-series for the MDN
+  direct-readout failure. MDN training reports now expose NLL separately from
+  total loss, direct-readout loss-vs-NLL and loss-vs-total ratios,
+  direct-head gradient norms, direct-head parameter update norms,
+  prediction/target spread and collapse ratios, margin-conditioned direction
+  and rank metrics, near-zero target share, and per-edge/per-channel
+  directional-accuracy spread summaries. These diagnostics are probe records
+  only: they are not Lattice facts, readiness gates, or proof authority. The
+  next benchmark run should use them to decide whether to pursue loss-scale
+  ablation, objective scheduling, or extra identity/context scaffolding.
+
+synthetic_mdn_probe_guided_diagnostic_run.v1
+  Complete. The fresh full-length diagnostic artifact lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_mdn_probe_guided_diagnostic_run.v1.probe`.
+  It ran representation train-core for `3000` steps over `[0,730)`, MDN
+  train-core for `3500` steps over `[0,730)`, and certified replay eval over
+  `[760,1088)` through the durable synthetic benchmark config and
+  Marshal/Runtime path. The direct edge-return head receives gradients
+  (`grad_norm_max=4.99276`), updates parameters
+  (`parameter_update_norm_max=0.0947658`), and carries a nontrivial loss
+  (`direct_loss_ratio_to_nll_last=4.02319`), but the train curve remains random
+  for policy-relevant signal (`direction_final=0.499872`,
+  `margin_direction_final=0.499579`, `rank_final=0.519334`,
+  `margin_rank_final=0.514689`, `correlation_final=-0.00121821`). The protected
+  eval artifact is also weak (`edge_projection_direction=0.499322`,
+  `direct_readout_direction=0.51084`,
+  `direct_readout_pred_to_realized_std_ratio=0.00296166`). This rules out a
+  dead head, missing optimizer registration, missing gradients, and too-small
+  direct-readout loss as primary explanations. The next recommended milestone is
+  `synthetic_mdn_objective_readout_alignment_ablation.v1`: compare objective
+  schedules and readout/identity scaffolding on the same durable benchmark path
+  while keeping the deterministic oracle thresholds strict.
+
+synthetic_mdn_direct_readout_training_intervention.v1
+  Complete. This is the first code/config intervention after the
+  probe-guided diagnostic showed an active but ineffective MDN direct edge-return
+  head. The durable MDN `.jkimyei` now owns explicit direct-readout target
+  scaling and warmup controls so the next synthetic run is not a repeat of the
+  same objective schedule. The intended test is narrow: train the direct
+  edge-return readout in scaled loss space, optionally suppress NLL during a
+  direct-head-only warmup, keep reported metrics in raw return space, and keep
+  the deterministic oracle thresholds at `0.95`.
+
+synthetic_mdn_direct_readout_intervention_eval.v1
+  Complete. The fresh post-reset evaluation artifact lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_mdn_direct_readout_intervention_eval.v1.probe`.
+  It ran representation train-core for `3000` steps over `[0,730)`, MDN
+  train-core for `3500` steps over `[0,730)`, and certified replay eval over
+  `[760,1088)` through the durable synthetic benchmark config and
+  Marshal/Runtime path. The intervention was active: direct readout target
+  scale `36`, `800` observed warmup steps, NLL weight `0` during warmup,
+  direct-head-only warmup enabled, and scheduled NLL weight restored to `1` by
+  the end. The direct head received gradients and moved, but the train-range
+  policy-relevant metrics remained random (`direction=0.498849`,
+  `margin_direction=0.499075`, `rank=0.505641`, `margin_rank=0.503318`,
+  `correlation=0.00053337`). Protected eval was also weak
+  (`edge_projection_direction=0.51084`, `edge_projection_rank=0.476626`,
+  `direct_readout_direction=0.51084`, `direct_readout_rank=0.498645`,
+  `direct_readout_correlation=0.00461366`). This closes the narrow hypothesis
+  that raw target scale, early NLL competition, or missing direct-head gradient
+  flow was the only blocker. The next forecast-side branch should change the
+  information pathway or target/readout structure, not merely repeat the same
+  schedule. Current candidate:
+  `synthetic_mdn_objective_readout_alignment_ablation.v1`.
+
+synthetic_mdn_identity_conditioned_direct_readout_ablation.v1
+  Complete. The fresh durable synthetic train/eval artifact lives at
+  `src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_mdn_identity_conditioned_direct_readout_ablation.v1.probe`.
+  The run used `edge_embedding_per_edge`, `BASE_EDGE_COUNT=3`,
+  `IDENTITY_EMBEDDING_DIM=16`, and `ADAPTER_HIDDEN_DIM=128` from the MDN
+  `.jkimyei`; the focused launcher test also proves the non-default mode is
+  parsed, materialized, reported, and bound into checkpoint identity. The result
+  is a negative ablation: the direct head receives gradients, parameters move,
+  loss scale is comparable to NLL, and prediction variance is present, but
+  policy-relevant train-side signal stays near random (`direction=0.514161`,
+  `margin_direction=0.516307`, `rank=0.508168`, `margin_rank=0.508807`,
+  `correlation=-0.00177698`). This closes the narrow hypothesis that explicit
+  edge identity, per-edge projection, and a small residual adapter are sufficient
+  by themselves. The next recommended milestone is
+  `synthetic_mdn_objective_readout_alignment_ablation.v1`.
+
+synthetic_mdn_objective_readout_alignment_ablation.v1
+  In progress. The narrow gap after the identity-conditioned run is that the
+  direct-readout warmup could suppress MDN NLL only during warmup; after that,
+  scheduled NLL always returned to `1.0`. The MDN `.jkimyei` now exposes
+  `MDN_DIRECT_EDGE_RETURN_READOUT_POST_WARMUP_NLL_WEIGHT` as an explicit
+  training-protocol knob, the launcher reports it, and the config fingerprint
+  includes it. The benchmark wrapper
+  `src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_objective_readout_alignment_ablation.sh`
+  can run the bounded `edge_dominant_post_nll_0` variant through the durable
+  synthetic Marshal/Runtime path and write a `.probe` summary. This tests
+  whether ordinary MDN NLL competition after warmup is drowning the direct
+  edge-return objective without lowering the deterministic oracle thresholds.
+
 training_order_lattice_correctness.v1
   Anchor-v1 now proves non-anticipative artifact provenance over the concrete
   checkpoint -> forecast_eval -> replay_environment -> policy execution path,

@@ -356,9 +356,23 @@ MDN forecast-side edge-return training controls live in
 file. `MDN_EDGE_RETURN_AUXILIARY_*` weights base-minus-quote losses applied to
 the node-potential expected-value projection. `MDN_DIRECT_EDGE_RETURN_READOUT_*`
 enables and weights the dedicated direct edge-return readout head
-(`direct_edge_return:[B,N-1,C]`). The training-spec decoder rejects these knobs
-on non-MDN `.jkimyei` tasks and requires the direct readout to be enabled before
-any direct-readout loss weight can be nonzero.
+(`direct_edge_return:[B,N-1,C]`). `MDN_DIRECT_EDGE_RETURN_READOUT_TARGET_SCALE`
+rescales predicted and realized edge returns inside the direct-readout training
+loss only; reported metrics remain in raw return space.
+`MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_*` can run an explicit direct-readout
+warmup, including an NLL weight override and an optional direct-head-only
+gradient path. `MDN_DIRECT_EDGE_RETURN_READOUT_POST_WARMUP_NLL_WEIGHT` controls
+whether the ordinary MDN NLL term returns after warmup or stays suppressed for an
+objective-alignment ablation. `MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_MODE`
+selects the explicit readout ablation (`shared`, `edge_embedding`, `per_edge`,
+or `edge_embedding_per_edge`), with companion base-edge count, identity
+embedding dimension, and residual adapter hidden dimension fields. These
+controls stay in `.jkimyei` because they name the benchmark training
+intervention; the `.net` file still owns the base shared MDN architecture. The
+training-spec decoder rejects these knobs on non-MDN `.jkimyei` tasks and
+requires the direct readout to be enabled before any direct-readout loss weight,
+target scale, warmup, post-warmup NLL override, identity, or adapter
+intervention can be non-neutral.
 
 For synthetic benchmark diagnostics, probe-enabled non-training MDN debug waves
 may also write `representation_edge_features.probe` and

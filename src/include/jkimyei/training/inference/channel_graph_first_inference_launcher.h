@@ -77,7 +77,7 @@ struct channel_graph_first_inference_training_report_t {
   int64_t feature_embedding_dim{0};
   int64_t channel_adapter_rank{0};
   std::string mdn_architecture{"shared_slot_trunk.channel_adapter.shared_"
-                               "feature_head.direct_edge_readout.v3"};
+                               "feature_head.direct_edge_readout.shared.v4"};
   std::string loss_reduction{"balanced_channel_feature_mean"};
   bool shared_trunk{true};
   bool channel_adapters_enabled{true};
@@ -104,6 +104,18 @@ struct channel_graph_first_inference_training_report_t {
       std::numeric_limits<double>::quiet_NaN()};
   double direct_edge_return_readout_logit_scale{
       std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_target_scale{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t direct_edge_return_readout_warmup_steps{0};
+  double direct_edge_return_readout_warmup_nll_weight{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_post_warmup_nll_weight{
+      std::numeric_limits<double>::quiet_NaN()};
+  bool direct_edge_return_readout_warmup_direct_head_only{false};
+  std::string direct_edge_return_readout_identity_mode{"shared"};
+  int64_t direct_edge_return_readout_base_edge_count{0};
+  int64_t direct_edge_return_readout_identity_embedding_dim{0};
+  int64_t direct_edge_return_readout_adapter_hidden_dim{0};
   std::size_t effective_batch_size{0};
   std::string batch_size_source{};
   std::string dtype{};
@@ -146,6 +158,8 @@ struct channel_graph_first_inference_training_report_t {
 
   double last_loss{std::numeric_limits<double>::quiet_NaN()};
   double mean_loss{std::numeric_limits<double>::quiet_NaN()};
+  double last_nll_loss{std::numeric_limits<double>::quiet_NaN()};
+  double mean_nll_loss{std::numeric_limits<double>::quiet_NaN()};
   double last_edge_return_auxiliary_loss{
       std::numeric_limits<double>::quiet_NaN()};
   double mean_edge_return_auxiliary_loss{
@@ -182,6 +196,33 @@ struct channel_graph_first_inference_training_report_t {
       std::numeric_limits<double>::quiet_NaN()};
   int64_t direct_edge_return_readout_loss_valid_count{0};
   int64_t direct_edge_return_readout_loss_pairwise_valid_count{0};
+  double last_direct_edge_return_readout_loss_abs_to_nll_abs_ratio{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_direct_edge_return_readout_loss_abs_to_nll_abs_ratio{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_direct_edge_return_readout_loss_abs_to_total_abs_ratio{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_direct_edge_return_readout_loss_abs_to_total_abs_ratio{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_direct_edge_return_readout_head_grad_norm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double max_direct_edge_return_readout_head_grad_norm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_direct_edge_return_readout_head_grad_norm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_direct_edge_return_readout_head_parameter_norm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_direct_edge_return_readout_head_parameter_update_norm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double max_direct_edge_return_readout_head_parameter_update_norm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_direct_edge_return_readout_head_parameter_update_norm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_direct_edge_return_readout_scheduled_nll_weight{1.0};
+  bool last_direct_edge_return_readout_warmup_active{false};
+  bool last_direct_edge_return_readout_direct_head_only_warmup_active{false};
+  int64_t direct_edge_return_readout_warmup_step_count{0};
+  int64_t direct_edge_return_readout_direct_head_only_warmup_step_count{0};
   int64_t last_valid_target_count{0};
   int64_t total_valid_target_count{0};
   int64_t forecast_ev_valid_count{0};
@@ -258,6 +299,49 @@ struct channel_graph_first_inference_training_report_t {
       std::numeric_limits<double>::quiet_NaN()};
   int64_t direct_edge_return_readout_best_asset_valid_count{0};
   double direct_edge_return_readout_best_asset_agreement{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_pred_mean{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_pred_std{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_pred_min{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_pred_max{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_realized_mean{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_realized_std{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_realized_min{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_realized_max{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_pred_to_realized_std_ratio{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_margin_eps{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t direct_edge_return_readout_margin_valid_count{0};
+  double direct_edge_return_readout_margin_directional_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t direct_edge_return_readout_near_zero_target_count{0};
+  double direct_edge_return_readout_near_zero_target_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_rank_margin_eps{
+      std::numeric_limits<double>::quiet_NaN()};
+  int64_t direct_edge_return_readout_margin_pairwise_rank_valid_count{0};
+  double direct_edge_return_readout_margin_pairwise_rank_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_directional_accuracy_per_edge_min{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_directional_accuracy_per_edge_max{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_directional_accuracy_per_edge_spread{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_directional_accuracy_per_channel_min{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_directional_accuracy_per_channel_max{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_directional_accuracy_per_channel_spread{
       std::numeric_limits<double>::quiet_NaN()};
   std::vector<int64_t> direct_edge_return_readout_valid_count_per_edge{};
   std::vector<double>
@@ -400,6 +484,26 @@ struct channel_graph_first_inference_training_report_t {
         << direct_edge_return_readout_huber_beta << "\n";
     oss << "direct_edge_return_readout_logit_scale="
         << direct_edge_return_readout_logit_scale << "\n";
+    oss << "direct_edge_return_readout_target_scale="
+        << direct_edge_return_readout_target_scale << "\n";
+    oss << "direct_edge_return_readout_warmup_steps="
+        << direct_edge_return_readout_warmup_steps << "\n";
+    oss << "direct_edge_return_readout_warmup_nll_weight="
+        << direct_edge_return_readout_warmup_nll_weight << "\n";
+    oss << "direct_edge_return_readout_post_warmup_nll_weight="
+        << direct_edge_return_readout_post_warmup_nll_weight << "\n";
+    oss << "direct_edge_return_readout_warmup_direct_head_only="
+        << (direct_edge_return_readout_warmup_direct_head_only ? "true"
+                                                               : "false")
+        << "\n";
+    oss << "direct_edge_return_readout_identity_mode="
+        << direct_edge_return_readout_identity_mode << "\n";
+    oss << "direct_edge_return_readout_base_edge_count="
+        << direct_edge_return_readout_base_edge_count << "\n";
+    oss << "direct_edge_return_readout_identity_embedding_dim="
+        << direct_edge_return_readout_identity_embedding_dim << "\n";
+    oss << "direct_edge_return_readout_adapter_hidden_dim="
+        << direct_edge_return_readout_adapter_hidden_dim << "\n";
     oss << "effective_batch_size=" << effective_batch_size << "\n";
     oss << "batch_size_source=" << batch_size_source << "\n";
     oss << "dtype=" << dtype << "\n";
@@ -467,6 +571,8 @@ struct channel_graph_first_inference_training_report_t {
         << (all_target_masks_forced_empty ? "true" : "false") << "\n";
     oss << "last_loss=" << last_loss << "\n";
     oss << "mean_loss=" << mean_loss << "\n";
+    oss << "last_nll_loss=" << last_nll_loss << "\n";
+    oss << "mean_nll_loss=" << mean_nll_loss << "\n";
     oss << "last_edge_return_auxiliary_loss=" << last_edge_return_auxiliary_loss
         << "\n";
     oss << "mean_edge_return_auxiliary_loss=" << mean_edge_return_auxiliary_loss
@@ -507,6 +613,43 @@ struct channel_graph_first_inference_training_report_t {
         << direct_edge_return_readout_loss_valid_count << "\n";
     oss << "direct_edge_return_readout_loss_pairwise_valid_count="
         << direct_edge_return_readout_loss_pairwise_valid_count << "\n";
+    oss << "last_direct_edge_return_readout_loss_abs_to_nll_abs_ratio="
+        << last_direct_edge_return_readout_loss_abs_to_nll_abs_ratio << "\n";
+    oss << "mean_direct_edge_return_readout_loss_abs_to_nll_abs_ratio="
+        << mean_direct_edge_return_readout_loss_abs_to_nll_abs_ratio << "\n";
+    oss << "last_direct_edge_return_readout_loss_abs_to_total_abs_ratio="
+        << last_direct_edge_return_readout_loss_abs_to_total_abs_ratio << "\n";
+    oss << "mean_direct_edge_return_readout_loss_abs_to_total_abs_ratio="
+        << mean_direct_edge_return_readout_loss_abs_to_total_abs_ratio << "\n";
+    oss << "last_direct_edge_return_readout_head_grad_norm="
+        << last_direct_edge_return_readout_head_grad_norm << "\n";
+    oss << "max_direct_edge_return_readout_head_grad_norm="
+        << max_direct_edge_return_readout_head_grad_norm << "\n";
+    oss << "mean_direct_edge_return_readout_head_grad_norm="
+        << mean_direct_edge_return_readout_head_grad_norm << "\n";
+    oss << "last_direct_edge_return_readout_head_parameter_norm="
+        << last_direct_edge_return_readout_head_parameter_norm << "\n";
+    oss << "last_direct_edge_return_readout_head_parameter_update_norm="
+        << last_direct_edge_return_readout_head_parameter_update_norm << "\n";
+    oss << "max_direct_edge_return_readout_head_parameter_update_norm="
+        << max_direct_edge_return_readout_head_parameter_update_norm << "\n";
+    oss << "mean_direct_edge_return_readout_head_parameter_update_norm="
+        << mean_direct_edge_return_readout_head_parameter_update_norm << "\n";
+    oss << "last_direct_edge_return_readout_scheduled_nll_weight="
+        << last_direct_edge_return_readout_scheduled_nll_weight << "\n";
+    oss << "last_direct_edge_return_readout_warmup_active="
+        << (last_direct_edge_return_readout_warmup_active ? "true" : "false")
+        << "\n";
+    oss << "last_direct_edge_return_readout_direct_head_only_warmup_active="
+        << (last_direct_edge_return_readout_direct_head_only_warmup_active
+                ? "true"
+                : "false")
+        << "\n";
+    oss << "direct_edge_return_readout_warmup_step_count="
+        << direct_edge_return_readout_warmup_step_count << "\n";
+    oss << "direct_edge_return_readout_direct_head_only_warmup_step_count="
+        << direct_edge_return_readout_direct_head_only_warmup_step_count
+        << "\n";
     oss << "last_valid_target_count=" << last_valid_target_count << "\n";
     oss << "total_valid_target_count=" << total_valid_target_count << "\n";
     oss << "forecast_ev_valid_count=" << forecast_ev_valid_count << "\n";
@@ -619,6 +762,56 @@ struct channel_graph_first_inference_training_report_t {
         << direct_edge_return_readout_best_asset_valid_count << "\n";
     oss << "direct_edge_return_readout_best_asset_agreement="
         << direct_edge_return_readout_best_asset_agreement << "\n";
+    oss << "direct_edge_return_readout_pred_mean="
+        << direct_edge_return_readout_pred_mean << "\n";
+    oss << "direct_edge_return_readout_pred_std="
+        << direct_edge_return_readout_pred_std << "\n";
+    oss << "direct_edge_return_readout_pred_min="
+        << direct_edge_return_readout_pred_min << "\n";
+    oss << "direct_edge_return_readout_pred_max="
+        << direct_edge_return_readout_pred_max << "\n";
+    oss << "direct_edge_return_readout_realized_mean="
+        << direct_edge_return_readout_realized_mean << "\n";
+    oss << "direct_edge_return_readout_realized_std="
+        << direct_edge_return_readout_realized_std << "\n";
+    oss << "direct_edge_return_readout_realized_min="
+        << direct_edge_return_readout_realized_min << "\n";
+    oss << "direct_edge_return_readout_realized_max="
+        << direct_edge_return_readout_realized_max << "\n";
+    oss << "direct_edge_return_readout_pred_to_realized_std_ratio="
+        << direct_edge_return_readout_pred_to_realized_std_ratio << "\n";
+    oss << "direct_edge_return_readout_margin_eps="
+        << direct_edge_return_readout_margin_eps << "\n";
+    oss << "direct_edge_return_readout_margin_valid_count="
+        << direct_edge_return_readout_margin_valid_count << "\n";
+    oss << "direct_edge_return_readout_margin_directional_accuracy="
+        << direct_edge_return_readout_margin_directional_accuracy << "\n";
+    oss << "direct_edge_return_readout_near_zero_target_count="
+        << direct_edge_return_readout_near_zero_target_count << "\n";
+    oss << "direct_edge_return_readout_near_zero_target_fraction="
+        << direct_edge_return_readout_near_zero_target_fraction << "\n";
+    oss << "direct_edge_return_readout_rank_margin_eps="
+        << direct_edge_return_readout_rank_margin_eps << "\n";
+    oss << "direct_edge_return_readout_margin_pairwise_rank_valid_count="
+        << direct_edge_return_readout_margin_pairwise_rank_valid_count << "\n";
+    oss << "direct_edge_return_readout_margin_pairwise_rank_accuracy="
+        << direct_edge_return_readout_margin_pairwise_rank_accuracy << "\n";
+    oss << "direct_edge_return_readout_directional_accuracy_per_edge_min="
+        << direct_edge_return_readout_directional_accuracy_per_edge_min << "\n";
+    oss << "direct_edge_return_readout_directional_accuracy_per_edge_max="
+        << direct_edge_return_readout_directional_accuracy_per_edge_max << "\n";
+    oss << "direct_edge_return_readout_directional_accuracy_per_edge_spread="
+        << direct_edge_return_readout_directional_accuracy_per_edge_spread
+        << "\n";
+    oss << "direct_edge_return_readout_directional_accuracy_per_channel_min="
+        << direct_edge_return_readout_directional_accuracy_per_channel_min
+        << "\n";
+    oss << "direct_edge_return_readout_directional_accuracy_per_channel_max="
+        << direct_edge_return_readout_directional_accuracy_per_channel_max
+        << "\n";
+    oss << "direct_edge_return_readout_directional_accuracy_per_channel_spread="
+        << direct_edge_return_readout_directional_accuracy_per_channel_spread
+        << "\n";
     append_i64_list(oss, "direct_edge_return_readout_valid_count_per_edge",
                     direct_edge_return_readout_valid_count_per_edge);
     append_double_list(
@@ -936,6 +1129,66 @@ directional_accuracy_vector(const std::vector<int64_t> &correct,
                       : std::numeric_limits<double>::quiet_NaN());
   }
   return out;
+}
+
+[[nodiscard]] inline double
+finite_min_value(const std::vector<double> &values) {
+  double out = std::numeric_limits<double>::infinity();
+  bool found = false;
+  for (const double value : values) {
+    if (std::isfinite(value)) {
+      out = std::min(out, value);
+      found = true;
+    }
+  }
+  return found ? out : std::numeric_limits<double>::quiet_NaN();
+}
+
+[[nodiscard]] inline double
+finite_max_value(const std::vector<double> &values) {
+  double out = -std::numeric_limits<double>::infinity();
+  bool found = false;
+  for (const double value : values) {
+    if (std::isfinite(value)) {
+      out = std::max(out, value);
+      found = true;
+    }
+  }
+  return found ? out : std::numeric_limits<double>::quiet_NaN();
+}
+
+[[nodiscard]] inline double
+finite_spread_value(const std::vector<double> &values) {
+  const double min_value = finite_min_value(values);
+  const double max_value = finite_max_value(values);
+  return std::isfinite(min_value) && std::isfinite(max_value)
+             ? max_value - min_value
+             : std::numeric_limits<double>::quiet_NaN();
+}
+
+[[nodiscard]] inline double stddev_from_sums(const int64_t count,
+                                             const double sum,
+                                             const double squared_sum) {
+  if (count <= 0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const double mean = sum / static_cast<double>(count);
+  const double variance =
+      std::max(0.0, squared_sum / static_cast<double>(count) - mean * mean);
+  return std::sqrt(variance);
+}
+
+[[nodiscard]] inline double safe_abs_ratio(const double numerator,
+                                           const double denominator) {
+  if (!std::isfinite(numerator) || !std::isfinite(denominator)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  constexpr double kMinDenominator = 1.0e-12;
+  const double abs_denominator = std::abs(denominator);
+  if (abs_denominator < kMinDenominator) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return std::abs(numerator) / abs_denominator;
 }
 
 [[nodiscard]] inline double correlation_from_sums(
@@ -1413,7 +1666,7 @@ inline std::string make_channel_mdn_runtime_lls(
       "loss_reduction", "balanced_channel_feature_mean"));
   document.entries.push_back(lls::make_component_runtime_lls_string_entry(
       "mdn_architecture", "shared_slot_trunk.channel_adapter.shared_feature_"
-                          "head.direct_edge_readout.v3"));
+                          "head.direct_edge_readout.v4"));
   if (step.loss.defined() && step.loss.numel() > 0) {
     append_finite_double(
         document, "loss",
@@ -1871,6 +2124,16 @@ inline void save_channel_mdn_checkpoint_file(
              torch::tensor({report.feature_embedding_dim}, i64));
   root.write("meta/channel_adapter_rank",
              torch::tensor({report.channel_adapter_rank}, i64));
+  root.write(
+      "meta/direct_edge_return_readout_base_edge_count",
+      torch::tensor({report.direct_edge_return_readout_base_edge_count}, i64));
+  root.write(
+      "meta/direct_edge_return_readout_identity_embedding_dim",
+      torch::tensor({report.direct_edge_return_readout_identity_embedding_dim},
+                    i64));
+  root.write("meta/direct_edge_return_readout_adapter_hidden_dim",
+             torch::tensor(
+                 {report.direct_edge_return_readout_adapter_hidden_dim}, i64));
   root.write("meta/optimizer_steps",
              torch::tensor({report.optimizer_steps}, i64));
   root.write(
@@ -1893,6 +2156,9 @@ inline void save_channel_mdn_checkpoint_file(
       int64_tensor_from_vector(string_to_bytes(report.target_mask_policy)));
   root.write("meta/activity_target_bytes",
              int64_tensor_from_vector(string_to_bytes(report.activity_target)));
+  root.write("meta/direct_edge_return_readout_identity_mode_bytes",
+             int64_tensor_from_vector(string_to_bytes(
+                 report.direct_edge_return_readout_identity_mode)));
   root.write("meta/target_coords",
              int64_tensor_from_vector(report.target_coords));
   const auto f64 = torch::TensorOptions().dtype(torch::kFloat64);
@@ -1929,6 +2195,10 @@ struct channel_mdn_checkpoint_identity_t {
   int64_t residual_depth{0};
   int64_t feature_embedding_dim{0};
   int64_t channel_adapter_rank{0};
+  std::string direct_edge_return_readout_identity_mode{"shared"};
+  int64_t direct_edge_return_readout_base_edge_count{0};
+  int64_t direct_edge_return_readout_identity_embedding_dim{0};
+  int64_t direct_edge_return_readout_adapter_hidden_dim{0};
   double sigma_min{std::numeric_limits<double>::quiet_NaN()};
   double sigma_max{std::numeric_limits<double>::quiet_NaN()};
   double eps{std::numeric_limits<double>::quiet_NaN()};
@@ -1958,6 +2228,14 @@ checkpoint_identity_from_report(
   out.residual_depth = report.residual_depth;
   out.feature_embedding_dim = report.feature_embedding_dim;
   out.channel_adapter_rank = report.channel_adapter_rank;
+  out.direct_edge_return_readout_identity_mode =
+      report.direct_edge_return_readout_identity_mode;
+  out.direct_edge_return_readout_base_edge_count =
+      report.direct_edge_return_readout_base_edge_count;
+  out.direct_edge_return_readout_identity_embedding_dim =
+      report.direct_edge_return_readout_identity_embedding_dim;
+  out.direct_edge_return_readout_adapter_hidden_dim =
+      report.direct_edge_return_readout_adapter_hidden_dim;
   out.sigma_min = report.sigma_min;
   out.sigma_max = report.sigma_max;
   out.eps = report.eps;
@@ -1989,6 +2267,9 @@ inline void load_channel_mdn_checkpoint_file(
   torch::Tensor saved_residual_depth{};
   torch::Tensor saved_feature_embedding_dim{};
   torch::Tensor saved_channel_adapter_rank{};
+  torch::Tensor saved_direct_readout_base_edge_count{};
+  torch::Tensor saved_direct_readout_identity_embedding_dim{};
+  torch::Tensor saved_direct_readout_adapter_hidden_dim{};
   torch::Tensor saved_component_assembly_id{};
   torch::Tensor saved_input_representation_assembly_id{};
   torch::Tensor saved_context_contract{};
@@ -1997,6 +2278,7 @@ inline void load_channel_mdn_checkpoint_file(
   torch::Tensor saved_target_domain{};
   torch::Tensor saved_target_mask_policy{};
   torch::Tensor saved_activity_target{};
+  torch::Tensor saved_direct_readout_identity_mode{};
   torch::Tensor saved_target_coords{};
   torch::Tensor saved_sigma_min{};
   torch::Tensor saved_sigma_max{};
@@ -2012,6 +2294,12 @@ inline void load_channel_mdn_checkpoint_file(
   root.read("meta/residual_depth", saved_residual_depth);
   root.read("meta/feature_embedding_dim", saved_feature_embedding_dim);
   root.read("meta/channel_adapter_rank", saved_channel_adapter_rank);
+  root.read("meta/direct_edge_return_readout_base_edge_count",
+            saved_direct_readout_base_edge_count);
+  root.read("meta/direct_edge_return_readout_identity_embedding_dim",
+            saved_direct_readout_identity_embedding_dim);
+  root.read("meta/direct_edge_return_readout_adapter_hidden_dim",
+            saved_direct_readout_adapter_hidden_dim);
   root.read("meta/component_assembly_id_bytes", saved_component_assembly_id);
   root.read("meta/input_representation_assembly_id_bytes",
             saved_input_representation_assembly_id);
@@ -2021,6 +2309,8 @@ inline void load_channel_mdn_checkpoint_file(
   root.read("meta/target_domain_bytes", saved_target_domain);
   root.read("meta/target_mask_policy_bytes", saved_target_mask_policy);
   root.read("meta/activity_target_bytes", saved_activity_target);
+  root.read("meta/direct_edge_return_readout_identity_mode_bytes",
+            saved_direct_readout_identity_mode);
   root.read("meta/target_coords", saved_target_coords);
   root.read("meta/sigma_min", saved_sigma_min);
   root.read("meta/sigma_max", saved_sigma_max);
@@ -2070,6 +2360,28 @@ inline void load_channel_mdn_checkpoint_file(
                 "[channel_graph_first_inference_launcher] MDN checkpoint "
                 "channel_adapter_rank does not match current config");
     TORCH_CHECK(
+        metadata_i64_matches(
+            saved_direct_readout_base_edge_count,
+            expected_identity->direct_edge_return_readout_base_edge_count),
+        "[channel_graph_first_inference_launcher] MDN checkpoint "
+        "direct_edge_return_readout_base_edge_count does not match "
+        "current config");
+    TORCH_CHECK(
+        metadata_i64_matches(
+            saved_direct_readout_identity_embedding_dim,
+            expected_identity
+                ->direct_edge_return_readout_identity_embedding_dim),
+        "[channel_graph_first_inference_launcher] MDN checkpoint "
+        "direct_edge_return_readout_identity_embedding_dim does not match "
+        "current config");
+    TORCH_CHECK(
+        metadata_i64_matches(
+            saved_direct_readout_adapter_hidden_dim,
+            expected_identity->direct_edge_return_readout_adapter_hidden_dim),
+        "[channel_graph_first_inference_launcher] MDN checkpoint "
+        "direct_edge_return_readout_adapter_hidden_dim does not match "
+        "current config");
+    TORCH_CHECK(
         metadata_string_matches(saved_component_assembly_id,
                                 expected_identity->component_assembly_id),
         "[channel_graph_first_inference_launcher] MDN checkpoint "
@@ -2104,6 +2416,13 @@ inline void load_channel_mdn_checkpoint_file(
                                         expected_identity->activity_target),
                 "[channel_graph_first_inference_launcher] MDN checkpoint "
                 "activity_target does not match current config");
+    TORCH_CHECK(
+        metadata_string_matches(
+            saved_direct_readout_identity_mode,
+            expected_identity->direct_edge_return_readout_identity_mode),
+        "[channel_graph_first_inference_launcher] MDN checkpoint "
+        "direct_edge_return_readout_identity_mode does not match current "
+        "config");
     TORCH_CHECK(tensor_to_int64_vector(saved_target_coords) ==
                     expected_identity->target_coords,
                 "[channel_graph_first_inference_launcher] MDN checkpoint "
@@ -2251,6 +2570,43 @@ public:
     out.direct_edge_return_readout_logit_scale =
         builder_.bundle()
             .channel_mdn_training.mdn_direct_edge_return_readout_logit_scale;
+    out.direct_edge_return_readout_target_scale =
+        builder_.bundle()
+            .channel_mdn_training.mdn_direct_edge_return_readout_target_scale;
+    out.direct_edge_return_readout_warmup_steps =
+        builder_.bundle()
+            .channel_mdn_training.mdn_direct_edge_return_readout_warmup_steps;
+    out.direct_edge_return_readout_warmup_nll_weight =
+        builder_.bundle()
+            .channel_mdn_training
+            .mdn_direct_edge_return_readout_warmup_nll_weight;
+    out.direct_edge_return_readout_post_warmup_nll_weight =
+        builder_.bundle()
+            .channel_mdn_training
+            .mdn_direct_edge_return_readout_post_warmup_nll_weight;
+    out.direct_edge_return_readout_warmup_direct_head_only =
+        builder_.bundle()
+            .channel_mdn_training
+            .mdn_direct_edge_return_readout_warmup_direct_head_only;
+    out.direct_edge_return_readout_identity_mode =
+        builder_.bundle()
+            .channel_mdn_training.mdn_direct_edge_return_readout_identity_mode;
+    out.direct_edge_return_readout_base_edge_count =
+        builder_.bundle()
+            .channel_mdn_training
+            .mdn_direct_edge_return_readout_base_edge_count;
+    out.direct_edge_return_readout_identity_embedding_dim =
+        builder_.bundle()
+            .channel_mdn_training
+            .mdn_direct_edge_return_readout_identity_embedding_dim;
+    out.direct_edge_return_readout_adapter_hidden_dim =
+        builder_.bundle()
+            .channel_mdn_training
+            .mdn_direct_edge_return_readout_adapter_hidden_dim;
+    out.mdn_architecture =
+        "shared_slot_trunk.channel_adapter.shared_feature_head."
+        "direct_edge_readout." +
+        out.direct_edge_return_readout_identity_mode + ".v4";
     out.effective_batch_size = plan.effective_batch_size;
     out.batch_size_source = plan.batch_size_source;
     out.dtype = plan.dtype;
@@ -2484,6 +2840,8 @@ public:
 
     double loss_sum = 0.0;
     int64_t loss_count = 0;
+    double nll_loss_sum = 0.0;
+    int64_t nll_loss_count = 0;
     double edge_auxiliary_loss_sum = 0.0;
     int64_t edge_auxiliary_loss_count = 0;
     double edge_auxiliary_regression_loss_sum = 0.0;
@@ -2504,6 +2862,18 @@ public:
     int64_t direct_readout_rank_loss_count = 0;
     int64_t direct_readout_loss_valid_count = 0;
     int64_t direct_readout_loss_pairwise_valid_count = 0;
+    double direct_readout_loss_abs_to_nll_abs_ratio_sum = 0.0;
+    int64_t direct_readout_loss_abs_to_nll_abs_ratio_count = 0;
+    double direct_readout_loss_abs_to_total_abs_ratio_sum = 0.0;
+    int64_t direct_readout_loss_abs_to_total_abs_ratio_count = 0;
+    double direct_readout_head_grad_norm_sum = 0.0;
+    int64_t direct_readout_head_grad_norm_count = 0;
+    double direct_readout_head_grad_norm_max =
+        -std::numeric_limits<double>::infinity();
+    double direct_readout_head_parameter_update_norm_sum = 0.0;
+    int64_t direct_readout_head_parameter_update_norm_count = 0;
+    double direct_readout_head_parameter_update_norm_max =
+        -std::numeric_limits<double>::infinity();
     double valid_fraction_sum = 0.0;
     int64_t valid_fraction_count = 0;
     double sigma_mean_sum = 0.0;
@@ -2571,8 +2941,25 @@ public:
     double direct_edge_return_readout_pred_squared_sum = 0.0;
     double direct_edge_return_readout_realized_squared_sum = 0.0;
     double direct_edge_return_readout_cross_sum = 0.0;
+    double direct_edge_return_readout_pred_min =
+        std::numeric_limits<double>::infinity();
+    double direct_edge_return_readout_pred_max =
+        -std::numeric_limits<double>::infinity();
+    double direct_edge_return_readout_realized_min =
+        std::numeric_limits<double>::infinity();
+    double direct_edge_return_readout_realized_max =
+        -std::numeric_limits<double>::infinity();
     int64_t direct_edge_return_readout_valid_count = 0;
     int64_t direct_edge_return_readout_direction_correct_count = 0;
+    double direct_edge_return_readout_margin_eps =
+        std::numeric_limits<double>::quiet_NaN();
+    int64_t direct_edge_return_readout_margin_valid_count = 0;
+    int64_t direct_edge_return_readout_margin_direction_correct_count = 0;
+    int64_t direct_edge_return_readout_near_zero_target_count = 0;
+    double direct_edge_return_readout_rank_margin_eps =
+        std::numeric_limits<double>::quiet_NaN();
+    int64_t direct_edge_return_readout_margin_pairwise_rank_valid_count = 0;
+    int64_t direct_edge_return_readout_margin_pairwise_rank_correct_count = 0;
     int64_t direct_edge_return_readout_pairwise_rank_valid_count = 0;
     int64_t direct_edge_return_readout_pairwise_rank_correct_count = 0;
     int64_t direct_edge_return_readout_best_asset_valid_count = 0;
@@ -2598,6 +2985,10 @@ public:
     auto refresh_running_report = [&]() {
       if (loss_count > 0) {
         report.mean_loss = loss_sum / static_cast<double>(loss_count);
+      }
+      if (nll_loss_count > 0) {
+        report.mean_nll_loss =
+            nll_loss_sum / static_cast<double>(nll_loss_count);
       }
       if (edge_auxiliary_loss_count > 0) {
         report.mean_edge_return_auxiliary_loss =
@@ -2646,6 +3037,36 @@ public:
           direct_readout_loss_valid_count;
       report.direct_edge_return_readout_loss_pairwise_valid_count =
           direct_readout_loss_pairwise_valid_count;
+      if (direct_readout_loss_abs_to_nll_abs_ratio_count > 0) {
+        report.mean_direct_edge_return_readout_loss_abs_to_nll_abs_ratio =
+            direct_readout_loss_abs_to_nll_abs_ratio_sum /
+            static_cast<double>(direct_readout_loss_abs_to_nll_abs_ratio_count);
+      }
+      if (direct_readout_loss_abs_to_total_abs_ratio_count > 0) {
+        report.mean_direct_edge_return_readout_loss_abs_to_total_abs_ratio =
+            direct_readout_loss_abs_to_total_abs_ratio_sum /
+            static_cast<double>(
+                direct_readout_loss_abs_to_total_abs_ratio_count);
+      }
+      if (direct_readout_head_grad_norm_count > 0) {
+        report.mean_direct_edge_return_readout_head_grad_norm =
+            direct_readout_head_grad_norm_sum /
+            static_cast<double>(direct_readout_head_grad_norm_count);
+      }
+      if (std::isfinite(direct_readout_head_grad_norm_max)) {
+        report.max_direct_edge_return_readout_head_grad_norm =
+            direct_readout_head_grad_norm_max;
+      }
+      if (direct_readout_head_parameter_update_norm_count > 0) {
+        report.mean_direct_edge_return_readout_head_parameter_update_norm =
+            direct_readout_head_parameter_update_norm_sum /
+            static_cast<double>(
+                direct_readout_head_parameter_update_norm_count);
+      }
+      if (std::isfinite(direct_readout_head_parameter_update_norm_max)) {
+        report.max_direct_edge_return_readout_head_parameter_update_norm =
+            direct_readout_head_parameter_update_norm_max;
+      }
       if (valid_fraction_count > 0) {
         report.mean_valid_target_fraction =
             valid_fraction_sum / static_cast<double>(valid_fraction_count);
@@ -2843,6 +3264,70 @@ public:
                     direct_edge_return_readout_pred_squared_sum,
                     direct_edge_return_readout_realized_squared_sum,
                     direct_edge_return_readout_cross_sum);
+        report.direct_edge_return_readout_pred_mean =
+            direct_edge_return_readout_pred_sum /
+            static_cast<double>(direct_edge_return_readout_valid_count);
+        report.direct_edge_return_readout_realized_mean =
+            direct_edge_return_readout_realized_sum /
+            static_cast<double>(direct_edge_return_readout_valid_count);
+        report.direct_edge_return_readout_pred_std =
+            channel_graph_first_inference_launcher_detail::stddev_from_sums(
+                direct_edge_return_readout_valid_count,
+                direct_edge_return_readout_pred_sum,
+                direct_edge_return_readout_pred_squared_sum);
+        report.direct_edge_return_readout_realized_std =
+            channel_graph_first_inference_launcher_detail::stddev_from_sums(
+                direct_edge_return_readout_valid_count,
+                direct_edge_return_readout_realized_sum,
+                direct_edge_return_readout_realized_squared_sum);
+        report.direct_edge_return_readout_pred_to_realized_std_ratio =
+            channel_graph_first_inference_launcher_detail::safe_abs_ratio(
+                report.direct_edge_return_readout_pred_std,
+                report.direct_edge_return_readout_realized_std);
+        if (std::isfinite(direct_edge_return_readout_pred_min)) {
+          report.direct_edge_return_readout_pred_min =
+              direct_edge_return_readout_pred_min;
+        }
+        if (std::isfinite(direct_edge_return_readout_pred_max)) {
+          report.direct_edge_return_readout_pred_max =
+              direct_edge_return_readout_pred_max;
+        }
+        if (std::isfinite(direct_edge_return_readout_realized_min)) {
+          report.direct_edge_return_readout_realized_min =
+              direct_edge_return_readout_realized_min;
+        }
+        if (std::isfinite(direct_edge_return_readout_realized_max)) {
+          report.direct_edge_return_readout_realized_max =
+              direct_edge_return_readout_realized_max;
+        }
+        report.direct_edge_return_readout_margin_eps =
+            direct_edge_return_readout_margin_eps;
+        report.direct_edge_return_readout_margin_valid_count =
+            direct_edge_return_readout_margin_valid_count;
+        if (direct_edge_return_readout_margin_valid_count > 0) {
+          report.direct_edge_return_readout_margin_directional_accuracy =
+              static_cast<double>(
+                  direct_edge_return_readout_margin_direction_correct_count) /
+              static_cast<double>(
+                  direct_edge_return_readout_margin_valid_count);
+        }
+        report.direct_edge_return_readout_near_zero_target_count =
+            direct_edge_return_readout_near_zero_target_count;
+        report.direct_edge_return_readout_near_zero_target_fraction =
+            static_cast<double>(
+                direct_edge_return_readout_near_zero_target_count) /
+            static_cast<double>(direct_edge_return_readout_valid_count);
+        report.direct_edge_return_readout_rank_margin_eps =
+            direct_edge_return_readout_rank_margin_eps;
+        report.direct_edge_return_readout_margin_pairwise_rank_valid_count =
+            direct_edge_return_readout_margin_pairwise_rank_valid_count;
+        if (direct_edge_return_readout_margin_pairwise_rank_valid_count > 0) {
+          report.direct_edge_return_readout_margin_pairwise_rank_accuracy =
+              static_cast<double>(
+                  direct_edge_return_readout_margin_pairwise_rank_correct_count) /
+              static_cast<double>(
+                  direct_edge_return_readout_margin_pairwise_rank_valid_count);
+        }
       }
       report.direct_edge_return_readout_pairwise_rank_valid_count =
           direct_edge_return_readout_pairwise_rank_valid_count;
@@ -2869,6 +3354,15 @@ public:
               directional_accuracy_vector(
                   direct_edge_return_readout_direction_correct_count_per_edge_sum,
                   direct_edge_return_readout_valid_count_per_edge_sum);
+      report.direct_edge_return_readout_directional_accuracy_per_edge_min =
+          channel_graph_first_inference_launcher_detail::finite_min_value(
+              report.direct_edge_return_readout_directional_accuracy_per_edge);
+      report.direct_edge_return_readout_directional_accuracy_per_edge_max =
+          channel_graph_first_inference_launcher_detail::finite_max_value(
+              report.direct_edge_return_readout_directional_accuracy_per_edge);
+      report.direct_edge_return_readout_directional_accuracy_per_edge_spread =
+          channel_graph_first_inference_launcher_detail::finite_spread_value(
+              report.direct_edge_return_readout_directional_accuracy_per_edge);
       report.direct_edge_return_readout_valid_count_per_channel =
           direct_edge_return_readout_valid_count_per_channel_sum;
       report.direct_edge_return_readout_directional_accuracy_per_channel =
@@ -2876,6 +3370,19 @@ public:
               directional_accuracy_vector(
                   direct_edge_return_readout_direction_correct_count_per_channel_sum,
                   direct_edge_return_readout_valid_count_per_channel_sum);
+      report.direct_edge_return_readout_directional_accuracy_per_channel_min =
+          channel_graph_first_inference_launcher_detail::finite_min_value(
+              report
+                  .direct_edge_return_readout_directional_accuracy_per_channel);
+      report.direct_edge_return_readout_directional_accuracy_per_channel_max =
+          channel_graph_first_inference_launcher_detail::finite_max_value(
+              report
+                  .direct_edge_return_readout_directional_accuracy_per_channel);
+      report
+          .direct_edge_return_readout_directional_accuracy_per_channel_spread =
+          channel_graph_first_inference_launcher_detail::finite_spread_value(
+              report
+                  .direct_edge_return_readout_directional_accuracy_per_channel);
       report.mean_nll_per_channel =
           channel_graph_first_inference_launcher_detail::mean_vector(
               nll_per_channel_sum, nll_per_channel_count);
@@ -2981,10 +3488,20 @@ public:
                                            builder_.options().device);
 
       if (model_ptr == nullptr) {
+        cuwacunu::wikimyei::inference::expected_value::mdn::
+            DirectEdgeReturnHeadOptions direct_edge_options{};
+        direct_edge_options.identity_mode =
+            training_spec.mdn_direct_edge_return_readout_identity_mode;
+        direct_edge_options.base_edge_count =
+            training_spec.mdn_direct_edge_return_readout_base_edge_count;
+        direct_edge_options.identity_embedding_dim =
+            training_spec.mdn_direct_edge_return_readout_identity_embedding_dim;
+        direct_edge_options.adapter_hidden_dim =
+            training_spec.mdn_direct_edge_return_readout_adapter_hidden_dim;
         auto mdn = builder_.make_channel_context_mdn(
             /*context_dim=*/input.context.size(3),
             /*channel_count=*/input.context.size(2),
-            /*horizon_count=*/1);
+            /*horizon_count=*/1, std::move(direct_edge_options));
         auto train_options = cuwacunu::wikimyei::inference::expected_value::
             mdn::channel_context_mdn_train_options_from_spec(
                 builder_.bundle().channel_mdn);
@@ -3011,6 +3528,17 @@ public:
             training_spec.mdn_direct_edge_return_readout_huber_beta;
         train_options.direct_edge_return_readout_logit_scale =
             training_spec.mdn_direct_edge_return_readout_logit_scale;
+        train_options.direct_edge_return_readout_target_scale =
+            training_spec.mdn_direct_edge_return_readout_target_scale;
+        train_options.direct_edge_return_readout_warmup_steps =
+            training_spec.mdn_direct_edge_return_readout_warmup_steps;
+        train_options.direct_edge_return_readout_warmup_nll_weight =
+            training_spec.mdn_direct_edge_return_readout_warmup_nll_weight;
+        train_options.direct_edge_return_readout_post_warmup_nll_weight =
+            training_spec.mdn_direct_edge_return_readout_post_warmup_nll_weight;
+        train_options.direct_edge_return_readout_warmup_direct_head_only =
+            training_spec
+                .mdn_direct_edge_return_readout_warmup_direct_head_only;
         model_holder =
             std::make_unique<cuwacunu::wikimyei::inference::expected_value::
                                  mdn::channel_context_mdn_train_model_t>(
@@ -3137,6 +3665,19 @@ public:
               training_spec.mdn_direct_edge_return_readout_huber_beta;
           eval_train_options.direct_edge_return_readout_logit_scale =
               training_spec.mdn_direct_edge_return_readout_logit_scale;
+          eval_train_options.direct_edge_return_readout_target_scale =
+              training_spec.mdn_direct_edge_return_readout_target_scale;
+          eval_train_options.direct_edge_return_readout_warmup_steps =
+              training_spec.mdn_direct_edge_return_readout_warmup_steps;
+          eval_train_options.direct_edge_return_readout_warmup_nll_weight =
+              training_spec.mdn_direct_edge_return_readout_warmup_nll_weight;
+          eval_train_options.direct_edge_return_readout_post_warmup_nll_weight =
+              training_spec
+                  .mdn_direct_edge_return_readout_post_warmup_nll_weight;
+          eval_train_options
+              .direct_edge_return_readout_warmup_direct_head_only =
+              training_spec
+                  .mdn_direct_edge_return_readout_warmup_direct_head_only;
           const auto edge_auxiliary = cuwacunu::wikimyei::inference::
               expected_value::mdn::channel_context_mdn_train_detail::
                   compute_edge_return_auxiliary_loss(
@@ -3211,6 +3752,11 @@ public:
                      ? scalar
                      : std::numeric_limits<double>::quiet_NaN();
         };
+        report.last_nll_loss = finite_scalar_or_nan(step.nll);
+        if (std::isfinite(report.last_nll_loss)) {
+          nll_loss_sum += report.last_nll_loss;
+          ++nll_loss_count;
+        }
         report.last_edge_return_auxiliary_loss =
             finite_scalar_or_nan(step.edge_return_auxiliary_loss);
         if (std::isfinite(report.last_edge_return_auxiliary_loss)) {
@@ -3272,6 +3818,67 @@ public:
           direct_readout_rank_loss_sum +=
               report.last_direct_edge_return_readout_rank_loss;
           ++direct_readout_rank_loss_count;
+        }
+        report.last_direct_edge_return_readout_loss_abs_to_nll_abs_ratio =
+            channel_graph_first_inference_launcher_detail::safe_abs_ratio(
+                report.last_direct_edge_return_readout_loss,
+                report.last_nll_loss);
+        if (std::isfinite(
+                report
+                    .last_direct_edge_return_readout_loss_abs_to_nll_abs_ratio)) {
+          direct_readout_loss_abs_to_nll_abs_ratio_sum +=
+              report.last_direct_edge_return_readout_loss_abs_to_nll_abs_ratio;
+          ++direct_readout_loss_abs_to_nll_abs_ratio_count;
+        }
+        report.last_direct_edge_return_readout_loss_abs_to_total_abs_ratio =
+            channel_graph_first_inference_launcher_detail::safe_abs_ratio(
+                report.last_direct_edge_return_readout_loss, report.last_loss);
+        if (std::isfinite(
+                report
+                    .last_direct_edge_return_readout_loss_abs_to_total_abs_ratio)) {
+          direct_readout_loss_abs_to_total_abs_ratio_sum +=
+              report
+                  .last_direct_edge_return_readout_loss_abs_to_total_abs_ratio;
+          ++direct_readout_loss_abs_to_total_abs_ratio_count;
+        }
+        report.last_direct_edge_return_readout_head_grad_norm =
+            step.direct_edge_return_readout_head_grad_norm;
+        if (std::isfinite(
+                report.last_direct_edge_return_readout_head_grad_norm)) {
+          direct_readout_head_grad_norm_sum +=
+              report.last_direct_edge_return_readout_head_grad_norm;
+          direct_readout_head_grad_norm_max =
+              std::max(direct_readout_head_grad_norm_max,
+                       report.last_direct_edge_return_readout_head_grad_norm);
+          ++direct_readout_head_grad_norm_count;
+        }
+        report.last_direct_edge_return_readout_head_parameter_norm =
+            step.direct_edge_return_readout_head_parameter_norm_after_step;
+        report.last_direct_edge_return_readout_head_parameter_update_norm =
+            step.direct_edge_return_readout_head_parameter_update_norm;
+        if (std::isfinite(
+                report
+                    .last_direct_edge_return_readout_head_parameter_update_norm)) {
+          direct_readout_head_parameter_update_norm_sum +=
+              report.last_direct_edge_return_readout_head_parameter_update_norm;
+          direct_readout_head_parameter_update_norm_max = std::max(
+              direct_readout_head_parameter_update_norm_max,
+              report
+                  .last_direct_edge_return_readout_head_parameter_update_norm);
+          ++direct_readout_head_parameter_update_norm_count;
+        }
+        report.last_direct_edge_return_readout_scheduled_nll_weight =
+            step.direct_edge_return_readout_scheduled_nll_weight;
+        report.last_direct_edge_return_readout_warmup_active =
+            step.direct_edge_return_readout_warmup_active;
+        report.last_direct_edge_return_readout_direct_head_only_warmup_active =
+            step.direct_edge_return_readout_direct_head_only_warmup_active;
+        if (step.direct_edge_return_readout_warmup_active) {
+          ++report.direct_edge_return_readout_warmup_step_count;
+        }
+        if (step.direct_edge_return_readout_direct_head_only_warmup_active) {
+          ++report
+                .direct_edge_return_readout_direct_head_only_warmup_step_count;
         }
         direct_readout_loss_valid_count +=
             step.direct_edge_return_readout_loss_valid_count;
@@ -3447,10 +4054,44 @@ public:
               step.direct_edge_return_readout_realized_squared_sum;
           direct_edge_return_readout_cross_sum +=
               step.direct_edge_return_readout_cross_sum;
+          if (std::isfinite(step.direct_edge_return_readout_pred_min)) {
+            direct_edge_return_readout_pred_min =
+                std::min(direct_edge_return_readout_pred_min,
+                         step.direct_edge_return_readout_pred_min);
+          }
+          if (std::isfinite(step.direct_edge_return_readout_pred_max)) {
+            direct_edge_return_readout_pred_max =
+                std::max(direct_edge_return_readout_pred_max,
+                         step.direct_edge_return_readout_pred_max);
+          }
+          if (std::isfinite(step.direct_edge_return_readout_realized_min)) {
+            direct_edge_return_readout_realized_min =
+                std::min(direct_edge_return_readout_realized_min,
+                         step.direct_edge_return_readout_realized_min);
+          }
+          if (std::isfinite(step.direct_edge_return_readout_realized_max)) {
+            direct_edge_return_readout_realized_max =
+                std::max(direct_edge_return_readout_realized_max,
+                         step.direct_edge_return_readout_realized_max);
+          }
           direct_edge_return_readout_valid_count +=
               step.direct_edge_return_readout_valid_count;
           direct_edge_return_readout_direction_correct_count +=
               step.direct_edge_return_readout_direction_correct_count;
+          direct_edge_return_readout_margin_eps =
+              step.direct_edge_return_readout_margin_eps;
+          direct_edge_return_readout_margin_valid_count +=
+              step.direct_edge_return_readout_margin_valid_count;
+          direct_edge_return_readout_margin_direction_correct_count +=
+              step.direct_edge_return_readout_margin_direction_correct_count;
+          direct_edge_return_readout_near_zero_target_count +=
+              step.direct_edge_return_readout_near_zero_target_count;
+          direct_edge_return_readout_rank_margin_eps =
+              step.direct_edge_return_readout_rank_margin_eps;
+          direct_edge_return_readout_margin_pairwise_rank_valid_count +=
+              step.direct_edge_return_readout_margin_pairwise_rank_valid_count;
+          direct_edge_return_readout_margin_pairwise_rank_correct_count +=
+              step.direct_edge_return_readout_margin_pairwise_rank_correct_count;
           direct_edge_return_readout_pairwise_rank_valid_count +=
               step.direct_edge_return_readout_pairwise_rank_valid_count;
           direct_edge_return_readout_pairwise_rank_correct_count +=

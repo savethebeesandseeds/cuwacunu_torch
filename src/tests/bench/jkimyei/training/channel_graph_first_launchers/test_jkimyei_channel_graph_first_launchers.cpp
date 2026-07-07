@@ -120,6 +120,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
   const auto graph_dsl = out.dir / "kikijyeba.topology.graph.dsl";
   const auto protocol_dsl = out.dir / "kikijyeba.protocol.dsl";
   const auto cursor_dsl = out.dir / "ujcamei.source.cursor.dsl";
+  const auto source_splits_dsl = out.dir / "ujcamei.source.splits.dsl";
   const auto wave_dsl = out.dir / "hero.runtime.wave.dsl";
   const auto vicreg_dsl = out.dir / "wikimyei.representation.vicreg.dsl";
   const auto vicreg_net = out.dir / "wikimyei.representation.vicreg.net";
@@ -241,22 +242,49 @@ fixture_paths_t make_config_fixture(const std::string &label,
                          "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
                          "  SOURCE_RANGE = all;\n"
                          "};\n");
-  write_text(protocol_dsl,
-             "PROTOCOL {\n"
-             "  PROTOCOL_ID = cwu_01v;\n"
-             "  PROTOCOL_KIND = channel_graph_first;\n"
-             "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
-             "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
-             "  REPRESENTATION = wikimyei.representation.encoding.vicreg;\n"
-             "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
-             "  OBSERVER = wikimyei.observer.belief;\n"
-             "  ALLOCATION_POLICY = "
-             "wikimyei.policy.portfolio.spot_distributional_utility;\n"
-             "  POLICY_COMPONENT = "
-             "wikimyei.policy.portfolio.graph_node_allocation;\n"
-             "  REPRESENTATION_CONTRACT = "
-             "graph_order.channel_node_representation.v1;\n"
-             "};\n");
+  write_text(source_splits_dsl, "UJCAMEI_SOURCE_SPLIT_CATALOG {\n"
+                                "  CATALOG_ID = graph_anchor_splits_v1;\n"
+                                "  CURSOR_DOMAIN = ujcamei.graph_anchor;\n"
+                                "};\n"
+                                "UJCAMEI_SOURCE_SPLIT {\n"
+                                "  SPLIT_ID = train_core;\n"
+                                "  ROLE = train;\n"
+                                "  SELECTOR = fraction_range;\n"
+                                "  BEGIN_FRACTION = 0/1;\n"
+                                "  END_FRACTION = 1/1;\n"
+                                "  MIN_COUNT = 1;\n"
+                                "};\n");
+  write_text(
+      protocol_dsl,
+      "PROTOCOL {\n"
+      "  PROTOCOL_ID = cwu_01v;\n"
+      "  PROTOCOL_KIND = channel_graph_first;\n"
+      "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
+      "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
+      "  REPRESENTATION = wikimyei.representation.encoding.vicreg;\n"
+      "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+      "  OBSERVER = wikimyei.observer.belief;\n"
+      "  ALLOCATION_POLICY = "
+      "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+      "  POLICY_COMPONENT = "
+      "wikimyei.policy.portfolio.graph_node_allocation;\n"
+      "  REPRESENTATION_CONTRACT = "
+      "graph_order.channel_node_representation.v1;\n"
+      "};\n"
+      "NO_LOOKAHEAD_CONTRACT {\n"
+      "  CONTRACT_ID = "
+      "cwu_01v_no_lookahead_artifact_provenance.anchor_v1;\n"
+      "  CERTIFICATE_SCHEMA = no_lookahead_artifact_provenance.v1;\n"
+      "  INFLUENCE_SCHEMA = no_lookahead_artifact_provenance.anchor_v1;\n"
+      "  FRONTIER_UNIT = accepted_anchor_index;\n"
+      "  SERVING_ORDER = representation,mdn,policy;\n"
+      "  VISIBILITY_POLICY = prior_generation_per_slice;\n"
+      "  DERIVED_ARTIFACT_RULE = inherit_parent_influence;\n"
+      "  CHECKPOINT_RULE = generation_manifest_required;\n"
+      "  PUBLISH_RULE = valid_from_anchor_gte_fit_end;\n"
+      "  BOOTSTRAP_POLICY = explicit_lane_only;\n"
+      "  RESEARCH_POLICY = smoke_or_research_not_promotable;\n"
+      "};\n");
 
   write_text(vicreg_dsl, "VICREG {\n"
                          "  VERSION = wikimyei.representation.vicreg.v1;\n"
@@ -384,6 +412,18 @@ fixture_paths_t make_config_fixture(const std::string &label,
                  "  MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 0.0;\n"
                  "  MDN_DIRECT_EDGE_RETURN_READOUT_HUBER_BETA = 0.01;\n"
                  "  MDN_DIRECT_EDGE_RETURN_READOUT_LOGIT_SCALE = 50.0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_TARGET_SCALE = 1.0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_STEPS = 0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT = 1.0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_POST_WARMUP_NLL_WEIGHT = "
+                 "1.0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_DIRECT_HEAD_ONLY = "
+                 "false;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_MODE = shared;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_BASE_EDGE_COUNT = 0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_EMBEDDING_DIM = "
+                 "0;\n"
+                 "  MDN_DIRECT_EDGE_RETURN_READOUT_ADAPTER_HIDDEN_DIM = 0;\n"
                  "  FREEZE_REPRESENTATION = true;\n"
                  "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
                  "  INPUT_MDN_CHECKPOINT = ;\n"
@@ -415,6 +455,11 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "/cuwacunu/src/config/grammar/ujcamei.source.cursor.dsl.bnf\n"
           "ujcamei_source_cursor_dsl_path = " +
           cursor_dsl.string() +
+          "\n"
+          "ujcamei_source_splits_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/ujcamei.source.splits.dsl.bnf\n"
+          "ujcamei_source_splits_dsl_path = " +
+          source_splits_dsl.string() +
           "\n\n"
           "[KIKIJYEBA]\n"
           "kikijyeba_protocol_dsl_bnf_path = "
@@ -433,6 +478,11 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "/cuwacunu/src/config/grammar/hero.runtime.wave.dsl.bnf\n"
           "runtime_wave_dsl_path = " +
           wave_dsl.string() +
+          "\n"
+          "lattice_split_policy_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/hero.lattice.split_policy.dsl.bnf\n"
+          "lattice_split_policy_dsl_path = "
+          "/cuwacunu/src/config/hero.lattice.split_policy.dsl"
           "\n\n"
           "[WIKIMYEI]\n"
           "wikimyei_expression_nodelift_srl_dsl_bnf_path = "
@@ -569,6 +619,38 @@ void configure_channel_mdn_sigma_min(const fixture_paths_t &fixture,
   replace_once(text, "  SIGMA_MIN = 0.001;\n",
                "  SIGMA_MIN = " + value + ";\n");
   write_text(fixture.channel_mdn_dsl, text);
+}
+
+void configure_channel_mdn_identity_conditioned_direct_readout(
+    const fixture_paths_t &fixture) {
+  auto text = read_text(fixture.channel_mdn_jkimyei);
+  replace_once(text, "  MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED = false;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED = true;\n");
+  replace_once(text, "  MDN_DIRECT_EDGE_RETURN_READOUT_LOSS_WEIGHT = 0.0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_LOSS_WEIGHT = 2.0;\n");
+  replace_once(text,
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_DIRECTION_WEIGHT = 0.0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_DIRECTION_WEIGHT = 0.25;\n");
+  replace_once(text, "  MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 0.0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 0.25;\n");
+  replace_once(text, "  MDN_DIRECT_EDGE_RETURN_READOUT_TARGET_SCALE = 1.0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_TARGET_SCALE = 4.0;\n");
+  replace_once(
+      text, "  MDN_DIRECT_EDGE_RETURN_READOUT_POST_WARMUP_NLL_WEIGHT = 1.0;\n",
+      "  MDN_DIRECT_EDGE_RETURN_READOUT_POST_WARMUP_NLL_WEIGHT = 0.25;\n");
+  replace_once(text,
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_MODE = shared;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_MODE = "
+               "edge_embedding_per_edge;\n");
+  replace_once(text, "  MDN_DIRECT_EDGE_RETURN_READOUT_BASE_EDGE_COUNT = 0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_BASE_EDGE_COUNT = 3;\n");
+  replace_once(
+      text, "  MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_EMBEDDING_DIM = 0;\n",
+      "  MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_EMBEDDING_DIM = 4;\n");
+  replace_once(text,
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_ADAPTER_HIDDEN_DIM = 0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_ADAPTER_HIDDEN_DIM = 8;\n");
+  write_text(fixture.channel_mdn_jkimyei, text);
 }
 
 protocol::channel_graph_first_pipeline_builder_t<Kline>
@@ -917,7 +999,8 @@ void test_channel_mdn_training_run() {
             report.valid_target_count_per_channel_target_feature[0] > 0,
         "MDN per-channel/feature support count");
   check(report.mdn_architecture ==
-                "shared_slot_trunk.channel_adapter.shared_feature_head.v2" &&
+                "shared_slot_trunk.channel_adapter.shared_feature_head."
+                "direct_edge_readout.shared.v4" &&
             report.loss_reduction == "balanced_channel_feature_mean" &&
             report.feature_embedding_dim == 2 &&
             report.channel_adapter_rank == 2 && report.shared_trunk &&
@@ -1005,7 +1088,8 @@ void test_channel_mdn_training_run() {
         "MDN report per-channel support");
   check(report_text.find("mdn_architecture="
                          "shared_slot_trunk.channel_adapter."
-                         "shared_feature_head.v2") != std::string::npos,
+                         "shared_feature_head.direct_edge_readout.shared.v4") !=
+            std::string::npos,
         "MDN report architecture");
   check(report_text.find("loss_reduction=balanced_channel_feature_mean") !=
             std::string::npos,
@@ -1016,6 +1100,74 @@ void test_channel_mdn_training_run() {
         "MDN report max grad norm");
   check(report_text.find("runtime_report_mode=normal") != std::string::npos,
         "MDN report runtime mode");
+}
+
+void test_channel_mdn_identity_conditioned_direct_readout_training_run() {
+  torch::manual_seed(104);
+  const auto fixture =
+      make_config_fixture("mdn_identity_direct_readout", /*max_steps=*/1,
+                          /*checkpoint_every=*/1, /*batch_size=*/2,
+                          /*report_every=*/1, "train");
+  configure_channel_mdn_identity_conditioned_direct_readout(fixture);
+  auto pipe = make_pipeline(fixture);
+  inference_launcher::channel_graph_first_inference_launcher_options_t
+      options{};
+  options.write_report = true;
+  options.report_path = fixture.report;
+  inference_launcher::channel_graph_first_inference_launcher_t<Kline> launcher(
+      std::move(pipe), options);
+  const auto report = launcher.run();
+
+  check(report.direct_edge_return_readout_enabled,
+        "identity direct readout enabled");
+  check(report.direct_edge_return_readout_identity_mode ==
+            "edge_embedding_per_edge",
+        "identity direct readout mode recorded");
+  check(report.direct_edge_return_readout_base_edge_count == 3,
+        "identity direct readout base edge count recorded");
+  check(report.direct_edge_return_readout_identity_embedding_dim == 4,
+        "identity direct readout embedding dim recorded");
+  check(report.direct_edge_return_readout_adapter_hidden_dim == 8,
+        "identity direct readout adapter dim recorded");
+  check(report.direct_edge_return_readout_post_warmup_nll_weight == 0.25,
+        "identity direct readout post-warmup NLL weight recorded");
+  check(report.mdn_architecture ==
+            "shared_slot_trunk.channel_adapter.shared_feature_head."
+            "direct_edge_readout.edge_embedding_per_edge.v4",
+        "identity direct readout architecture recorded");
+  check(report.direct_edge_return_readout_loss_valid_count > 0,
+        "identity direct readout valid loss count");
+  check(report.direct_edge_return_readout_loss_pairwise_valid_count > 0,
+        "identity direct readout valid pairwise loss count");
+  check(std::isfinite(report.last_direct_edge_return_readout_loss),
+        "identity direct readout loss finite");
+  check(report.checkpoint_written,
+        "identity direct readout checkpoint written");
+  check(std::filesystem::exists(report.checkpoint_path),
+        "identity direct readout checkpoint exists");
+
+  const auto report_text = read_text(fixture.report);
+  check(report_text.find("direct_edge_return_readout_identity_mode="
+                         "edge_embedding_per_edge") != std::string::npos,
+        "identity direct readout report mode");
+  check(report_text.find("direct_edge_return_readout_base_edge_count=3") !=
+            std::string::npos,
+        "identity direct readout report base edge count");
+  check(
+      report_text.find("direct_edge_return_readout_identity_embedding_dim=4") !=
+          std::string::npos,
+      "identity direct readout report embedding dim");
+  check(report_text.find("direct_edge_return_readout_adapter_hidden_dim=8") !=
+            std::string::npos,
+        "identity direct readout report adapter dim");
+  check(report_text.find("direct_edge_return_readout_post_warmup_nll_weight="
+                         "0.25") != std::string::npos,
+        "identity direct readout report post-warmup NLL weight");
+  check(report_text.find("mdn_architecture="
+                         "shared_slot_trunk.channel_adapter."
+                         "shared_feature_head.direct_edge_readout."
+                         "edge_embedding_per_edge.v4") != std::string::npos,
+        "identity direct readout report architecture");
 }
 
 void test_channel_mdn_debug_lls() {
@@ -1071,8 +1223,8 @@ void test_channel_mdn_debug_lls() {
         "MDN debug runtime LLS balanced loss reduction");
   check(report.mdn_runtime_lls.find(
             "mdn_architecture:str = "
-            "shared_slot_trunk.channel_adapter.shared_feature_head.v2") !=
-            std::string::npos,
+            "shared_slot_trunk.channel_adapter.shared_feature_head."
+            "direct_edge_readout.v4") != std::string::npos,
         "MDN debug runtime LLS architecture");
   check(std::filesystem::exists(fixture.report.string() + ".nodelift.lls"),
         "MDN debug NodeLift LLS sidecar exists");
@@ -1555,6 +1707,7 @@ int main() {
     test_channel_representation_debug_lls();
     test_channel_representation_run_mode_no_mutation();
     test_channel_mdn_training_run();
+    test_channel_mdn_identity_conditioned_direct_readout_training_run();
     test_channel_mdn_debug_lls();
     test_channel_mdn_run_requires_mdn_checkpoint();
     test_channel_mdn_loads_representation_checkpoint();

@@ -460,7 +460,8 @@ is_representation_augmentation_metric_name(std::string_view name) {
 [[nodiscard]] inline bool
 is_forecast_training_metric_name(std::string_view name) {
   return is_progress_metric_name(name) || name == "last_loss" ||
-         name == "mean_loss" || name == "last_valid_target_count" ||
+         name == "mean_loss" || name == "last_nll_loss" ||
+         name == "mean_nll_loss" || name == "last_valid_target_count" ||
          name == "total_valid_target_count" ||
          name == "last_valid_target_fraction" ||
          name == "mean_valid_target_fraction" || name == "last_sigma_mean" ||
@@ -473,6 +474,26 @@ is_forecast_training_metric_name(std::string_view name) {
          name == "representation_parameter_device_check" ||
          name == "mdn_parameter_device_check" ||
          name == "nonfinite_output_count";
+}
+
+[[nodiscard]] inline bool
+is_direct_edge_return_readout_training_metric_name(std::string_view name) {
+  if (!has_prefix(name, "direct_edge_return_readout_") &&
+      !has_prefix(name, "last_direct_edge_return_readout_") &&
+      !has_prefix(name, "mean_direct_edge_return_readout_") &&
+      !has_prefix(name, "max_direct_edge_return_readout_")) {
+    return false;
+  }
+  return contains_text(name, "_loss") || contains_text(name, "head_") ||
+         contains_text(name, "_pred_") || contains_text(name, "_realized_") ||
+         contains_text(name, "pred_to_realized_std_ratio") ||
+         contains_text(name, "scheduled_nll_weight") ||
+         contains_text(name, "warmup") ||
+         contains_text(name, "near_zero_target") ||
+         contains_text(name, "margin_eps") ||
+         contains_text(name, "rank_margin_eps") ||
+         contains_text(name, "directional_accuracy_per_edge_") ||
+         contains_text(name, "directional_accuracy_per_channel_");
 }
 
 [[nodiscard]] inline bool
@@ -639,11 +660,12 @@ learning_metric_event_kind(const job_manifest_t &manifest,
     return {};
   }
   if (contains_text(job_kind, "channel_inference_mdn")) {
+    if (is_forecast_training_metric_name(name) ||
+        is_direct_edge_return_readout_training_metric_name(name)) {
+      return "forecast.training.metric";
+    }
     if (is_forecast_oracle_metric_name(name)) {
       return "forecast.oracle.metric";
-    }
-    if (is_forecast_training_metric_name(name)) {
-      return "forecast.training.metric";
     }
     return {};
   }

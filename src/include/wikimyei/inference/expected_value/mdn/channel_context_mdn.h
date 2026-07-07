@@ -123,14 +123,13 @@ struct ChannelContextMdnImpl : torch::nn::Module {
   cuwacunu::wikimyei::inference::expected_value::mdn::DirectEdgeReturnHead
       direct_edge_head{nullptr};
 
-  ChannelContextMdnImpl(int64_t De_, int64_t Df_, int64_t C_, int64_t Hf_,
-                        int64_t K_, int64_t H_, int64_t depth_,
-                        torch::Dtype dtype_ = torch::kFloat32,
-                        torch::Device device_ = torch::kCPU,
-                        int64_t feature_embedding_dim_ = 0,
-                        int64_t channel_adapter_rank_ = 0,
-                        std::vector<int64_t> target_coords_ = {},
-                        double sigma_floor_ = 1e-3)
+  ChannelContextMdnImpl(
+      int64_t De_, int64_t Df_, int64_t C_, int64_t Hf_, int64_t K_, int64_t H_,
+      int64_t depth_, torch::Dtype dtype_ = torch::kFloat32,
+      torch::Device device_ = torch::kCPU, int64_t feature_embedding_dim_ = 0,
+      int64_t channel_adapter_rank_ = 0,
+      std::vector<int64_t> target_coords_ = {}, double sigma_floor_ = 1e-3,
+      DirectEdgeReturnHeadOptions direct_edge_head_options_ = {})
       : De(De_), Df(Df_), C(C_), Hf(Hf_), K(K_), H(H_), depth(depth_),
         feature_embedding_dim(
             feature_embedding_dim_ > 0
@@ -175,10 +174,12 @@ struct ChannelContextMdnImpl : torch::nn::Module {
                                 .source_feature_vocab_size = 0,
                                 .target_coords = target_coords,
                                 .sigma_floor = sigma_floor}));
-    direct_edge_head =
-        register_module("direct_edge_head",
-                        cuwacunu::wikimyei::inference::expected_value::mdn::
-                            DirectEdgeReturnHead(H, /*quote_node_index=*/0));
+    auto direct_edge_options = std::move(direct_edge_head_options_);
+    direct_edge_options.feature_dim = H;
+    direct_edge_options.quote_node_index = 0;
+    direct_edge_head = register_module(
+        "direct_edge_head", cuwacunu::wikimyei::inference::expected_value::mdn::
+                                DirectEdgeReturnHead(direct_edge_options));
     this->to(device, dtype);
   }
 
@@ -211,7 +212,7 @@ struct ChannelContextMdnImpl : torch::nn::Module {
         channel_context.to(torch::TensorOptions().dtype(dtype).device(device));
     auto h = backbone->forward(x.reshape({B * N * C, De})).view({B, N, C, H});
     h = channel_adapters->forward(h);
-    return direct_edge_head->edge_features(h);
+    return direct_edge_head->readout_input_features(h);
   }
 
   torch::Tensor

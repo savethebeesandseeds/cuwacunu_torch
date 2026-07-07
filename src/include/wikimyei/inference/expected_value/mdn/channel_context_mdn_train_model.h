@@ -31,6 +31,11 @@ struct channel_context_mdn_train_options_t {
   double direct_edge_return_readout_rank_weight{0.0};
   double direct_edge_return_readout_huber_beta{0.01};
   double direct_edge_return_readout_logit_scale{50.0};
+  double direct_edge_return_readout_target_scale{1.0};
+  int64_t direct_edge_return_readout_warmup_steps{0};
+  double direct_edge_return_readout_warmup_nll_weight{1.0};
+  double direct_edge_return_readout_post_warmup_nll_weight{1.0};
+  bool direct_edge_return_readout_warmup_direct_head_only{false};
 };
 
 struct channel_context_mdn_train_step_result_t {
@@ -127,6 +132,32 @@ struct channel_context_mdn_train_step_result_t {
   torch::Tensor direct_edge_return_readout_valid_count_per_channel{};
   torch::Tensor
       direct_edge_return_readout_direction_correct_count_per_channel{};
+  double direct_edge_return_readout_margin_eps{1.0e-3};
+  int64_t direct_edge_return_readout_margin_valid_count{0};
+  int64_t direct_edge_return_readout_margin_direction_correct_count{0};
+  int64_t direct_edge_return_readout_near_zero_target_count{0};
+  double direct_edge_return_readout_rank_margin_eps{1.0e-3};
+  int64_t direct_edge_return_readout_margin_pairwise_rank_valid_count{0};
+  int64_t direct_edge_return_readout_margin_pairwise_rank_correct_count{0};
+  double direct_edge_return_readout_pred_min{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_pred_max{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_realized_min{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_realized_max{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_head_grad_norm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_head_parameter_norm_before_step{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_head_parameter_norm_after_step{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_head_parameter_update_norm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double direct_edge_return_readout_scheduled_nll_weight{1.0};
+  bool direct_edge_return_readout_warmup_active{false};
+  bool direct_edge_return_readout_direct_head_only_warmup_active{false};
   bool skipped{false};
   bool optimizer_step_applied{false};
   bool gradients_finite{true};
@@ -510,6 +541,11 @@ inline void accumulate_direct_edge_return_readout_metrics(
       edge_direction_correct_full.masked_select(edge_valid);
   const auto predicted_selected = predicted_edge.masked_select(edge_valid);
   const auto realized_selected = realized_edge.masked_select(edge_valid);
+  constexpr double margin_eps = 1.0e-3;
+  constexpr double rank_margin_eps = 1.0e-3;
+  const auto target_abs = realized_selected.abs();
+  const auto margin_active = target_abs.gt(margin_eps);
+  const auto near_zero_target = target_abs.le(margin_eps);
 
   step.direct_edge_return_readout_valid_count = edge_valid_count;
   step.direct_edge_return_readout_direction_correct_count =
@@ -533,6 +569,30 @@ inline void accumulate_direct_edge_return_readout_metrics(
           .sum()
           .to(torch::kCPU)
           .template item<double>();
+  step.direct_edge_return_readout_pred_min =
+      predicted_selected.min().to(torch::kCPU).template item<double>();
+  step.direct_edge_return_readout_pred_max =
+      predicted_selected.max().to(torch::kCPU).template item<double>();
+  step.direct_edge_return_readout_realized_min =
+      realized_selected.min().to(torch::kCPU).template item<double>();
+  step.direct_edge_return_readout_realized_max =
+      realized_selected.max().to(torch::kCPU).template item<double>();
+  step.direct_edge_return_readout_margin_eps = margin_eps;
+  step.direct_edge_return_readout_margin_valid_count =
+      margin_active.sum().to(torch::kCPU).template item<int64_t>();
+  step.direct_edge_return_readout_near_zero_target_count =
+      near_zero_target.sum().to(torch::kCPU).template item<int64_t>();
+  if (step.direct_edge_return_readout_margin_valid_count > 0) {
+    step.direct_edge_return_readout_margin_direction_correct_count =
+        predicted_selected.sign()
+            .eq(realized_selected.sign())
+            .logical_and(margin_active)
+            .to(torch::kInt64)
+            .sum()
+            .to(torch::kCPU)
+            .template item<int64_t>();
+  }
+  step.direct_edge_return_readout_rank_margin_eps = rank_margin_eps;
 
   const auto edge_valid_i64 = edge_valid.to(torch::kInt64);
   const auto edge_dims = std::vector<int64_t>{0, 2};
@@ -592,6 +652,28 @@ inline void accumulate_direct_edge_return_readout_metrics(
       step.direct_edge_return_readout_pairwise_rank_valid_count += pair_count;
       step.direct_edge_return_readout_pairwise_rank_correct_count +=
           pair_correct;
+
+      const auto rank_margin_active = (lhs_real - rhs_real)
+                                          .abs()
+                                          .gt(rank_margin_eps)
+                                          .logical_and(pair_valid);
+      const auto rank_margin_count =
+          rank_margin_active.sum().template item<int64_t>();
+      if (rank_margin_count <= 0) {
+        continue;
+      }
+      const auto rank_margin_correct = (lhs_pred - rhs_pred)
+                                           .sign()
+                                           .eq((lhs_real - rhs_real).sign())
+                                           .logical_and(rank_margin_active)
+                                           .to(torch::kInt64)
+                                           .sum()
+                                           .to(torch::kCPU)
+                                           .template item<int64_t>();
+      step.direct_edge_return_readout_margin_pairwise_rank_valid_count +=
+          rank_margin_count;
+      step.direct_edge_return_readout_margin_pairwise_rank_correct_count +=
+          rank_margin_correct;
     }
   }
 }
@@ -774,6 +856,9 @@ compute_direct_edge_return_readout_loss(
               "[channel_mdn_direct_edge_readout] Huber beta must be positive");
   TORCH_CHECK(options.direct_edge_return_readout_logit_scale > 0.0,
               "[channel_mdn_direct_edge_readout] logit scale must be positive");
+  TORCH_CHECK(options.direct_edge_return_readout_target_scale > 0.0,
+              "[channel_mdn_direct_edge_readout] target scale must be "
+              "positive");
   TORCH_CHECK(future.defined() && future.dim() == 4,
               "[channel_mdn_direct_edge_readout] future must be [B,N,C,Df]");
   TORCH_CHECK(combined_mask.defined() && combined_mask.dim() == 4,
@@ -815,9 +900,13 @@ compute_direct_edge_return_readout_loss(
     return out;
   }
 
+  const auto target_scale =
+      static_cast<double>(options.direct_edge_return_readout_target_scale);
   const auto predicted_selected = predicted_edge.masked_select(edge_valid);
   const auto realized_selected = realized_edge.masked_select(edge_valid);
-  const auto edge_diff = predicted_selected - realized_selected;
+  const auto predicted_selected_scaled = predicted_selected * target_scale;
+  const auto realized_selected_scaled = realized_selected * target_scale;
+  const auto edge_diff = predicted_selected_scaled - realized_selected_scaled;
   out.regression_loss =
       smooth_l1_mean(edge_diff, options.direct_edge_return_readout_huber_beta);
 
@@ -825,7 +914,7 @@ compute_direct_edge_return_readout_loss(
   const auto direction_active = realized_sign.ne(0);
   if (direction_active.sum().template item<int64_t>() > 0) {
     const auto pred_for_direction =
-        predicted_selected.masked_select(direction_active);
+        predicted_selected_scaled.masked_select(direction_active);
     const auto sign_for_direction =
         realized_sign.masked_select(direction_active);
     out.direction_loss =
@@ -848,7 +937,8 @@ compute_direct_edge_return_readout_loss(
       if (pair_valid.sum().template item<int64_t>() <= 0) {
         continue;
       }
-      const auto pred_diff = (lhs_pred - rhs_pred).masked_select(pair_valid);
+      const auto pred_diff =
+          ((lhs_pred - rhs_pred) * target_scale).masked_select(pair_valid);
       const auto rank_sign =
           (lhs_real - rhs_real).detach().sign().masked_select(pair_valid);
       const auto rank_active = rank_sign.ne(0);
@@ -982,6 +1072,96 @@ gradient_norm(const std::vector<torch::Tensor> &params) {
                   : std::numeric_limits<double>::quiet_NaN();
 }
 
+template <typename ModelT>
+[[nodiscard]] inline std::vector<torch::Tensor>
+clone_direct_edge_head_parameters(const ModelT &model) {
+  std::vector<torch::Tensor> out;
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") != std::string::npos) {
+      out.push_back(param.value().detach().clone());
+    }
+  }
+  return out;
+}
+
+template <typename ModelT>
+[[nodiscard]] inline double
+direct_edge_head_parameter_norm(const ModelT &model) {
+  double total_sq = 0.0;
+  bool saw_param = false;
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") == std::string::npos) {
+      continue;
+    }
+    saw_param = true;
+    total_sq += param.value()
+                    .detach()
+                    .to(torch::kCPU)
+                    .to(torch::kFloat64)
+                    .pow(2)
+                    .sum()
+                    .template item<double>();
+  }
+  return saw_param ? std::sqrt(total_sq)
+                   : std::numeric_limits<double>::quiet_NaN();
+}
+
+template <typename ModelT>
+[[nodiscard]] inline double
+direct_edge_head_gradient_norm(const ModelT &model) {
+  double total_sq = 0.0;
+  bool saw_grad = false;
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") == std::string::npos) {
+      continue;
+    }
+    const auto grad = param.value().grad();
+    if (!grad.defined()) {
+      continue;
+    }
+    saw_grad = true;
+    total_sq += grad.detach()
+                    .to(torch::kCPU)
+                    .to(torch::kFloat64)
+                    .pow(2)
+                    .sum()
+                    .template item<double>();
+  }
+  return saw_grad ? std::sqrt(total_sq)
+                  : std::numeric_limits<double>::quiet_NaN();
+}
+
+template <typename ModelT>
+[[nodiscard]] inline double
+direct_edge_head_update_norm(const ModelT &model,
+                             const std::vector<torch::Tensor> &before) {
+  double total_sq = 0.0;
+  std::size_t idx = 0;
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") == std::string::npos) {
+      continue;
+    }
+    if (idx >= before.size()) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    total_sq += (param.value()
+                     .detach()
+                     .to(before[idx].device())
+                     .to(before[idx].dtype()) -
+                 before[idx])
+                    .to(torch::kCPU)
+                    .to(torch::kFloat64)
+                    .pow(2)
+                    .sum()
+                    .template item<double>();
+    ++idx;
+  }
+  if (idx == 0 || idx != before.size()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return std::sqrt(total_sq);
+}
+
 inline void clip_gradients(std::vector<torch::Tensor> &params, double clip_norm,
                            double current_norm) {
   if (clip_norm <= 0.0 || !std::isfinite(current_norm) ||
@@ -992,6 +1172,50 @@ inline void clip_gradients(std::vector<torch::Tensor> &params, double clip_norm,
   for (auto &param : params) {
     if (param.grad().defined()) {
       param.grad().mul_(scale);
+    }
+  }
+}
+
+[[nodiscard]] inline bool direct_edge_return_readout_warmup_active(
+    const channel_context_mdn_train_options_t &options,
+    const int64_t optimizer_step_index) {
+  TORCH_CHECK(options.direct_edge_return_readout_warmup_steps >= 0,
+              "[channel_context_mdn_train_model] direct readout warmup steps "
+              "must be nonnegative");
+  return options.direct_edge_return_readout_enabled &&
+         options.direct_edge_return_readout_warmup_steps > 0 &&
+         optimizer_step_index < options.direct_edge_return_readout_warmup_steps;
+}
+
+[[nodiscard]] inline double direct_edge_return_readout_scheduled_nll_weight(
+    const channel_context_mdn_train_options_t &options,
+    const int64_t optimizer_step_index) {
+  TORCH_CHECK(
+      options.direct_edge_return_readout_warmup_nll_weight >= 0.0 &&
+          std::isfinite(options.direct_edge_return_readout_warmup_nll_weight),
+      "[channel_context_mdn_train_model] direct readout warmup NLL "
+      "weight must be nonnegative finite");
+  TORCH_CHECK(
+      options.direct_edge_return_readout_post_warmup_nll_weight >= 0.0 &&
+          std::isfinite(
+              options.direct_edge_return_readout_post_warmup_nll_weight),
+      "[channel_context_mdn_train_model] direct readout post-warmup NLL "
+      "weight must be nonnegative finite");
+  if (direct_edge_return_readout_warmup_active(options, optimizer_step_index)) {
+    return options.direct_edge_return_readout_warmup_nll_weight;
+  }
+  return options.direct_edge_return_readout_post_warmup_nll_weight;
+}
+
+template <typename ModelT>
+inline void zero_non_direct_edge_head_gradients(const ModelT &model) {
+  for (const auto &param : model->named_parameters(/*recurse=*/true)) {
+    if (param.key().find("direct_edge_head") != std::string::npos) {
+      continue;
+    }
+    auto grad = param.value().grad();
+    if (grad.defined()) {
+      grad.zero_();
     }
   }
 }
@@ -1122,6 +1346,12 @@ public:
 
     model_->train();
     optimizer_->zero_grad();
+    const auto direct_head_params_before =
+        channel_context_mdn_train_detail::clone_direct_edge_head_parameters(
+            model_);
+    out.direct_edge_return_readout_head_parameter_norm_before_step =
+        channel_context_mdn_train_detail::direct_edge_head_parameter_norm(
+            model_);
     auto mdn_out =
         model_->forward(clean_input.context, clean_input.context_mask);
     out.nonfinite_output_count =
@@ -1160,7 +1390,19 @@ public:
                                                 combined_mask, options_);
     channel_context_mdn_train_detail::record_direct_edge_return_readout_loss(
         out, direct_readout);
-    out.loss = out.nll + edge_auxiliary.loss + direct_readout.loss;
+    out.direct_edge_return_readout_warmup_active =
+        channel_context_mdn_train_detail::
+            direct_edge_return_readout_warmup_active(options_,
+                                                     optimizer_step_index_);
+    out.direct_edge_return_readout_scheduled_nll_weight =
+        channel_context_mdn_train_detail::
+            direct_edge_return_readout_scheduled_nll_weight(
+                options_, optimizer_step_index_);
+    out.direct_edge_return_readout_direct_head_only_warmup_active =
+        out.direct_edge_return_readout_warmup_active &&
+        options_.direct_edge_return_readout_warmup_direct_head_only;
+    out.loss = out.nll * out.direct_edge_return_readout_scheduled_nll_weight +
+               edge_auxiliary.loss + direct_readout.loss;
     out.sigma_mean = mdn_out.sigma.mean().to(torch::kCPU).item<double>();
     out.sigma_min = mdn_out.sigma.min().to(torch::kCPU).item<double>();
     out.sigma_max = mdn_out.sigma.max().to(torch::kCPU).item<double>();
@@ -1187,9 +1429,16 @@ public:
     }
 
     out.loss.backward();
+    if (out.direct_edge_return_readout_direct_head_only_warmup_active) {
+      channel_context_mdn_train_detail::zero_non_direct_edge_head_gradients(
+          model_);
+    }
     out.grad_norm = channel_context_mdn_train_detail::gradient_norm(params_);
     channel_context_mdn_train_detail::clip_gradients(
         params_, options_.grad_clip_norm, out.grad_norm);
+    out.direct_edge_return_readout_head_grad_norm =
+        channel_context_mdn_train_detail::direct_edge_head_gradient_norm(
+            model_);
     out.gradients_finite =
         channel_context_mdn_train_detail::parameters_are_finite(
             params_, /*inspect_grad=*/true);
@@ -1204,6 +1453,13 @@ public:
     }
 
     optimizer_->step();
+    ++optimizer_step_index_;
+    out.direct_edge_return_readout_head_parameter_norm_after_step =
+        channel_context_mdn_train_detail::direct_edge_head_parameter_norm(
+            model_);
+    out.direct_edge_return_readout_head_parameter_update_norm =
+        channel_context_mdn_train_detail::direct_edge_head_update_norm(
+            model_, direct_head_params_before);
     out.optimizer_step_applied = true;
     return out;
   }
@@ -1217,6 +1473,7 @@ private:
   channel_context_mdn_train_options_t options_{};
   std::vector<torch::Tensor> params_{};
   std::unique_ptr<torch::optim::Adam> optimizer_{};
+  int64_t optimizer_step_index_{0};
 };
 
 class channel_context_plus_global_mdn_train_model_t {
@@ -1273,6 +1530,12 @@ public:
 
     model_->train();
     optimizer_->zero_grad();
+    const auto direct_head_params_before =
+        channel_context_mdn_train_detail::clone_direct_edge_head_parameters(
+            model_);
+    out.direct_edge_return_readout_head_parameter_norm_before_step =
+        channel_context_mdn_train_detail::direct_edge_head_parameter_norm(
+            model_);
     auto mdn_out = model_->forward(
         clean_input.channel.context, clean_input.channel.context_mask,
         clean_input.global_context, clean_input.global_mask);
@@ -1312,7 +1575,19 @@ public:
             mdn_out, clean_input.channel.future, combined_mask, options_);
     channel_context_mdn_train_detail::record_direct_edge_return_readout_loss(
         out, direct_readout);
-    out.loss = out.nll + edge_auxiliary.loss + direct_readout.loss;
+    out.direct_edge_return_readout_warmup_active =
+        channel_context_mdn_train_detail::
+            direct_edge_return_readout_warmup_active(options_,
+                                                     optimizer_step_index_);
+    out.direct_edge_return_readout_scheduled_nll_weight =
+        channel_context_mdn_train_detail::
+            direct_edge_return_readout_scheduled_nll_weight(
+                options_, optimizer_step_index_);
+    out.direct_edge_return_readout_direct_head_only_warmup_active =
+        out.direct_edge_return_readout_warmup_active &&
+        options_.direct_edge_return_readout_warmup_direct_head_only;
+    out.loss = out.nll * out.direct_edge_return_readout_scheduled_nll_weight +
+               edge_auxiliary.loss + direct_readout.loss;
     out.sigma_mean = mdn_out.sigma.mean().to(torch::kCPU).item<double>();
     out.sigma_min = mdn_out.sigma.min().to(torch::kCPU).item<double>();
     out.sigma_max = mdn_out.sigma.max().to(torch::kCPU).item<double>();
@@ -1340,9 +1615,16 @@ public:
     }
 
     out.loss.backward();
+    if (out.direct_edge_return_readout_direct_head_only_warmup_active) {
+      channel_context_mdn_train_detail::zero_non_direct_edge_head_gradients(
+          model_);
+    }
     out.grad_norm = channel_context_mdn_train_detail::gradient_norm(params_);
     channel_context_mdn_train_detail::clip_gradients(
         params_, options_.grad_clip_norm, out.grad_norm);
+    out.direct_edge_return_readout_head_grad_norm =
+        channel_context_mdn_train_detail::direct_edge_head_gradient_norm(
+            model_);
     out.gradients_finite =
         channel_context_mdn_train_detail::parameters_are_finite(
             params_, /*inspect_grad=*/true);
@@ -1358,6 +1640,13 @@ public:
     }
 
     optimizer_->step();
+    ++optimizer_step_index_;
+    out.direct_edge_return_readout_head_parameter_norm_after_step =
+        channel_context_mdn_train_detail::direct_edge_head_parameter_norm(
+            model_);
+    out.direct_edge_return_readout_head_parameter_update_norm =
+        channel_context_mdn_train_detail::direct_edge_head_update_norm(
+            model_, direct_head_params_before);
     out.optimizer_step_applied = true;
     return out;
   }
@@ -1373,6 +1662,7 @@ private:
   channel_context_mdn_train_options_t options_{};
   std::vector<torch::Tensor> params_{};
   std::unique_ptr<torch::optim::Adam> optimizer_{};
+  int64_t optimizer_step_index_{0};
 };
 
 } // namespace cuwacunu::wikimyei::inference::expected_value::mdn

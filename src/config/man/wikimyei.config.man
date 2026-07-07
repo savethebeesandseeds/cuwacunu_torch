@@ -96,8 +96,19 @@ nonstandard grammar overrides.
     settings. `MDN_EDGE_RETURN_AUXILIARY_*` applies auxiliary base-minus-quote
     losses to the node-potential expected-value projection.
     `MDN_DIRECT_EDGE_RETURN_READOUT_*` enables and weights the dedicated direct
-    edge-return readout head. Non-MDN `.jkimyei` profiles must leave these
-    fields disabled/zero.
+    edge-return readout head. The direct-readout target scale is loss-only;
+    metrics stay in raw return space. The direct-readout warmup fields can
+    override the NLL weight and optionally train only the direct edge head during
+    the configured warmup window. The post-warmup NLL weight controls whether
+    ordinary MDN NLL competition returns after that window. The identity-mode
+    fields select the explicit direct-readout ablation surface (`shared`,
+    `edge_embedding`, `per_edge`, or `edge_embedding_per_edge`), the configured
+    base-edge count, the optional edge embedding width, and the optional
+    residual adapter hidden width. These controls intentionally live in
+    `.jkimyei` so benchmark training runs can name the intervention without
+    changing the base `.net` definition.
+    Non-MDN `.jkimyei` profiles must leave these fields disabled/zero or
+    neutral.
 - `wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path`
   - Default grammar:
     `grammar/wikimyei.policy.portfolio.graph_node_allocation.jkimyei.bnf`.

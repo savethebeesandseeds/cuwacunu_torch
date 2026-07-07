@@ -460,6 +460,15 @@ loss. The current leading suspect is full Runtime joint-training dynamics:
 direct-readout loss scale/schedule, competition with the MDN NLL objective, or
 insufficient identity/context scaffolding for the head during normal training.
 
+`synthetic_mdn_runtime_training_probes.v1` adds visibility-only Runtime probe
+fields for the next pass over that failure. MDN training reports now expose NLL
+separately from total loss, direct-readout loss ratios, direct-head gradient
+norms, direct-head parameter update norms, prediction/target spread and collapse
+ratios, margin-conditioned direction/rank metrics, near-zero target share, and
+per-edge/per-channel directional-accuracy spread summaries. These are
+`runtime.job_events.probe` time-series for debugging. They are not Lattice
+facts, readiness gates, or proof authority.
+
 ### Forecast Semantics Diagnostic
 
 The fresh semantic diagnostic is recorded in:
@@ -721,6 +730,265 @@ current suspect is therefore the representation-to-MDN signal path: the
 representation exposes some tradable signal under a simple supervised probe, but
 the current MDN context/readout/training path does not preserve or use it.
 
+The full probe-guided MDN diagnostic is recorded in:
+
+```text
+artifacts/synthetic_mdn_probe_guided_diagnostic_run.v1.probe
+```
+
+It ran the durable synthetic benchmark path after a fresh dev-nuke:
+
+```text
+representation train-core: 3000 steps over [0,730)
+MDN train-core:            3500 steps over [0,730)
+certified eval:            [760,1088)
+```
+
+The new Runtime `job_events` probe fields make the MDN direct-readout failure
+more concrete:
+
+```text
+direct_head_receives_gradients = true
+direct_head_grad_norm_max = 4.99276
+direct_head_parameters_move = true
+direct_head_parameter_update_norm_max = 0.0947658
+direct_loss_ratio_to_nll_last = 4.02319
+direct_loss_ratio_to_total_last = 1.33078
+
+train.direct_edge_return_readout_directional_accuracy = 0.499872
+train.direct_edge_return_readout_margin_directional_accuracy = 0.499579
+train.direct_edge_return_readout_pairwise_rank_accuracy = 0.519334
+train.direct_edge_return_readout_margin_pairwise_rank_accuracy = 0.514689
+train.direct_edge_return_readout_correlation = -0.00121821
+train.direct_edge_return_readout_pred_to_realized_std_ratio = 0.641866
+```
+
+The protected eval artifact from the same fresh checkpoints is also weak:
+
+```text
+eval.edge_return_projection_directional_accuracy = 0.499322
+eval.edge_return_projection_pairwise_rank_accuracy = 0.467818
+eval.edge_return_projection_best_asset_agreement = 0.29878
+eval.edge_return_projection_correlation = 0.00583662
+
+eval.direct_edge_return_readout_directional_accuracy = 0.51084
+eval.direct_edge_return_readout_margin_directional_accuracy = 0.507517
+eval.direct_edge_return_readout_pairwise_rank_accuracy = 0.557249
+eval.direct_edge_return_readout_margin_pairwise_rank_accuracy = 0.55418
+eval.direct_edge_return_readout_correlation = 0.00546659
+eval.direct_edge_return_readout_pred_to_realized_std_ratio = 0.00296166
+```
+
+This rules out a dead head, missing optimizer registration, missing gradients,
+and a too-small direct-readout loss as primary explanations. The failure is not
+obviously localized to one edge or channel. The current best next milestone is
+`synthetic_mdn_objective_readout_alignment_ablation.v1`: compare objective
+schedules and readout/identity scaffolding while keeping the same durable
+synthetic benchmark path and 0.95 oracle thresholds.
+
+The first concrete intervention is
+`synthetic_mdn_direct_readout_training_intervention.v1`. It changes code and
+durable config before the next run instead of repeating the same failed path:
+the MDN `.jkimyei` owns an explicit direct edge-return target scale, an NLL
+warmup weight, and an optional direct-head-only warmup. Metrics remain reported
+in raw return space. The purpose is to test whether the MDN context already
+contains enough edge signal but the raw-scale direct readout was being optimized
+through a poorly conditioned objective schedule. This is still a forecast-side
+diagnostic; it must not lower the 0.95 deterministic oracle gates.
+
+The full intervention evaluation is recorded in:
+
+```text
+artifacts/synthetic_mdn_direct_readout_intervention_eval.v1.probe
+```
+
+It ran after a fresh Runtime reset through the durable synthetic benchmark
+config and Marshal/Runtime path:
+
+```text
+representation train-core: 3000 steps over [0,730)
+MDN train-core:            3500 steps over [0,730)
+certified eval:            [760,1088)
+```
+
+The intervention was active and observable:
+
+```text
+direct_readout_target_scale = 36
+direct_readout_warmup_steps_config = 800
+direct_readout_warmup_nll_weight_config = 0
+direct_readout_warmup_direct_head_only_config = true
+direct_readout_warmup_steps_observed = 800
+direct_readout_direct_head_only_warmup_steps_observed = 800
+direct_readout_scheduled_nll_weight_min = 0
+direct_readout_scheduled_nll_weight_last = 1
+direct_head_receives_gradients = true
+direct_head_parameters_move = true
+```
+
+The train-range result stayed near random:
+
+```text
+train.direct_edge_return_readout_directional_accuracy = 0.498849
+train.direct_edge_return_readout_margin_directional_accuracy = 0.499075
+train.direct_edge_return_readout_pairwise_rank_accuracy = 0.505641
+train.direct_edge_return_readout_margin_pairwise_rank_accuracy = 0.503318
+train.direct_edge_return_readout_correlation = 0.00053337
+train.direct_edge_return_readout_pred_to_realized_std_ratio = 0.588126
+train.edge_return_projection_directional_accuracy = 0.513593
+train.edge_return_projection_pairwise_rank_accuracy = 0.504674
+train.edge_return_projection_correlation = 0.000500944
+```
+
+The protected eval result also stayed weak:
+
+```text
+eval.edge_return_projection_directional_accuracy = 0.51084
+eval.edge_return_projection_pairwise_rank_accuracy = 0.476626
+eval.edge_return_projection_best_asset_agreement = 0.333333
+eval.edge_return_projection_correlation = -0.0175664
+
+eval.direct_edge_return_readout_directional_accuracy = 0.51084
+eval.direct_edge_return_readout_margin_directional_accuracy = 0.507517
+eval.direct_edge_return_readout_pairwise_rank_accuracy = 0.498645
+eval.direct_edge_return_readout_margin_pairwise_rank_accuracy = 0.496732
+eval.direct_edge_return_readout_correlation = 0.00461366
+eval.direct_edge_return_readout_pred_to_realized_std_ratio = 0.0117962
+```
+
+This closes the narrow hypothesis that the original failure was caused only by
+raw target scale, NLL competition during early training, or missing direct-head
+gradient flow. The direct head trained, moved, and had an explicit direct-only
+warmup, but it still did not learn deterministic edge-return direction or rank
+from the current MDN context path. The next forecast-side branch should change
+the information pathway or target/readout structure, not merely repeat the same
+schedule. Current candidate:
+`synthetic_mdn_objective_readout_alignment_ablation.v1`.
+
+The direct-head feature-surface comparator is recorded in:
+
+```text
+artifacts/synthetic_mdn_edge_identity_readout_comparator.v1.probe
+```
+
+It uses the fresh `mdn_edge_context_features.probe` from the completed
+intervention eval and fits small offline readouts over the same rows:
+
+```text
+comparator fit range:     [760,989)
+comparator holdout range: [989,1088)
+
+shared_no_edge_id.holdout.directional_accuracy = 0.581369
+shared_no_edge_id.holdout.pairwise_rank_accuracy = 0.590348
+shared_no_edge_id.holdout.correlation = 0.254592
+
+shared_edge_id.holdout.directional_accuracy = 0.582492
+shared_edge_id.holdout.pairwise_rank_accuracy = 0.581369
+shared_edge_id.holdout.correlation = 0.254598
+
+per_edge.holdout.directional_accuracy = 0.685746
+per_edge.holdout.pairwise_rank_accuracy = 0.672278
+per_edge.holdout.best_asset_agreement = 0.572391
+per_edge.holdout.correlation = 0.163083
+```
+
+Interpretation:
+
+```text
+per-edge specialization helps
+simple one-hot edge id does not materially help the shared linear readout
+the MDN direct-head feature surface still does not expose oracle-grade signal
+```
+
+The result narrows the next code branch. Do not merely append a silent edge id
+to the final projection and expect the benchmark to pass. The next intervention
+should give the direct readout stronger identity/context scaffolding and a
+trainable information pathway, for example an identity-conditioned or per-edge
+direct readout plus learned node/edge embeddings or a direct-readout adapter
+whose upstream features are allowed to move during the direct objective.
+
+Implementation status:
+
+```text
+synthetic_mdn_identity_conditioned_direct_readout_ablation.v1
+```
+
+is now implemented and evaluated through the durable synthetic train/eval path.
+The MDN direct edge-return readout is configured from durable `.jkimyei`
+settings, with explicit modes:
+
+```text
+shared
+edge_embedding
+per_edge
+edge_embedding_per_edge
+```
+
+The active synthetic MDN profile selects:
+
+```text
+MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_MODE = edge_embedding_per_edge
+MDN_DIRECT_EDGE_RETURN_READOUT_BASE_EDGE_COUNT = 3
+MDN_DIRECT_EDGE_RETURN_READOUT_IDENTITY_EMBEDDING_DIM = 16
+MDN_DIRECT_EDGE_RETURN_READOUT_ADAPTER_HIDDEN_DIM = 128
+```
+
+A focused launcher test proves the non-default mode is parsed from `.jkimyei`,
+materialized into the MDN model, recorded in the training report, and bound into
+checkpoint identity. The fresh result is recorded at:
+
+```text
+src/config/benchmarks/synthetic_continuous_graph_v1/artifacts/synthetic_mdn_identity_conditioned_direct_readout_ablation.v1.probe
+```
+
+The intervention was active and healthy in the mechanical sense:
+
+```text
+direct_head_receives_gradients = true
+parameters_are_moving = true
+direct_readout_loss_scale = comparable_to_nll
+predictions_collapsed_vs_targets = variance_present
+```
+
+It did not solve the deterministic benchmark:
+
+```text
+directional_accuracy = 0.514161
+margin_directional_accuracy = 0.516307
+pairwise_rank_accuracy = 0.508168
+margin_pairwise_rank_accuracy = 0.508807
+correlation = -0.00177698
+```
+
+So explicit edge identity, per-edge projection, and the residual direct-readout
+adapter are not sufficient by themselves. The next branch should inspect
+objective/readout alignment and target weighting, while keeping the strict
+deterministic oracle thresholds.
+
+```text
+synthetic_mdn_objective_readout_alignment_ablation.v1
+```
+
+is the next bounded objective-schedule diagnostic. The important gap in the
+prior identity-conditioned run is that the direct-readout warmup could suppress
+NLL only during the warmup window; after warmup the scheduled NLL weight always
+returned to `1.0`. That means the run did not truly answer whether the ordinary
+MDN NLL objective is overpowering or redirecting the edge-return readout after
+the initial direct-head-only phase.
+
+The MDN `.jkimyei` now declares:
+
+```text
+MDN_DIRECT_EDGE_RETURN_READOUT_POST_WARMUP_NLL_WEIGHT
+```
+
+with neutral value `1.0`. The benchmark wrapper
+`run_mdn_objective_readout_alignment_ablation.sh` can run a durable synthetic
+diagnostic variant such as `edge_dominant_post_nll_0`, which sets the
+post-warmup NLL weight to `0.0` for the run and restores the `.jkimyei` on exit.
+The deterministic oracle gates remain unchanged at `0.95`; this ablation only
+tests objective/readout alignment, not a relaxed success criterion.
+
 ## Next Investigation
 
 Useful questions to answer next:
@@ -730,14 +998,17 @@ Useful questions to answer next:
    frozen representation features containing partial edge signal?
 2. Why does a dedicated MDN direct edge-return readout fail on the train range
    when the frozen-representation supervised probe is materially above random?
-3. Are target scaling and target-feature weights causing close/edge information
+3. Why did the identity-conditioned/per-edge direct readout remain near random
+   even though gradients flowed, parameters moved, and prediction variance was
+   present?
+4. Are target scaling and target-feature weights causing close/edge information
    to be dominated by easier magnitude/activity coordinates?
-4. Are node/channel identity and cross-node/cross-channel context too weak for
+5. Are node/channel identity and cross-node/cross-channel context too weak for
    this synthetic graph?
-5. Would representation training recover oracle-grade phase if exposed to a
+6. Would representation training recover oracle-grade phase if exposed to a
    stronger phase/lag diagnostic or a no-augmentation control?
-6. Why does PPO produce many invalid actions despite positive final equity over
+7. Why does PPO produce many invalid actions despite positive final equity over
    the short validation replay?
-7. Why is the policy-training fact's snapshot bundle/causal closure mismatched
+8. Why is the policy-training fact's snapshot bundle/causal closure mismatched
    after an otherwise clean no-lookahead handoff?
 ```

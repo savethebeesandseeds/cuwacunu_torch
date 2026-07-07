@@ -701,6 +701,11 @@ fixture_paths_t make_config_fixture(
              "  MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 0.0;\n"
              "  MDN_DIRECT_EDGE_RETURN_READOUT_HUBER_BETA = 0.01;\n"
              "  MDN_DIRECT_EDGE_RETURN_READOUT_LOGIT_SCALE = 50.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_TARGET_SCALE = 1.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_STEPS = 0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT = 1.0;\n"
+             "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_DIRECT_HEAD_ONLY = "
+             "false;\n"
              "  FREEZE_REPRESENTATION = true;\n"
              "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
              "  INPUT_MDN_CHECKPOINT = ;\n"
@@ -1494,6 +1499,18 @@ void test_probe_catalog_sidecar_writes_learning_timeseries_records() {
       "wikimyei.inference.expected_value.mdn", "train | debug", {}, {}, true);
   auto mdn_training = read_text(fixture.channel_mdn_jkimyei);
   replace_once(mdn_training, "  MAX_STEPS = 0;\n", "  MAX_STEPS = 2;\n");
+  replace_once(mdn_training,
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED = false;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_ENABLED = true;\n");
+  replace_once(mdn_training,
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_LOSS_WEIGHT = 0.0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_LOSS_WEIGHT = 10.0;\n");
+  replace_once(mdn_training,
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_DIRECTION_WEIGHT = 0.0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_DIRECTION_WEIGHT = 1.0;\n");
+  replace_once(mdn_training,
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 0.0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_RANK_WEIGHT = 1.0;\n");
   write_text(fixture.channel_mdn_jkimyei, mdn_training);
 
   const auto job_dir = fixture.dir / "job";
@@ -1522,6 +1539,36 @@ void test_probe_catalog_sidecar_writes_learning_timeseries_records() {
   check(stream_text.find("event_kind=forecast.oracle.metric") !=
             std::string::npos,
         "learning diagnostics include forecast oracle metrics when available");
+  check(stream_text.find("series_id=forecast.training.metric.last_nll_loss") !=
+            std::string::npos,
+        "learning diagnostics record NLL loss separate from total loss");
+  check(stream_text.find("series_id=forecast.training.metric."
+                         "last_direct_edge_return_readout_head_grad_norm") !=
+            std::string::npos,
+        "learning diagnostics record direct-head gradient probes");
+  check(stream_text.find(
+            "series_id=forecast.training.metric."
+            "last_direct_edge_return_readout_head_parameter_update_norm") !=
+            std::string::npos,
+        "learning diagnostics record direct-head update probes");
+  check(stream_text.find(
+            "series_id=forecast.training.metric."
+            "direct_edge_return_readout_pred_to_realized_std_ratio") !=
+            std::string::npos,
+        "learning diagnostics record direct-readout collapse probes");
+  check(stream_text.find(
+            "series_id=forecast.training.metric."
+            "direct_edge_return_readout_near_zero_target_fraction") !=
+            std::string::npos,
+        "learning diagnostics record near-zero target fraction probes");
+  check(stream_text.find("series_id=forecast.oracle.metric."
+                         "direct_edge_return_readout_directional_accuracy") !=
+            std::string::npos,
+        "direct-readout accuracy remains an oracle metric");
+  check(stream_text.find("series_id=forecast.training.metric."
+                         "direct_edge_return_readout_directional_accuracy\n") ==
+            std::string::npos,
+        "direct-readout accuracy is not mislabeled as a training diagnostic");
   check(stream_text.find("metric_source=learning_diagnostics") !=
             std::string::npos,
         "learning time-series records keep diagnostics metric source");
@@ -2249,7 +2296,8 @@ void test_strict_channel_baseline_runs_through_runtime() {
             std::string::npos,
         "strict baseline inference emits per-feature support");
   check(inference_report.find("mdn_architecture=shared_slot_trunk."
-                              "channel_adapter.shared_feature_head.v2") !=
+                              "channel_adapter.shared_feature_head."
+                              "direct_edge_readout.shared.v4") !=
             std::string::npos,
         "strict baseline inference emits MDN architecture");
   check(inference_report.find("loss_reduction=balanced_channel_feature_mean") !=
@@ -2293,8 +2341,8 @@ void test_strict_channel_baseline_runs_through_runtime() {
             std::string::npos,
         "strict baseline inference LLS carries balanced loss reduction");
   check(channel_mdn_lls.find("mdn_architecture:str = shared_slot_trunk."
-                             "channel_adapter.shared_feature_head.v2") !=
-            std::string::npos,
+                             "channel_adapter.shared_feature_head."
+                             "direct_edge_readout.v4") != std::string::npos,
         "strict baseline inference LLS carries MDN architecture");
   const auto inference_exposure_fact =
       read_text(inference_result.state.lattice_exposure_fact_path);
@@ -2321,7 +2369,8 @@ void test_strict_channel_baseline_runs_through_runtime() {
         "strict baseline exposure fact carries channel output contract");
   check(inference_exposure_fact.find(
             "mdn_architecture=shared_slot_trunk."
-            "channel_adapter.shared_feature_head.v2") != std::string::npos,
+            "channel_adapter.shared_feature_head.direct_edge_readout.shared."
+            "v4") != std::string::npos,
         "strict baseline exposure fact carries MDN architecture");
   check(inference_exposure_fact.find(
             "loss_reduction=balanced_channel_feature_mean") !=

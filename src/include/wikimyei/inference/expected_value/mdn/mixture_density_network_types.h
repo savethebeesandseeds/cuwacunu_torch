@@ -1,6 +1,7 @@
 /* mixture_density_network_types.h */
 #pragma once
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include <torch/torch.h>
@@ -52,6 +53,17 @@ struct BackboneOptions {
   int64_t input_dim;   // De
   int64_t feature_dim; // H
   int64_t depth;       // residual blocks
+};
+
+struct DirectEdgeReturnHeadOptions {
+  int64_t feature_dim{0};      // H, adapted slot width
+  int64_t quote_node_index{0}; // v1 quote slot, currently expected to be 0
+  std::string identity_mode{
+      "shared"}; // shared|edge_embedding|per_edge|edge_embedding_per_edge
+  int64_t base_edge_count{0}; // configured N-1 for identity/per-edge modes
+  int64_t identity_embedding_dim{0};
+  int64_t adapter_hidden_dim{
+      0}; // optional residual adapter before edge features
 };
 
 struct residualOptions {

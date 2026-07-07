@@ -853,8 +853,10 @@ public:
 
   [[nodiscard]] cuwacunu::wikimyei::inference::expected_value::mdn::
       ChannelContextMdn
-      make_channel_context_mdn(int64_t context_dim, int64_t channel_count,
-                               int64_t horizon_count) const {
+      make_channel_context_mdn(
+          int64_t context_dim, int64_t channel_count, int64_t horizon_count,
+          cuwacunu::wikimyei::inference::expected_value::mdn::
+              DirectEdgeReturnHeadOptions direct_edge_head_options = {}) const {
     if (options_.dry_run) {
       throw std::runtime_error(
           "[channel_graph_first_pipeline_builder] dry-run mode does not "
@@ -879,7 +881,9 @@ public:
             bundle_.channel_mdn.feature_embedding_dim,
             /*channel_adapter_rank=*/bundle_.channel_mdn.channel_adapter_rank,
             /*target_coords=*/bundle_.channel_mdn.target_coords,
-            /*sigma_floor=*/bundle_.channel_mdn.sigma_min);
+            /*sigma_floor=*/bundle_.channel_mdn.sigma_min,
+            /*direct_edge_head_options_=*/
+            std::move(direct_edge_head_options));
   }
 
   [[nodiscard]] static std::vector<torch::Tensor>
