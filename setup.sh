@@ -529,6 +529,7 @@ main() {
   validate_libtorch_bundle
   install_base_requirements
   verify_curl
+  append_cuwacunu_bashrc_once "${HOME}/.bashrc"
 
   if (( RUN_CUDA )); then
     configure_nvidia_repo

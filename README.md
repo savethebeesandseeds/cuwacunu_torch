@@ -47,7 +47,7 @@ The current build is wired for the upgraded LibTorch bundle:
 ### 3. Start a Debian container
 ```bash
 docker pull debian:12
-docker run --name cuwacunu-dev --gpus all -it --shm-size=1g \
+docker run --name unnamed_taoist --gpus all -it --shm-size=1g \
   -e TERM=xterm-256color \
   -e LANG=C.UTF-8 \
   -e LC_ALL=C.UTF-8 \
