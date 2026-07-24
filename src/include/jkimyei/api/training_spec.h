@@ -80,6 +80,9 @@ struct mtf_jepa_mae_vicreg_training_options_t {
   bool mask_same_channel_block{false};
   double max_context_target_time_overlap{0.0};
 
+  double vicreg_view_gaussian_jitter_std{0.005};
+  double vicreg_view_time_dropout_scale{0.10};
+
   double gaussian_jitter_std{0.0};
   double feature_dropout_prob{0.0};
   double history_dropout_prob{0.0};
@@ -357,6 +360,10 @@ inline void validate_mtf_jepa_mae_vicreg_training_options(
   validate_probability(options.min_context_ratio, "MIN_CONTEXT_RATIO");
   validate_probability(options.max_context_target_time_overlap,
                        "MAX_CONTEXT_TARGET_TIME_OVERLAP");
+  validate_non_negative_finite(options.vicreg_view_gaussian_jitter_std,
+                               "VICREG_VIEW_GAUSSIAN_JITTER_STD");
+  validate_probability(options.vicreg_view_time_dropout_scale,
+                       "VICREG_VIEW_TIME_DROPOUT_SCALE");
   validate_non_negative_finite(options.lambda_jepa, "LAMBDA_JEPA");
   validate_non_negative_finite(options.lambda_mae, "LAMBDA_MAE");
   validate_non_negative_finite(options.lambda_tf_align, "LAMBDA_TF_ALIGN");
@@ -1001,6 +1008,10 @@ inline void validate_training_run_spec(const training_run_spec_t &spec) {
         kv::parse_bool(kv::required(block, "MASK_SAME_CHANNEL_BLOCK"));
     mtf.max_context_target_time_overlap = kv::parse_double(
         kv::required(block, "MAX_CONTEXT_TARGET_TIME_OVERLAP"));
+    mtf.vicreg_view_gaussian_jitter_std = kv::parse_double(kv::optional(
+        block, "VICREG_VIEW_GAUSSIAN_JITTER_STD", "0.005"));
+    mtf.vicreg_view_time_dropout_scale = kv::parse_double(kv::optional(
+        block, "VICREG_VIEW_TIME_DROPOUT_SCALE", "0.10"));
     mtf.gaussian_jitter_std =
         kv::parse_double(kv::required(block, "GAUSSIAN_JITTER_STD"));
     mtf.feature_dropout_prob =

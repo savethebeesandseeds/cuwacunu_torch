@@ -444,6 +444,9 @@ is_representation_training_metric_name(std::string_view name) {
 is_representation_augmentation_metric_name(std::string_view name) {
   return name == "dropout" || has_prefix(name, "mask_ratio_") ||
          name == "min_context_ratio" || name == "gaussian_jitter_std" ||
+         name == "vicreg_view_gaussian_jitter_std" ||
+         name == "vicreg_view_time_dropout_scale" ||
+         name == "vicreg_view_time_dropout_prob_effective" ||
          name == "feature_dropout_prob" || name == "history_dropout_prob" ||
          name == "time_crop_jitter_max" || name == "time_dilation_min" ||
          name == "time_dilation_max" || name == "time_warp_max" ||

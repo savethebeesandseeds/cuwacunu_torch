@@ -40,17 +40,32 @@ channel_graph_first_launcher_objects:
 
 $(eval $(call TEST_ONEFILE, test_jkimyei_channel_graph_first_launchers, test_jkimyei_channel_graph_first_launchers.cpp, \
   $(libtorch_a) $(CHANNEL_GRAPH_FIRST_LAUNCHER_OBJS) $(LDLIBS_torch)))
+$(eval $(call TEST_ONEFILE, test_jkimyei_mtf_jepa_mae_vicreg_augmentations, test_jkimyei_mtf_jepa_mae_vicreg_augmentations.cpp, \
+  $(libtorch_a) $(CHANNEL_GRAPH_FIRST_LAUNCHER_OBJS) $(LDLIBS_torch)))
+$(eval $(call TEST_ONEFILE, test_jkimyei_channel_graph_first_conditioned_affine_shadow_eval, test_jkimyei_channel_graph_first_conditioned_affine_shadow_eval.cpp, \
+  $(libtorch_a) $(CHANNEL_GRAPH_FIRST_LAUNCHER_OBJS) $(LDLIBS_torch)))
 
 $(TEST_OUT)/test_jkimyei_channel_graph_first_launchers: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
 $(TEST_OUT)/test_jkimyei_channel_graph_first_launchers: channel_graph_first_launcher_objects
+$(TEST_OUT)/test_jkimyei_mtf_jepa_mae_vicreg_augmentations: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/test_jkimyei_mtf_jepa_mae_vicreg_augmentations: channel_graph_first_launcher_objects
+$(TEST_OUT)/test_jkimyei_channel_graph_first_conditioned_affine_shadow_eval: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(TEST_OUT)/test_jkimyei_channel_graph_first_conditioned_affine_shadow_eval: channel_graph_first_launcher_objects
+
+.PHONY: conditioned-affine-shadow-eval
+conditioned-affine-shadow-eval: $(TEST_OUT)/test_jkimyei_channel_graph_first_conditioned_affine_shadow_eval
 
 .PHONY: all
-all: $(TEST_OUT)/test_jkimyei_channel_graph_first_launchers
+all: $(TEST_OUT)/test_jkimyei_channel_graph_first_launchers \
+  $(TEST_OUT)/test_jkimyei_mtf_jepa_mae_vicreg_augmentations
 	@$(LOG_SUCCESS)
 
 .PHONY: run
-run: channel_graph_first_launcher_objects run-test_jkimyei_channel_graph_first_launchers
+run: channel_graph_first_launcher_objects run-test_jkimyei_channel_graph_first_launchers \
+  run-test_jkimyei_mtf_jepa_mae_vicreg_augmentations
 
 .PHONY: clean
 clean:
 	@rm -f $(TEST_OUT)/test_jkimyei_channel_graph_first_launchers
+	@rm -f $(TEST_OUT)/test_jkimyei_mtf_jepa_mae_vicreg_augmentations
+	@rm -f $(TEST_OUT)/test_jkimyei_channel_graph_first_conditioned_affine_shadow_eval

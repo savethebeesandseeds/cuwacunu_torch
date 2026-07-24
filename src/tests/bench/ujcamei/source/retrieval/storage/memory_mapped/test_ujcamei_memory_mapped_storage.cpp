@@ -3,15 +3,18 @@
 #include "ujcamei/source/registry/types/kline_feature_registry.h"
 #include "ujcamei/source/retrieval/dataloader/edge_dataloader.h"
 #include "ujcamei/source/retrieval/dataloader/edge_sample.h"
+#include "ujcamei/source/retrieval/storage/memory_mapped/cache_freshness.h"
 #include "ujcamei/source/retrieval/storage/memory_mapped/memory_mapped_datafile.h"
 #include "ujcamei/source/retrieval/storage/memory_mapped/memory_mapped_dataloader.h"
 #include "ujcamei/source/retrieval/storage/memory_mapped/memory_mapped_dataset.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -164,6 +167,123 @@ void write_bytes(const std::filesystem::path &path,
   out.write(reinterpret_cast<const char *>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));
   check(static_cast<bool>(out), "failed to write byte records");
+}
+
+std::vector<unsigned char> read_bytes(const std::filesystem::path &path) {
+  std::ifstream in(path, std::ios::binary);
+  check(in.is_open(), "failed to open byte input");
+  return std::vector<unsigned char>(std::istreambuf_iterator<char>(in),
+                                    std::istreambuf_iterator<char>());
+}
+
+void test_frozen_cache_freshness_guard() {
+  const auto dir = make_tmp_dir("cache_freshness");
+  const auto csv = dir / "series.csv";
+  const auto raw = dir / "series.cache.bin";
+  const auto normalized = dir / "series.cache.norm.log_returns.bin";
+  write_bytes(csv, {1, 2, 3});
+  write_bytes(raw, {4, 5, 6});
+  write_bytes(normalized, {7, 8, 9});
+
+  const auto base_time =
+      std::filesystem::file_time_type::clock::now() - std::chrono::hours(24);
+  const auto requested_raw_time = base_time + std::chrono::seconds(2);
+  std::filesystem::last_write_time(csv, base_time);
+  std::filesystem::last_write_time(raw, requested_raw_time);
+  std::filesystem::last_write_time(normalized, requested_raw_time);
+  const auto observed_csv_time = std::filesystem::last_write_time(csv);
+  const auto observed_raw_time = std::filesystem::last_write_time(raw);
+  const auto observed_normalized_time =
+      std::filesystem::last_write_time(normalized);
+  check(mm::cache_time_is_strictly_newer(observed_raw_time, observed_csv_time),
+        "fixture raw cache is strictly newer than CSV");
+  check(observed_normalized_time == observed_raw_time,
+        "fixture raw and normalized mtimes are equal");
+  for (const auto &path : {csv, raw, normalized}) {
+    std::filesystem::permissions(path,
+                                 std::filesystem::perms::owner_write |
+                                     std::filesystem::perms::group_write |
+                                     std::filesystem::perms::others_write,
+                                 std::filesystem::perm_options::remove);
+  }
+
+  const auto csv_size = std::filesystem::file_size(csv);
+  const auto raw_size = std::filesystem::file_size(raw);
+  const auto normalized_size = std::filesystem::file_size(normalized);
+  const auto csv_bytes = read_bytes(csv);
+  const auto raw_bytes = read_bytes(raw);
+  const auto normalized_bytes = read_bytes(normalized);
+  const auto csv_permissions = std::filesystem::status(csv).permissions();
+  const auto raw_permissions = std::filesystem::status(raw).permissions();
+  const auto normalized_permissions =
+      std::filesystem::status(normalized).permissions();
+
+  const auto equal_time =
+      mm::inspect_cache_chain_freshness(csv, raw, normalized);
+  check(equal_time.status ==
+            mm::cache_chain_freshness_status_t::normalized_not_strictly_newer,
+        "equal raw/normalized mtimes rejected");
+  check(mm::cache_file_is_strictly_newer(raw, csv),
+        "loader freshness predicate accepts raw newer than CSV");
+  check(!mm::cache_file_is_strictly_newer(normalized, raw),
+        "loader freshness predicate rejects equal normalized/raw mtimes");
+  check(std::filesystem::file_size(csv) == csv_size &&
+            std::filesystem::file_size(raw) == raw_size &&
+            std::filesystem::file_size(normalized) == normalized_size,
+        "cache freshness inspection does not change file sizes");
+  check(read_bytes(csv) == csv_bytes && read_bytes(raw) == raw_bytes &&
+            read_bytes(normalized) == normalized_bytes,
+        "cache freshness inspection does not change file bytes");
+  check(std::filesystem::last_write_time(csv) == observed_csv_time &&
+            std::filesystem::last_write_time(raw) == observed_raw_time &&
+            std::filesystem::last_write_time(normalized) ==
+                observed_normalized_time,
+        "cache freshness inspection does not change mtimes");
+  check(std::filesystem::status(csv).permissions() == csv_permissions &&
+            std::filesystem::status(raw).permissions() == raw_permissions &&
+            std::filesystem::status(normalized).permissions() ==
+                normalized_permissions,
+        "cache freshness inspection does not change permissions");
+
+  std::filesystem::last_write_time(normalized,
+                                   observed_raw_time + std::chrono::seconds(2));
+  const auto ready_normalized_time =
+      std::filesystem::last_write_time(normalized);
+  const auto ready = mm::inspect_cache_chain_freshness(csv, raw, normalized);
+  check(ready.ready(), "strict csv < raw < normalized chain accepted");
+  check(mm::cache_file_is_strictly_newer(normalized, raw),
+        "loader freshness predicate accepts normalized newer than raw");
+
+  const auto selected = mm::sanitize_csv_into_binary_file<Kline>(
+      csv.string(), "log_returns", false, 2);
+  check(selected == normalized.string(),
+        "no-force sanitizer selects the fresh normalized cache");
+  check(read_bytes(csv) == csv_bytes && read_bytes(raw) == raw_bytes &&
+            read_bytes(normalized) == normalized_bytes,
+        "no-force sanitizer does not change fresh read-only cache bytes");
+  check(std::filesystem::last_write_time(csv) == observed_csv_time &&
+            std::filesystem::last_write_time(raw) == observed_raw_time &&
+            std::filesystem::last_write_time(normalized) ==
+                ready_normalized_time,
+        "no-force sanitizer does not change fresh cache mtimes");
+  check(std::filesystem::status(csv).permissions() == csv_permissions &&
+            std::filesystem::status(raw).permissions() == raw_permissions &&
+            std::filesystem::status(normalized).permissions() ==
+                normalized_permissions,
+        "no-force sanitizer does not change fresh cache permissions");
+
+  std::filesystem::remove(normalized);
+  const auto missing = mm::inspect_cache_chain_freshness(csv, raw, normalized);
+  check(missing.status ==
+            mm::cache_chain_freshness_status_t::normalized_missing,
+        "missing normalized cache rejected");
+
+  std::filesystem::create_symlink(raw, normalized);
+  const auto symlink = mm::inspect_cache_chain_freshness(csv, raw, normalized);
+  check(symlink.status ==
+            mm::cache_chain_freshness_status_t::normalized_symlink,
+        "symlinked normalized cache rejected");
+  std::filesystem::remove_all(dir);
 }
 
 void write_kline_csv(const std::filesystem::path &path,
@@ -701,6 +821,7 @@ void test_root_edge_dataloader_wrapper() {
 } // namespace
 
 int main() {
+  test_frozen_cache_freshness_guard();
   test_kline_feature_registry_contract();
   test_kline_csv_canonicalizes_microsecond_timestamps();
   test_kline_tensor_and_normalization_follow_registry();

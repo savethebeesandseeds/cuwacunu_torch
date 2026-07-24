@@ -183,6 +183,18 @@ void test_runtime_checkpoint_inputs_do_not_change_protocol_contract_identity() {
         "contract training selector did not change protocol contract "
         "fingerprint");
   }
+
+  auto weak_view_bundle = bundle;
+  weak_view_bundle.mtf_jepa_mae_vicreg_training.mtf_jepa_mae_vicreg
+      .vicreg_view_time_dropout_scale = 0.0;
+  const auto weak_view_fingerprint =
+      protocol::channel_graph_first_protocol_contract_fingerprint(
+          weak_view_bundle);
+  if (weak_view_fingerprint == base_fingerprint) {
+    throw std::runtime_error(
+        "VICReg weak-view control did not change protocol contract "
+        "fingerprint");
+  }
 }
 
 void test_channel_protocol_contract_identity_binds_strict_channel_config() {
@@ -372,6 +384,10 @@ void test_channel_specs_decode_and_validate() {
       mtf_jkimyei_bnf.find("TARGET_EMA_TAU") == std::string::npos ||
       mtf_jkimyei_bnf.find("LAMBDA_GLOBAL_VICREG") == std::string::npos ||
       mtf_jkimyei_bnf.find("AUGMENTATION_PROFILE") == std::string::npos ||
+      mtf_jkimyei_bnf.find("VICREG_VIEW_GAUSSIAN_JITTER_STD") ==
+          std::string::npos ||
+      mtf_jkimyei_bnf.find("VICREG_VIEW_TIME_DROPOUT_SCALE") ==
+          std::string::npos ||
       mtf_jkimyei_bnf.find("TIME_DILATION_MIN") == std::string::npos ||
       channel_mdn_dsl_bnf.find("MDN") == std::string::npos ||
       channel_mdn_net_bnf.find("MDN_NET") == std::string::npos ||
@@ -663,11 +679,30 @@ void test_channel_specs_decode_and_validate() {
           protocol::config_bundle_detail::
               training_contract_defaults_for_component(
                   protocol_variant, representation_spec.component_assembly_id));
-  const auto mtf_training = training::decode_training_run_spec_from_dsl(
-      read_text(
-          paths.at("wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path")),
+  const auto mtf_training_text = read_text(
+      paths.at("wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path"));
+  const auto mtf_training_defaults =
       protocol::config_bundle_detail::training_contract_defaults_for_component(
-          protocol_variant, mtf_spec.component_assembly_id));
+          protocol_variant, mtf_spec.component_assembly_id);
+  const auto mtf_training = training::decode_training_run_spec_from_dsl(
+      mtf_training_text, mtf_training_defaults);
+  const auto mtf_training_legacy_defaults =
+      training::decode_training_run_spec_from_dsl(
+          replace_first(
+              replace_first(mtf_training_text,
+                            "  VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.005;\n",
+                            ""),
+              "  VICREG_VIEW_TIME_DROPOUT_SCALE = 0.10;\n", ""),
+          mtf_training_defaults);
+  const auto mtf_training_weak_views_off =
+      training::decode_training_run_spec_from_dsl(
+          replace_first(
+              replace_first(mtf_training_text,
+                            "VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.005",
+                            "VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.0"),
+              "VICREG_VIEW_TIME_DROPOUT_SCALE = 0.10",
+              "VICREG_VIEW_TIME_DROPOUT_SCALE = 0.0"),
+          mtf_training_defaults);
   const auto mdn_training = training::decode_training_run_spec_from_dsl(
       read_text(paths.at("wikimyei_inference_expected_value_mdn_jkimyei_path")),
       protocol::config_bundle_detail::training_contract_defaults_for_component(
@@ -858,8 +893,26 @@ void test_channel_specs_decode_and_validate() {
           protocol_variant.no_lookahead_contract.contract_digest ||
       mtf_training.component_role != "representation" ||
       mtf_training.serving_order_index != 0 ||
-      mtf_training.freeze_representation) {
+      mtf_training.freeze_representation ||
+      mtf_training.mtf_jepa_mae_vicreg.vicreg_view_gaussian_jitter_std !=
+          0.005 ||
+      mtf_training.mtf_jepa_mae_vicreg.vicreg_view_time_dropout_scale !=
+          0.10) {
     throw std::runtime_error("MTF-JEPA-MAE-VICReg training spec mismatch");
+  }
+  if (mtf_training_legacy_defaults.mtf_jepa_mae_vicreg
+              .vicreg_view_gaussian_jitter_std != 0.005 ||
+      mtf_training_legacy_defaults.mtf_jepa_mae_vicreg
+              .vicreg_view_time_dropout_scale != 0.10) {
+    throw std::runtime_error(
+        "omitted VICReg weak-view controls did not preserve legacy defaults");
+  }
+  if (mtf_training_weak_views_off.mtf_jepa_mae_vicreg
+              .vicreg_view_gaussian_jitter_std != 0.0 ||
+      mtf_training_weak_views_off.mtf_jepa_mae_vicreg
+              .vicreg_view_time_dropout_scale != 0.0) {
+    throw std::runtime_error(
+        "explicit VICReg weak-view controls did not survive parsing");
   }
   if (mdn_training.task !=
           training::training_task_t::mdn_expected_value_inference ||

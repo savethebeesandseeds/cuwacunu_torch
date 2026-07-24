@@ -24,6 +24,7 @@
 #include "ujcamei/source/registry/types/data.h"
 #include "ujcamei/source/registry/types/enums.h"
 #include "ujcamei/source/registry/types/utils.h"
+#include "ujcamei/source/retrieval/storage/memory_mapped/cache_freshness.h"
 #include "ujcamei/source/retrieval/storage/memory_mapped/memory_mapped_error.h"
 
 namespace cuwacunu {
@@ -838,19 +839,10 @@ std::string sanitize_csv_into_binary_file(
       want_norm ? detail::norm_bin_for_csv(csv_filename, normalization_policy)
                 : std::string{};
 
-  // If not forced, decide if target output is already up-to-date.
-  auto newer_than = [](const std::string &a, const std::string &b) -> bool {
-    std::error_code ec1, ec2;
-    if (!std::filesystem::exists(a, ec1) || !std::filesystem::exists(b, ec2))
-      return false;
-    return std::filesystem::last_write_time(a, ec1) >
-           std::filesystem::last_write_time(b, ec2);
-  };
-
   // We will *always* ensure the raw cache is up-to-date w.r.t. the CSV,
   // because normalized caches are derived from it.
-  bool need_write_raw =
-      force_rebuild_cache || !newer_than(raw_bin, csv_filename);
+  bool need_write_raw = force_rebuild_cache ||
+                        !cache_file_is_strictly_newer(raw_bin, csv_filename);
 
   if (need_write_raw) {
     log_dbg(
@@ -1119,10 +1111,8 @@ std::string sanitize_csv_into_binary_file(
   }
 
   // Produce or refresh normalized file from raw
-  const bool need_norm = force_rebuild_cache ||
-                         !std::filesystem::exists(norm_bin) ||
-                         (std::filesystem::last_write_time(norm_bin) <=
-                          std::filesystem::last_write_time(raw_bin));
+  const bool need_norm =
+      force_rebuild_cache || !cache_file_is_strictly_newer(norm_bin, raw_bin);
 
   if (need_norm) {
     // Copy raw -> norm and normalize in place

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -166,6 +167,44 @@ struct channel_context_mdn_train_step_result_t {
 
 namespace channel_context_mdn_train_detail {
 
+inline constexpr int64_t raw_close_feature_coord = 3;
+
+[[nodiscard]] inline int64_t resolve_close_target_slot(
+    const std::vector<int64_t> &target_coords, const int64_t selected_width,
+    const bool required_for_enabled_loss, const char *consumer) {
+  TORCH_CHECK(selected_width >= 0,
+              "[channel_context_mdn_train_model] invalid selected target "
+              "width for ",
+              consumer);
+  if (target_coords.empty()) {
+    // Match FeatureConditionedMdnHead's public compatibility contract: an
+    // omitted coordinate list denotes identity ordering [0, selected_width).
+    if (raw_close_feature_coord < selected_width) {
+      return raw_close_feature_coord;
+    }
+    TORCH_CHECK(!required_for_enabled_loss,
+                "[channel_context_mdn_train_model] enabled close loss ",
+                consumer, " requires raw close coordinate ",
+                raw_close_feature_coord, " in input.target_coords");
+    return -1;
+  }
+  TORCH_CHECK(static_cast<int64_t>(target_coords.size()) == selected_width,
+              "[channel_context_mdn_train_model] input.target_coords size ",
+              target_coords.size(), " does not match selected target width ",
+              selected_width, " for ", consumer);
+  const auto close_it = std::find(target_coords.begin(), target_coords.end(),
+                                  raw_close_feature_coord);
+  if (close_it == target_coords.end()) {
+    TORCH_CHECK(!required_for_enabled_loss,
+                "[channel_context_mdn_train_model] enabled close loss ",
+                consumer, " requires raw close coordinate ",
+                raw_close_feature_coord, " in input.target_coords");
+    return -1;
+  }
+  return static_cast<int64_t>(
+      std::distance(target_coords.begin(), close_it));
+}
+
 struct edge_return_auxiliary_loss_t {
   torch::Tensor loss{};
   torch::Tensor regression_loss{};
@@ -234,7 +273,8 @@ sanitize_train_input(const channel_mdn_input_t &input) {
 
 inline void accumulate_expected_value_metrics(
     channel_context_mdn_train_step_result_t &step, const MdnOut &mdn_out,
-    const torch::Tensor &future, const torch::Tensor &combined_mask) {
+    const torch::Tensor &future, const torch::Tensor &combined_mask,
+    const std::vector<int64_t> &target_coords) {
   TORCH_CHECK(future.defined() && future.dim() == 4,
               "[channel_context_mdn_train_model] future must be [B,N,C,Df]");
   TORCH_CHECK(combined_mask.defined() && combined_mask.dim() == 4,
@@ -351,14 +391,16 @@ inline void accumulate_expected_value_metrics(
       full_error.sum(node_dims).to(torch::kCPU).to(torch::kFloat64);
 
   constexpr int64_t quote_node_index = 0;
-  constexpr int64_t close_feature_index = 3;
-  if (expected.size(1) <= 1 || expected.size(3) <= close_feature_index) {
+  const auto close_target_slot = resolve_close_target_slot(
+      target_coords, expected.size(3), /*required_for_enabled_loss=*/false,
+      "expected-value edge metrics");
+  if (expected.size(1) <= 1 || close_target_slot < 0) {
     return;
   }
 
-  const auto close_expected = expected.select(3, close_feature_index);
-  const auto close_realized = realized.select(3, close_feature_index);
-  const auto close_valid = valid.select(3, close_feature_index);
+  const auto close_expected = expected.select(3, close_target_slot);
+  const auto close_realized = realized.select(3, close_target_slot);
+  const auto close_valid = valid.select(3, close_target_slot);
   const auto base_count = close_expected.size(1) - 1;
   const auto expected_quote =
       close_expected.select(1, quote_node_index).unsqueeze(1);
@@ -476,7 +518,8 @@ inline void accumulate_expected_value_metrics(
 
 inline void accumulate_direct_edge_return_readout_metrics(
     channel_context_mdn_train_step_result_t &step, const MdnOut &mdn_out,
-    const torch::Tensor &future, const torch::Tensor &combined_mask) {
+    const torch::Tensor &future, const torch::Tensor &combined_mask,
+    const std::vector<int64_t> &target_coords) {
   if (!mdn_out.direct_edge_return.defined()) {
     return;
   }
@@ -490,8 +533,10 @@ inline void accumulate_direct_edge_return_readout_metrics(
               "[B,N,C,Df]");
 
   constexpr int64_t quote_node_index = 0;
-  constexpr int64_t close_feature_index = 3;
-  if (future.size(1) <= 1 || future.size(3) <= close_feature_index) {
+  const auto close_target_slot = resolve_close_target_slot(
+      target_coords, future.size(3), /*required_for_enabled_loss=*/false,
+      "direct edge readout metrics");
+  if (future.size(1) <= 1 || close_target_slot < 0) {
     return;
   }
   const auto base_count = future.size(1) - 1;
@@ -514,8 +559,8 @@ inline void accumulate_direct_edge_return_readout_metrics(
                            .device(predicted_edge.device()))
                    .logical_and(torch::isfinite(realized));
 
-  const auto close_realized = realized.select(3, close_feature_index);
-  const auto close_valid = valid.select(3, close_feature_index);
+  const auto close_realized = realized.select(3, close_target_slot);
+  const auto close_valid = valid.select(3, close_target_slot);
   const auto realized_quote =
       close_realized.select(1, quote_node_index).unsqueeze(1);
   const auto valid_quote = close_valid.select(1, quote_node_index).unsqueeze(1);
@@ -692,7 +737,8 @@ inline void accumulate_direct_edge_return_readout_metrics(
 compute_edge_return_auxiliary_loss(
     const MdnOut &mdn_out, const torch::Tensor &future,
     const torch::Tensor &combined_mask,
-    const channel_context_mdn_train_options_t &options) {
+    const channel_context_mdn_train_options_t &options,
+    const std::vector<int64_t> &target_coords) {
   edge_return_auxiliary_loss_t out{};
   const auto zero = future.defined() ? future.new_zeros({})
                                      : torch::zeros({}, torch::kFloat32);
@@ -718,18 +764,20 @@ compute_edge_return_auxiliary_loss(
               "[channel_mdn_edge_aux] combined_mask must be [B,N,C,Df]");
 
   constexpr int64_t quote_node_index = 0;
-  constexpr int64_t close_feature_index = 3;
   auto expected = mdn_expectation(mdn_out);
-  if (expected.size(1) <= 1 || expected.size(3) <= close_feature_index) {
+  const auto close_target_slot = resolve_close_target_slot(
+      target_coords, expected.size(3), /*required_for_enabled_loss=*/true,
+      "edge return auxiliary loss");
+  if (expected.size(1) <= 1) {
     return out;
   }
   auto realized = future.to(expected.options());
   auto valid = combined_mask.to(
       torch::TensorOptions().dtype(torch::kBool).device(expected.device()));
 
-  const auto close_expected = expected.select(3, close_feature_index);
-  const auto close_realized = realized.select(3, close_feature_index);
-  const auto close_valid = valid.select(3, close_feature_index);
+  const auto close_expected = expected.select(3, close_target_slot);
+  const auto close_realized = realized.select(3, close_target_slot);
+  const auto close_valid = valid.select(3, close_target_slot);
   const auto base_count = close_expected.size(1) - 1;
   const auto expected_quote =
       close_expected.select(1, quote_node_index).unsqueeze(1);
@@ -825,7 +873,8 @@ compute_edge_return_auxiliary_loss(
 compute_direct_edge_return_readout_loss(
     const MdnOut &mdn_out, const torch::Tensor &future,
     const torch::Tensor &combined_mask,
-    const channel_context_mdn_train_options_t &options) {
+    const channel_context_mdn_train_options_t &options,
+    const std::vector<int64_t> &target_coords) {
   edge_return_auxiliary_loss_t out{};
   const auto zero = future.defined() ? future.new_zeros({})
                                      : torch::zeros({}, torch::kFloat32);
@@ -866,8 +915,10 @@ compute_direct_edge_return_readout_loss(
               "[B,N,C,Df]");
 
   constexpr int64_t quote_node_index = 0;
-  constexpr int64_t close_feature_index = 3;
-  if (future.size(1) <= 1 || future.size(3) <= close_feature_index) {
+  const auto close_target_slot = resolve_close_target_slot(
+      target_coords, future.size(3), /*required_for_enabled_loss=*/true,
+      "direct edge return readout loss");
+  if (future.size(1) <= 1) {
     return out;
   }
   const auto base_count = future.size(1) - 1;
@@ -882,8 +933,8 @@ compute_direct_edge_return_readout_loss(
   auto valid = combined_mask.to(torch::TensorOptions()
                                     .dtype(torch::kBool)
                                     .device(predicted_edge.device()));
-  const auto close_realized = realized.select(3, close_feature_index);
-  const auto close_valid = valid.select(3, close_feature_index);
+  const auto close_realized = realized.select(3, close_target_slot);
+  const auto close_valid = valid.select(3, close_target_slot);
   const auto realized_quote =
       close_realized.select(1, quote_node_index).unsqueeze(1);
   const auto valid_quote = close_valid.select(1, quote_node_index).unsqueeze(1);
@@ -1207,6 +1258,27 @@ inline void clip_gradients(std::vector<torch::Tensor> &params, double clip_norm,
   return options.direct_edge_return_readout_post_warmup_nll_weight;
 }
 
+inline void record_scheduled_objective(
+    channel_context_mdn_train_step_result_t &step, const torch::Tensor &nll,
+    const edge_return_auxiliary_loss_t &edge_auxiliary,
+    const edge_return_auxiliary_loss_t &direct_readout,
+    const channel_context_mdn_train_options_t &options,
+    const int64_t optimizer_step_index) {
+  step.nll = nll;
+  record_edge_return_auxiliary_loss(step, edge_auxiliary);
+  record_direct_edge_return_readout_loss(step, direct_readout);
+  step.direct_edge_return_readout_warmup_active =
+      direct_edge_return_readout_warmup_active(options, optimizer_step_index);
+  step.direct_edge_return_readout_scheduled_nll_weight =
+      direct_edge_return_readout_scheduled_nll_weight(options,
+                                                      optimizer_step_index);
+  step.direct_edge_return_readout_direct_head_only_warmup_active =
+      step.direct_edge_return_readout_warmup_active &&
+      options.direct_edge_return_readout_warmup_direct_head_only;
+  step.loss = step.nll * step.direct_edge_return_readout_scheduled_nll_weight +
+              edge_auxiliary.loss + direct_readout.loss;
+}
+
 template <typename ModelT>
 inline void zero_non_direct_edge_head_gradients(const ModelT &model) {
   for (const auto &param : model->named_parameters(/*recurse=*/true)) {
@@ -1360,10 +1432,12 @@ public:
         cuwacunu::wikimyei::inference::expected_value::mdn::mdn_nll_map(
             mdn_out, clean_input.future, options_.nll);
     channel_context_mdn_train_detail::accumulate_expected_value_metrics(
-        out, mdn_out, clean_input.future, combined_mask);
+        out, mdn_out, clean_input.future, combined_mask,
+        clean_input.target_coords);
     channel_context_mdn_train_detail::
         accumulate_direct_edge_return_readout_metrics(
-            out, mdn_out, clean_input.future, combined_mask);
+            out, mdn_out, clean_input.future, combined_mask,
+            clean_input.target_coords);
     out.nll_per_channel = cuwacunu::wikimyei::inference::expected_value::mdn::
         mdn_masked_mean_per_channel(nll_map, combined_mask);
     out.nll_per_target_feature = cuwacunu::wikimyei::inference::expected_value::
@@ -1378,31 +1452,19 @@ public:
     out.valid_count_per_channel_target_feature =
         cuwacunu::wikimyei::inference::expected_value::mdn::
             mdn_valid_count_per_channel_target_feature(combined_mask);
-    out.nll =
+    const auto nll =
         compute_channel_context_mdn_nll(mdn_out, clean_input, options_.nll);
     const auto edge_auxiliary =
         channel_context_mdn_train_detail::compute_edge_return_auxiliary_loss(
-            mdn_out, clean_input.future, combined_mask, options_);
-    channel_context_mdn_train_detail::record_edge_return_auxiliary_loss(
-        out, edge_auxiliary);
+            mdn_out, clean_input.future, combined_mask, options_,
+            clean_input.target_coords);
     const auto direct_readout = channel_context_mdn_train_detail::
         compute_direct_edge_return_readout_loss(mdn_out, clean_input.future,
-                                                combined_mask, options_);
-    channel_context_mdn_train_detail::record_direct_edge_return_readout_loss(
-        out, direct_readout);
-    out.direct_edge_return_readout_warmup_active =
-        channel_context_mdn_train_detail::
-            direct_edge_return_readout_warmup_active(options_,
-                                                     optimizer_step_index_);
-    out.direct_edge_return_readout_scheduled_nll_weight =
-        channel_context_mdn_train_detail::
-            direct_edge_return_readout_scheduled_nll_weight(
-                options_, optimizer_step_index_);
-    out.direct_edge_return_readout_direct_head_only_warmup_active =
-        out.direct_edge_return_readout_warmup_active &&
-        options_.direct_edge_return_readout_warmup_direct_head_only;
-    out.loss = out.nll * out.direct_edge_return_readout_scheduled_nll_weight +
-               edge_auxiliary.loss + direct_readout.loss;
+                                                combined_mask, options_,
+                                                clean_input.target_coords);
+    channel_context_mdn_train_detail::record_scheduled_objective(
+        out, nll, edge_auxiliary, direct_readout, options_,
+        optimizer_step_index_);
     out.sigma_mean = mdn_out.sigma.mean().to(torch::kCPU).item<double>();
     out.sigma_min = mdn_out.sigma.min().to(torch::kCPU).item<double>();
     out.sigma_max = mdn_out.sigma.max().to(torch::kCPU).item<double>();
@@ -1467,6 +1529,15 @@ public:
   [[nodiscard]] ChannelContextMdn &model() { return model_; }
   [[nodiscard]] const ChannelContextMdn &model() const { return model_; }
   [[nodiscard]] torch::optim::Adam &optimizer() { return *optimizer_; }
+  [[nodiscard]] int64_t optimizer_step_index() const {
+    return optimizer_step_index_;
+  }
+  void set_optimizer_step_index(const int64_t optimizer_step_index) {
+    TORCH_CHECK(optimizer_step_index >= 0,
+                "[channel_context_mdn_train_model] optimizer step index must "
+                "be nonnegative");
+    optimizer_step_index_ = optimizer_step_index;
+  }
 
 private:
   ChannelContextMdn model_{nullptr};
@@ -1545,10 +1616,12 @@ public:
         cuwacunu::wikimyei::inference::expected_value::mdn::mdn_nll_map(
             mdn_out, clean_input.channel.future, options_.nll);
     channel_context_mdn_train_detail::accumulate_expected_value_metrics(
-        out, mdn_out, clean_input.channel.future, combined_mask);
+        out, mdn_out, clean_input.channel.future, combined_mask,
+        clean_input.channel.target_coords);
     channel_context_mdn_train_detail::
         accumulate_direct_edge_return_readout_metrics(
-            out, mdn_out, clean_input.channel.future, combined_mask);
+            out, mdn_out, clean_input.channel.future, combined_mask,
+            clean_input.channel.target_coords);
     out.nll_per_channel = cuwacunu::wikimyei::inference::expected_value::mdn::
         mdn_masked_mean_per_channel(nll_map, combined_mask);
     out.nll_per_target_feature = cuwacunu::wikimyei::inference::expected_value::
@@ -1563,31 +1636,19 @@ public:
     out.valid_count_per_channel_target_feature =
         cuwacunu::wikimyei::inference::expected_value::mdn::
             mdn_valid_count_per_channel_target_feature(combined_mask);
-    out.nll = compute_channel_context_plus_global_mdn_nll(mdn_out, clean_input,
-                                                          options_.nll);
+    const auto nll = compute_channel_context_plus_global_mdn_nll(
+        mdn_out, clean_input, options_.nll);
     const auto edge_auxiliary =
         channel_context_mdn_train_detail::compute_edge_return_auxiliary_loss(
-            mdn_out, clean_input.channel.future, combined_mask, options_);
-    channel_context_mdn_train_detail::record_edge_return_auxiliary_loss(
-        out, edge_auxiliary);
+            mdn_out, clean_input.channel.future, combined_mask, options_,
+            clean_input.channel.target_coords);
     const auto direct_readout = channel_context_mdn_train_detail::
         compute_direct_edge_return_readout_loss(
-            mdn_out, clean_input.channel.future, combined_mask, options_);
-    channel_context_mdn_train_detail::record_direct_edge_return_readout_loss(
-        out, direct_readout);
-    out.direct_edge_return_readout_warmup_active =
-        channel_context_mdn_train_detail::
-            direct_edge_return_readout_warmup_active(options_,
-                                                     optimizer_step_index_);
-    out.direct_edge_return_readout_scheduled_nll_weight =
-        channel_context_mdn_train_detail::
-            direct_edge_return_readout_scheduled_nll_weight(
-                options_, optimizer_step_index_);
-    out.direct_edge_return_readout_direct_head_only_warmup_active =
-        out.direct_edge_return_readout_warmup_active &&
-        options_.direct_edge_return_readout_warmup_direct_head_only;
-    out.loss = out.nll * out.direct_edge_return_readout_scheduled_nll_weight +
-               edge_auxiliary.loss + direct_readout.loss;
+            mdn_out, clean_input.channel.future, combined_mask, options_,
+            clean_input.channel.target_coords);
+    channel_context_mdn_train_detail::record_scheduled_objective(
+        out, nll, edge_auxiliary, direct_readout, options_,
+        optimizer_step_index_);
     out.sigma_mean = mdn_out.sigma.mean().to(torch::kCPU).item<double>();
     out.sigma_min = mdn_out.sigma.min().to(torch::kCPU).item<double>();
     out.sigma_max = mdn_out.sigma.max().to(torch::kCPU).item<double>();
@@ -1656,6 +1717,15 @@ public:
     return model_;
   }
   [[nodiscard]] torch::optim::Adam &optimizer() { return *optimizer_; }
+  [[nodiscard]] int64_t optimizer_step_index() const {
+    return optimizer_step_index_;
+  }
+  void set_optimizer_step_index(const int64_t optimizer_step_index) {
+    TORCH_CHECK(optimizer_step_index >= 0,
+                "[channel_context_plus_global_mdn_train_model] optimizer step "
+                "index must be nonnegative");
+    optimizer_step_index_ = optimizer_step_index;
+  }
 
 private:
   ChannelContextPlusGlobalMdn model_{nullptr};

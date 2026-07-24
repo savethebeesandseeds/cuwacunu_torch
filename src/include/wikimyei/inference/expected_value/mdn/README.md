@@ -59,3 +59,18 @@ active MDN requires it to be `1`.
 
 The single-embedding `[B,De]` MDN wrapper has been removed. The graph-first
 production front door is `ChannelContextMdn`.
+
+## Diagnostic Affine Calibration
+
+`PerEdgeAffineReturnHead` is a separate diagnostic-only readout. It is not
+wired into `ChannelContextMdn`, its checkpoints, or policy execution. It stores
+development-fit float64 normalization and frozen per-edge affine coefficients,
+and accepts either post-direct-adapter context `[B,E+1,C,H]` or exact readout
+features `[B,E,C,F]`.
+
+The v1 readout contract consumes the first `3H` features as
+`[base, quote, base - quote]` and ignores any configured suffix. Its archive
+uses strict canonical metadata, a nested model state, and a semantic SHA-256
+over metadata plus canonical big-endian tensor bytes. Use it as a frozen truth
+oracle for readout diagnostics; do not treat it as a production forecast head
+or benchmark-acceptance artifact.

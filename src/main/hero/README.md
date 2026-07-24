@@ -375,6 +375,10 @@ Runtime agent workflow:
    `wikimyei.representation.encoding.mtf_jepa_mae_vicreg` target reports the
    separate `channel_representation_mtf_jepa_mae_vicreg` job kind. It is
    representation-only and does not reuse the production VICReg job identity.
+   Its representation report exposes `vicreg_view_gaussian_jitter_std`,
+   `vicreg_view_time_dropout_scale`, and the resolved
+   `vicreg_view_time_dropout_prob_effective`; probe-enabled debug jobs classify
+   all three under representation augmentation.
 3. `hero.runtime.run mode=dry_run` builds and
    validates the protocol contract through `cuwacunu_exec --dry-run` and
    returns job artifacts. `mode=execute` uses the same surface with

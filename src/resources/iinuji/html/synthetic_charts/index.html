@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    >
+    <title>Iinuji · Synthetic chart observatory</title>
+    <link rel="stylesheet" href="./app.css">
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to chart inspection</a>
+
+    <header class="site-header">
+      <div class="brand" aria-label="Iinuji">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="brand-name">iinuji</span>
+        <span class="brand-divider" aria-hidden="true"></span>
+        <span class="brand-section">synthetic observatory</span>
+      </div>
+      <div class="service-state" aria-live="polite">
+        <span class="service-dot" id="service-dot" aria-hidden="true"></span>
+        <span id="service-status">Connecting to local evidence</span>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Data inspection · diagnostic only</p>
+          <h1 id="page-title">Look at the signal before blaming the learner.</h1>
+          <p class="benchmark-context" id="benchmark-context">
+            Selecting a sealed benchmark view…
+          </p>
+          <p class="lede">
+            Inspect the exact synthetic price paths, their one-step returns, and their temporal
+            structure. This view does not train, forecast, or open protected data.
+          </p>
+        </div>
+        <div class="sealed-badge" id="sealed-badge">
+          <span class="sealed-icon" aria-hidden="true"></span>
+          <span>
+            <strong>Test holdout sealed</strong>
+            <small id="sealed-detail">Waiting for catalog boundary</small>
+          </span>
+        </div>
+      </section>
+
+      <section class="control-deck" aria-labelledby="controls-title">
+        <h2 class="sr-only" id="controls-title">Chart controls</h2>
+        <div class="control-field control-field-benchmark">
+          <label for="benchmark-select">Benchmark</label>
+          <select id="benchmark-select" disabled>
+            <option>Loading…</option>
+          </select>
+        </div>
+        <div class="control-field">
+          <label for="instrument-select">Instrument</label>
+          <select id="instrument-select" disabled>
+            <option>Loading…</option>
+          </select>
+        </div>
+        <div class="control-field">
+          <label for="interval-select">Interval</label>
+          <select id="interval-select" disabled>
+            <option>Loading…</option>
+          </select>
+        </div>
+        <fieldset class="axis-control">
+          <legend>Horizontal axis</legend>
+          <div class="segmented-control">
+            <input type="radio" name="axis" id="axis-row" value="row" checked>
+            <label for="axis-row">Row index</label>
+            <input type="radio" name="axis" id="axis-time" value="time">
+            <label for="axis-time">Wall clock</label>
+          </div>
+        </fieldset>
+        <div class="compare-control">
+          <label class="toggle-label" for="compare-toggle">
+            <input type="checkbox" id="compare-toggle" disabled>
+            <span class="toggle-track" aria-hidden="true"><span></span></span>
+            <span>Compare interval</span>
+          </label>
+          <label class="sr-only" for="compare-select">Comparison interval</label>
+          <select id="compare-select" disabled aria-label="Comparison interval">
+            <option>None</option>
+          </select>
+        </div>
+        <button class="reload-button" id="reload-button" type="button" disabled>
+          <span class="reload-icon" aria-hidden="true"></span>
+          Refresh
+        </button>
+      </section>
+
+      <aside class="data-warning" id="duplication-warning" aria-label="Interval semantics" hidden>
+        <span class="warning-icon" aria-hidden="true">!</span>
+        <p>
+          <strong>Intervals are time-dilated copies, not true resamples.</strong>
+          The row-index price path is duplicated across intervals while timestamps are stretched.
+          Switch axes to see the distinction; do not interpret interval agreement as independent
+          evidence.
+        </p>
+      </aside>
+
+      <section class="notice notice-error" id="error-panel" role="alert" hidden>
+        <div>
+          <strong>Chart evidence could not be loaded.</strong>
+          <p id="error-message">The local server did not return a usable response.</p>
+        </div>
+        <button id="error-retry" type="button">Try again</button>
+      </section>
+
+      <section class="summary-grid" aria-label="Dataset summary">
+        <article class="summary-card">
+          <p>Fundamental period</p>
+          <strong id="summary-period">—</strong>
+          <small>anchors per cycle</small>
+        </article>
+        <article class="summary-card">
+          <p>Input window</p>
+          <strong id="summary-history">—</strong>
+          <small id="summary-history-detail">selected interval anchors</small>
+        </article>
+        <article class="summary-card">
+          <p>Cycles in input</p>
+          <strong id="summary-cycles">—</strong>
+          <small>input window ÷ period</small>
+        </article>
+        <article class="summary-card">
+          <p>Noise / drift</p>
+          <strong id="summary-noise">—</strong>
+          <small id="summary-drift">catalog metadata</small>
+        </article>
+        <article class="summary-card summary-card-digest">
+          <p>Source function</p>
+          <strong id="summary-digest">—</strong>
+          <small>content digest</small>
+        </article>
+      </section>
+
+      <section class="chart-panel" aria-labelledby="close-title">
+        <header class="panel-header">
+          <div>
+            <p class="panel-kicker">Observed path</p>
+            <h2 id="close-title">Synthetic close</h2>
+            <p id="close-subtitle">Waiting for chart rows</p>
+          </div>
+          <div class="series-legend" aria-label="Displayed series">
+            <span><i class="legend-line legend-primary"></i><b id="primary-legend">Primary</b></span>
+            <span id="compare-legend-wrap" hidden><i class="legend-line legend-compare"></i><b id="compare-legend">Comparison</b></span>
+          </div>
+        </header>
+        <div class="plot-shell" id="close-plot-shell">
+          <canvas
+            id="close-chart"
+            role="img"
+            aria-label="Synthetic closing price chart with dataset split bands"
+          ></canvas>
+          <div class="chart-tooltip" id="close-tooltip" role="status" hidden></div>
+          <div class="plot-loading" id="close-loading" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="chart-panel" aria-labelledby="return-title">
+        <header class="panel-header">
+          <div>
+            <p class="panel-kicker">One-step behavior</p>
+            <h2 id="return-title">Log return</h2>
+            <p>Same horizontal domain and hover anchor as the close chart.</p>
+          </div>
+          <span class="formula-chip">log(closeₜ / closeₜ₋₁)</span>
+        </header>
+        <div class="plot-shell plot-shell-return" id="return-plot-shell">
+          <canvas
+            id="return-chart"
+            role="img"
+            aria-label="One-step log-return chart with synchronized position"
+          ></canvas>
+          <div class="chart-tooltip" id="return-tooltip" role="status" hidden></div>
+          <div class="plot-loading" id="return-loading" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="diagnostic-grid" aria-label="Temporal diagnostics">
+        <article class="chart-panel diagnostic-panel" aria-labelledby="acf-title">
+          <header class="panel-header compact">
+            <div>
+              <p class="panel-kicker">Return memory</p>
+              <h2 id="acf-title">Autocorrelation by lag</h2>
+              <p>Non-zero lags on the visible one-step return series.</p>
+            </div>
+          </header>
+          <div class="plot-shell plot-shell-acf">
+            <canvas
+              id="acf-chart"
+              role="img"
+              aria-label="Bar chart of log-return autocorrelation by lag"
+            ></canvas>
+            <div class="chart-tooltip" id="acf-tooltip" role="status" hidden></div>
+            <div class="plot-loading" id="acf-loading" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="diagnostic-card" aria-labelledby="structure-title">
+          <p class="panel-kicker">Simple causal probes</p>
+          <h2 id="structure-title">Is the sequence locally predictable?</h2>
+          <p class="diagnostic-copy">
+            These descriptive checks use only served rows. They are not model scores and they do
+            not establish unseen-future performance.
+          </p>
+          <dl class="metric-list">
+            <div>
+              <dt>Previous-return direction</dt>
+              <dd id="metric-prev-direction">—</dd>
+              <small>sign(rₜ₋₁) predicts sign(rₜ)</small>
+            </div>
+            <div>
+              <dt>Strongest absolute ACF</dt>
+              <dd id="metric-acf">—</dd>
+              <small id="metric-acf-detail">waiting for returns</small>
+            </div>
+            <div>
+              <dt>Cross-interval row match</dt>
+              <dd id="metric-row-match">—</dd>
+              <small id="metric-row-detail">enable interval comparison</small>
+            </div>
+            <div>
+              <dt>Matched-time discrepancy</dt>
+              <dd id="metric-time-discrepancy">—</dd>
+              <small id="metric-time-detail">exact close-time matches</small>
+            </div>
+          </dl>
+        </article>
+      </section>
+
+      <section class="boundary-panel" aria-labelledby="boundary-title">
+        <div class="boundary-copy">
+          <p class="panel-kicker">Evidence boundaries</p>
+          <h2 id="boundary-title">What this page is allowed to show</h2>
+          <p id="boundary-description">
+            Dataset ranges will appear after the catalog is validated.
+          </p>
+        </div>
+        <div class="split-key" id="split-key" aria-label="Dataset split ranges"></div>
+      </section>
+
+      <footer class="page-footer">
+        <p>
+          Local, read-only chart inspection · no model execution · no third-party assets
+        </p>
+        <p id="footer-provenance">Source digest unavailable</p>
+      </footer>
+    </main>
+
+    <div class="sr-only" id="live-region" aria-live="polite"></div>
+  </body>
+</html>

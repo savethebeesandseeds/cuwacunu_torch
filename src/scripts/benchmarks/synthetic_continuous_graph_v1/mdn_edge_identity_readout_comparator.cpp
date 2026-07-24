@@ -41,6 +41,7 @@ struct Dataset {
 struct FeatureStats {
   std::vector<double> mean;
   std::vector<double> inv_std;
+  bool sample_layer_norm{false};
 };
 
 struct LinearModel {
@@ -91,6 +92,7 @@ struct Options {
   double ridge_lambda{1.0e-6};
   int max_features{0};
   bool standardize{true};
+  bool sample_layer_norm{false};
 };
 
 std::vector<std::string> split_csv(const std::string &line) {
@@ -171,6 +173,8 @@ Options parse_options(int argc, char **argv) {
           parse_int_arg(require_value("--max-features"), "--max-features");
     } else if (arg == "--no-standardize") {
       opt.standardize = false;
+    } else if (arg == "--sample-layer-norm") {
+      opt.sample_layer_norm = true;
     } else {
       throw std::runtime_error("unknown argument: " + arg);
     }
@@ -186,6 +190,11 @@ Options parse_options(int argc, char **argv) {
   }
   if (opt.ridge_lambda < 0.0) {
     throw std::runtime_error("--ridge-lambda must be nonnegative");
+  }
+  if (opt.sample_layer_norm && opt.standardize) {
+    throw std::runtime_error(
+        "--sample-layer-norm requires --no-standardize so the diagnostic "
+        "matches the production pre-hidden boundary");
   }
   return opt;
 }
@@ -248,10 +257,11 @@ bool is_fit_row(const Row &row, int fit_end_anchor) {
 }
 
 FeatureStats compute_feature_stats(const Dataset &dataset, int fit_end_anchor,
-                                   bool standardize) {
+                                   bool standardize, bool sample_layer_norm) {
   FeatureStats stats;
   stats.mean.assign(dataset.feature_count, 0.0);
   stats.inv_std.assign(dataset.feature_count, 1.0);
+  stats.sample_layer_norm = sample_layer_norm;
   if (!standardize) {
     return stats;
   }
@@ -285,8 +295,26 @@ std::vector<double> feature_vector(const Row &row, const FeatureStats &stats,
   std::vector<double> x;
   x.reserve(1 + row.features.size() + (include_edge_id ? 3 : 0));
   x.push_back(1.0);
+  double sample_mean = 0.0;
+  double sample_inv_std = 1.0;
+  if (stats.sample_layer_norm) {
+    sample_mean =
+        std::accumulate(row.features.begin(), row.features.end(), 0.0) /
+        static_cast<double>(row.features.size());
+    double variance = 0.0;
+    for (const auto value : row.features) {
+      const auto centered = value - sample_mean;
+      variance += centered * centered;
+    }
+    variance /= static_cast<double>(row.features.size());
+    // torch::nn::LayerNorm uses biased variance and eps=1e-5 by default.
+    sample_inv_std = 1.0 / std::sqrt(variance + 1.0e-5);
+  }
   for (std::size_t i = 0; i < row.features.size(); ++i) {
-    x.push_back((row.features[i] - stats.mean[i]) * stats.inv_std[i]);
+    const auto value = stats.sample_layer_norm
+                           ? (row.features[i] - sample_mean) * sample_inv_std
+                           : row.features[i];
+    x.push_back((value - stats.mean[i]) * stats.inv_std[i]);
   }
   if (include_edge_id) {
     for (int edge = 0; edge < 3; ++edge) {
@@ -649,8 +677,8 @@ int main(int argc, char **argv) try {
   if (fit_end_anchor > dataset.max_anchor) {
     throw std::runtime_error("fit split consumed all anchors");
   }
-  const auto stats =
-      compute_feature_stats(dataset, fit_end_anchor, opt.standardize);
+  const auto stats = compute_feature_stats(
+      dataset, fit_end_anchor, opt.standardize, opt.sample_layer_norm);
 
   std::filesystem::create_directories(opt.output_path.parent_path());
   std::ofstream out(opt.output_path, std::ios::trunc);
@@ -667,6 +695,7 @@ int main(int argc, char **argv) try {
   out << "feature_count=" << dataset.feature_count << "\n";
   out << "max_features=" << opt.max_features << "\n";
   out << "standardize_features=" << bool_string(opt.standardize) << "\n";
+  out << "sample_layer_norm=" << bool_string(opt.sample_layer_norm) << "\n";
   out << "anchor_range=[" << dataset.min_anchor << ","
       << (dataset.max_anchor + 1) << ")\n";
   out << "fit_anchor_range=[" << dataset.min_anchor << "," << fit_end_anchor

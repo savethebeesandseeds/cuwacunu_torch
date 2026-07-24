@@ -38,6 +38,11 @@ if [[ "${SYNTHETIC_MDN_EDGE_ID_COMPARATOR_STANDARDIZE:-true}" == "false" ]]; the
   standardize_args+=(--no-standardize)
 fi
 
+layer_norm_args=()
+if [[ "${SYNTHETIC_MDN_EDGE_ID_COMPARATOR_SAMPLE_LAYER_NORM:-false}" == "true" ]]; then
+  layer_norm_args+=(--sample-layer-norm)
+fi
+
 "${helper_bin}" \
   --input "${input_probe}" \
   --output "${output_probe}" \
@@ -47,6 +52,7 @@ fi
   --rank-margin-eps "${SYNTHETIC_MDN_EDGE_ID_COMPARATOR_RANK_MARGIN_EPS:-0.001}" \
   --ridge-lambda "${SYNTHETIC_MDN_EDGE_ID_COMPARATOR_RIDGE_LAMBDA:-1e-6}" \
   --max-features "${SYNTHETIC_MDN_EDGE_ID_COMPARATOR_MAX_FEATURES:-0}" \
-  "${standardize_args[@]}"
+  "${standardize_args[@]}" \
+  "${layer_norm_args[@]}"
 
 echo "${output_probe}"

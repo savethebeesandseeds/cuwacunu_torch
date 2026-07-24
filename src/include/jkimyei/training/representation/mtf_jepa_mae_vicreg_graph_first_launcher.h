@@ -112,6 +112,12 @@ struct mtf_jepa_mae_vicreg_graph_first_report_t {
   bool mask_same_channel_block{false};
   double max_context_target_time_overlap{
       std::numeric_limits<double>::quiet_NaN()};
+  double vicreg_view_gaussian_jitter_std{
+      std::numeric_limits<double>::quiet_NaN()};
+  double vicreg_view_time_dropout_scale{
+      std::numeric_limits<double>::quiet_NaN()};
+  double vicreg_view_time_dropout_prob_effective{
+      std::numeric_limits<double>::quiet_NaN()};
   double gaussian_jitter_std{std::numeric_limits<double>::quiet_NaN()};
   double feature_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
   double history_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
@@ -341,6 +347,12 @@ struct mtf_jepa_mae_vicreg_graph_first_report_t {
         << (mask_same_channel_block ? "true" : "false") << "\n";
     oss << "max_context_target_time_overlap=" << max_context_target_time_overlap
         << "\n";
+    oss << "vicreg_view_gaussian_jitter_std="
+        << vicreg_view_gaussian_jitter_std << "\n";
+    oss << "vicreg_view_time_dropout_scale="
+        << vicreg_view_time_dropout_scale << "\n";
+    oss << "vicreg_view_time_dropout_prob_effective="
+        << vicreg_view_time_dropout_prob_effective << "\n";
     oss << "gaussian_jitter_std=" << gaussian_jitter_std << "\n";
     oss << "feature_dropout_prob=" << feature_dropout_prob << "\n";
     oss << "history_dropout_prob=" << history_dropout_prob << "\n";
@@ -1179,6 +1191,13 @@ public:
     out.mask_same_window_across_domains = cfg.mask_same_window_across_domains;
     out.mask_same_channel_block = cfg.mask_same_channel_block;
     out.max_context_target_time_overlap = cfg.max_context_target_time_overlap;
+    out.vicreg_view_gaussian_jitter_std =
+        cfg.vicreg_view_gaussian_jitter_std;
+    out.vicreg_view_time_dropout_scale =
+        cfg.vicreg_view_time_dropout_scale;
+    out.vicreg_view_time_dropout_prob_effective =
+        cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
+            detail::resolved_vicreg_view_time_dropout_prob(cfg);
     out.gaussian_jitter_std = cfg.gaussian_jitter_std;
     out.feature_dropout_prob = cfg.feature_dropout_prob;
     out.history_dropout_prob = cfg.history_dropout_prob;

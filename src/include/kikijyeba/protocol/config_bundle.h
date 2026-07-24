@@ -597,6 +597,10 @@ inline void append_training_contract_fields(
         << "\n";
     out << prefix << "_mtf_max_context_target_time_overlap="
         << mtf.max_context_target_time_overlap << "\n";
+    out << prefix << "_mtf_vicreg_view_gaussian_jitter_std="
+        << mtf.vicreg_view_gaussian_jitter_std << "\n";
+    out << prefix << "_mtf_vicreg_view_time_dropout_scale="
+        << mtf.vicreg_view_time_dropout_scale << "\n";
     out << prefix << "_mtf_gaussian_jitter_std=" << mtf.gaussian_jitter_std
         << "\n";
     out << prefix << "_mtf_feature_dropout_prob=" << mtf.feature_dropout_prob
@@ -674,6 +678,10 @@ inline void apply_mtf_jepa_mae_vicreg_training_options(
   config.mask_same_window_across_domains = mtf.mask_same_window_across_domains;
   config.mask_same_channel_block = mtf.mask_same_channel_block;
   config.max_context_target_time_overlap = mtf.max_context_target_time_overlap;
+  config.vicreg_view_gaussian_jitter_std =
+      mtf.vicreg_view_gaussian_jitter_std;
+  config.vicreg_view_time_dropout_scale =
+      mtf.vicreg_view_time_dropout_scale;
   config.gaussian_jitter_std = mtf.gaussian_jitter_std;
   config.feature_dropout_prob = mtf.feature_dropout_prob;
   config.history_dropout_prob = mtf.history_dropout_prob;

@@ -344,16 +344,64 @@ struct DirectEdgeReturnHeadImpl : torch::nn::Module {
     return torch::cat({features, embedding}, /*dim=*/-1).contiguous();
   }
 
+  // readout_features: [B,E,C,3H(+Eid)] -> direct edge return [B,E,C].
+  torch::Tensor
+  forward_readout_features(const torch::Tensor &readout_features) {
+    TORCH_CHECK(readout_features.defined() && readout_features.dim() == 4,
+                "[DirectEdgeReturnHead] readout features must be "
+                "[B,E,C,3H(+Eid)]");
+    const auto B = readout_features.size(0);
+    const auto base_count = readout_features.size(1);
+    const auto C = readout_features.size(2);
+    const auto expected_input_dim =
+        3 * H + (uses_edge_embedding ? identity_embedding_dim : 0);
+    TORCH_CHECK(B > 0 && base_count > 0 && C > 0,
+                "[DirectEdgeReturnHead] readout batch, edge, and channel "
+                "dimensions must be positive");
+    TORCH_CHECK(readout_features.size(3) == expected_input_dim,
+                "[DirectEdgeReturnHead] readout feature width mismatch: "
+                "expected ",
+                expected_input_dim, ", got ", readout_features.size(3));
+    TORCH_CHECK(!(uses_edge_embedding || uses_per_edge_projection) ||
+                    base_count <= base_edge_count,
+                "[DirectEdgeReturnHead] observed base edge count exceeds "
+                "configured base_edge_count");
+    TORCH_CHECK(readout_features.is_floating_point(),
+                "[DirectEdgeReturnHead] readout features must be floating "
+                "point");
+    TORCH_CHECK(readout_features.scalar_type() ==
+                    input_norm->weight.scalar_type(),
+                "[DirectEdgeReturnHead] readout feature dtype must match head "
+                "parameters");
+    TORCH_CHECK(readout_features.device() == input_norm->weight.device(),
+                "[DirectEdgeReturnHead] readout features and head parameters "
+                "must share one device");
+    TORCH_CHECK(torch::isfinite(readout_features).all().item<bool>(),
+                "[DirectEdgeReturnHead] readout features must be finite");
+
+    auto output =
+        forward_readout_features_unchecked(readout_features.contiguous());
+    TORCH_CHECK(torch::isfinite(output).all().item<bool>(),
+                "[DirectEdgeReturnHead] direct edge return must be finite");
+    return output;
+  }
+
   // h: [B,N,C,H] -> direct base-minus-quote edge return [B,N-1,C].
   torch::Tensor forward(const torch::Tensor &h) {
-    const auto B = h.size(0);
-    const auto N = h.size(1);
-    const auto C = h.size(2);
-    const auto base_count = N - 1;
+    const auto base_count = h.size(1) - 1;
     TORCH_CHECK(!uses_per_edge_projection || base_count <= base_edge_count,
                 "[DirectEdgeReturnHead] observed base edge count exceeds "
                 "configured base_edge_count");
-    auto x = readout_input_features(h).view({B * base_count * C, -1});
+    return forward_readout_features_unchecked(readout_input_features(h));
+  }
+
+private:
+  torch::Tensor
+  forward_readout_features_unchecked(const torch::Tensor &readout_features) {
+    const auto B = readout_features.size(0);
+    const auto base_count = readout_features.size(1);
+    const auto C = readout_features.size(2);
+    auto x = readout_features.view({B * base_count * C, -1});
     auto z = torch::silu(hidden->forward(input_norm->forward(x)))
                  .view({B, base_count, C, H});
     if (!uses_per_edge_projection) {

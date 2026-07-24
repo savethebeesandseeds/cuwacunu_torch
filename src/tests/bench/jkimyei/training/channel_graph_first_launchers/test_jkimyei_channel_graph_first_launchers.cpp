@@ -32,6 +32,15 @@ void check(bool condition, const std::string &message) {
   }
 }
 
+void check_close(double actual, double expected, double tolerance,
+                 const std::string &message) {
+  if (!std::isfinite(actual) || !std::isfinite(expected) ||
+      std::fabs(actual - expected) > tolerance) {
+    throw std::runtime_error(message + ": actual=" + std::to_string(actual) +
+                             " expected=" + std::to_string(expected));
+  }
+}
+
 std::string read_text(const std::filesystem::path &path) {
   std::ifstream in(path);
   check(in.is_open(), "failed to open text input");
@@ -653,6 +662,21 @@ void configure_channel_mdn_identity_conditioned_direct_readout(
   write_text(fixture.channel_mdn_jkimyei, text);
 }
 
+void configure_channel_mdn_one_step_direct_readout_warmup(
+    const fixture_paths_t &fixture) {
+  auto text = read_text(fixture.channel_mdn_jkimyei);
+  replace_once(text, "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_STEPS = 0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_STEPS = 1;\n");
+  replace_once(
+      text, "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT = 1.0;\n",
+      "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT = 0.0;\n");
+  replace_once(
+      text,
+      "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_DIRECT_HEAD_ONLY = false;\n",
+      "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_DIRECT_HEAD_ONLY = true;\n");
+  write_text(fixture.channel_mdn_jkimyei, text);
+}
+
 protocol::channel_graph_first_pipeline_builder_t<Kline>
 make_pipeline(const fixture_paths_t &fixture, std::size_t batch_size = 2) {
   auto bundle = protocol::load_channel_graph_first_config_bundle_from_config(
@@ -1258,6 +1282,31 @@ void test_channel_mdn_run_requires_mdn_checkpoint() {
   check(threw, "MDN run requires checkpoint");
 }
 
+void test_channel_mdn_conditioned_affine_shadow_defaults_absent_and_rejects_train() {
+  torch::manual_seed(117);
+  const auto fixture =
+      make_config_fixture("mdn_conditioned_affine_shadow_train_rejection",
+                          /*max_steps=*/1, /*checkpoint_every=*/0,
+                          /*batch_size=*/2, /*report_every=*/1, "train");
+  auto pipe = make_pipeline(fixture);
+  inference_launcher::channel_graph_first_inference_launcher_options_t
+      options{};
+  check(!options.conditioned_affine_shadow.has_value(),
+        "conditioned affine shadow defaults absent");
+  options.conditioned_affine_shadow =
+      inference_launcher::channel_mdn_conditioned_affine_shadow_options_t{};
+  inference_launcher::channel_graph_first_inference_launcher_t<Kline> launcher(
+      std::move(pipe), options);
+  bool threw = false;
+  try {
+    (void)launcher.run();
+  } catch (const std::exception &ex) {
+    threw =
+        std::string(ex.what()).find("train_target=true") != std::string::npos;
+  }
+  check(threw, "conditioned affine shadow rejects train target");
+}
+
 void test_channel_mdn_loads_representation_checkpoint() {
   torch::manual_seed(109);
   const auto rep_fixture =
@@ -1405,6 +1454,7 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
   report.sigma_min = 0.001;
   report.sigma_max = 0.0;
   report.eps = 0.000001;
+  report.optimizer_steps = 2;
 
   auto mdn = mdn::ChannelContextMdn(/*context_dim=*/4, /*target_dim=*/2,
                                     /*channel_count=*/1,
@@ -1413,6 +1463,7 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
                                     /*hidden_width=*/8,
                                     /*residual_depth=*/1);
   mdn::channel_context_mdn_train_model_t model(std::move(mdn), 0.001);
+  model.set_optimizer_step_index(7);
   inference_launcher::channel_graph_first_inference_launcher_detail::
       save_channel_mdn_checkpoint_file(checkpoint_path, report, model);
 
@@ -1423,6 +1474,27 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
   auto expected =
       inference_launcher::channel_graph_first_inference_launcher_detail::
           checkpoint_identity_from_report(report);
+  int64_t restored_optimizer_step_index = -1;
+  inference_launcher::channel_graph_first_inference_launcher_detail::
+      load_channel_mdn_checkpoint_file(
+          checkpoint_path, restore, nullptr, &expected,
+          &restored_optimizer_step_index);
+  check(restored_optimizer_step_index == 7,
+        "MDN checkpoint restores the train wrapper optimizer step index");
+
+  const auto legacy_counter_path = dir / "legacy_optimizer_counter.pt";
+  torch::serialize::OutputArchive legacy_counter_archive;
+  legacy_counter_archive.write(
+      "meta/optimizer_steps",
+      torch::tensor({5}, torch::TensorOptions().dtype(torch::kInt64)));
+  legacy_counter_archive.save_to(legacy_counter_path.string());
+  torch::serialize::InputArchive legacy_counter_input;
+  legacy_counter_input.load_from(legacy_counter_path.string(),
+                                 torch::Device(torch::kCPU));
+  check(inference_launcher::channel_graph_first_inference_launcher_detail::
+            read_channel_mdn_optimizer_step_index(legacy_counter_input) == 5,
+        "MDN checkpoint loader falls back to the legacy optimizer step total");
+
   expected.input_representation_assembly_id = "other_channel_representation";
   bool threw = false;
   try {
@@ -1578,6 +1650,8 @@ void test_channel_mdn_run_mode_loads_checkpoints_without_training() {
                           /*report_every=*/1, "train");
   configure_channel_mdn_checkpoints(source_mdn_fixture,
                                     rep_report.checkpoint_path);
+  configure_channel_mdn_identity_conditioned_direct_readout(source_mdn_fixture);
+  configure_channel_mdn_one_step_direct_readout_warmup(source_mdn_fixture);
   auto source_mdn_pipe = make_pipeline(source_mdn_fixture);
   inference_launcher::channel_graph_first_inference_launcher_options_t
       source_mdn_options{};
@@ -1588,6 +1662,11 @@ void test_channel_mdn_run_mode_loads_checkpoints_without_training() {
   const auto source_mdn_report = source_mdn_launcher.run();
   check(source_mdn_report.checkpoint_written,
         "MDN run source MDN checkpoint written");
+  check(source_mdn_report.last_direct_edge_return_readout_warmup_active &&
+            source_mdn_report
+                    .last_direct_edge_return_readout_scheduled_nll_weight ==
+                0.0,
+        "MDN run source checkpoint is written after its one warmup step");
 
   const auto eval_fixture =
       make_config_fixture("mdn_run_mode_eval", /*max_steps=*/1,
@@ -1595,6 +1674,8 @@ void test_channel_mdn_run_mode_loads_checkpoints_without_training() {
                           /*report_every=*/1, "run");
   configure_channel_mdn_checkpoints(eval_fixture, rep_report.checkpoint_path,
                                     source_mdn_report.checkpoint_path);
+  configure_channel_mdn_identity_conditioned_direct_readout(eval_fixture);
+  configure_channel_mdn_one_step_direct_readout_warmup(eval_fixture);
   auto eval_pipe = make_pipeline(eval_fixture);
   inference_launcher::channel_graph_first_inference_launcher_options_t
       eval_options{};
@@ -1633,6 +1714,25 @@ void test_channel_mdn_run_mode_loads_checkpoints_without_training() {
   check(!eval_report.checkpoint_written, "MDN run no checkpoint write");
   check(eval_report.total_valid_target_count > 0, "MDN run valid targets");
   check(std::isfinite(eval_report.mean_loss), "MDN run mean loss finite");
+  check(std::isfinite(eval_report.last_nll_loss),
+        "MDN run records the raw evaluation NLL");
+  check(!eval_report.last_direct_edge_return_readout_warmup_active,
+        "MDN run restores the completed warmup step from checkpoint");
+  check_close(
+      eval_report.last_direct_edge_return_readout_scheduled_nll_weight, 0.25,
+      1e-12, "MDN run uses the restored post-warmup NLL weight");
+  check(std::isfinite(eval_report.last_edge_return_auxiliary_loss) &&
+            std::isfinite(eval_report.last_direct_edge_return_readout_loss),
+        "MDN run records both auxiliary objective terms");
+  check_close(
+      eval_report.last_loss,
+      eval_report.last_nll_loss *
+              eval_report
+                  .last_direct_edge_return_readout_scheduled_nll_weight +
+          eval_report.last_edge_return_auxiliary_loss +
+          eval_report.last_direct_edge_return_readout_loss,
+      1e-5,
+      "MDN run loss uses training-equivalent scheduled objective accounting");
   check(eval_report.forecast_ev_valid_count ==
             eval_report.total_valid_target_count,
         "MDN run EV metric count matches valid targets");
@@ -1710,6 +1810,7 @@ int main() {
     test_channel_mdn_identity_conditioned_direct_readout_training_run();
     test_channel_mdn_debug_lls();
     test_channel_mdn_run_requires_mdn_checkpoint();
+    test_channel_mdn_conditioned_affine_shadow_defaults_absent_and_rejects_train();
     test_channel_mdn_loads_representation_checkpoint();
     test_channel_mdn_rejects_representation_checkpoint_policy_mismatch();
     test_channel_mdn_rejects_representation_checkpoint_recency_mismatch();

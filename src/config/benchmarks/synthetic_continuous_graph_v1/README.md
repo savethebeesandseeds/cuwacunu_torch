@@ -989,26 +989,813 @@ post-warmup NLL weight to `0.0` for the run and restores the `.jkimyei` on exit.
 The deterministic oracle gates remain unchanged at `0.95`; this ablation only
 tests objective/readout alignment, not a relaxed success criterion.
 
+## Cached Runtime-Head Parity and Augmentation Characterization
+
+The 2026-07-13 cached-feature parity diagnostic changes the next-experiment
+ordering. It reconstructs the exact post-adapter node context from the latest
+surviving 400-feature MDN probe and trains the unchanged production
+`DirectEdgeReturnHead` without the MDN trunk, NLL, representation, or policy.
+
+Structural reconstruction is exact, but the active production head remains
+random on its own fit split:
+
+```text
+production edge_embedding_per_edge fit:
+  direction = 0.508976
+  rank      = 0.508491
+  corr      = 0.002458
+
+fit-only standardized per-edge closed-form control:
+  direction = 0.859292
+  rank      = 0.842310
+  corr      = 0.850094
+```
+
+Per-sample LayerNorm reduces that linear control to
+`0.629306/0.603105/0.377413`, proving a major conditioning loss. The current
+Adam recipe also fails to reach the closed-form solution when given a convex,
+fit-only standardized per-edge linear head, even after no-clip, quadratic-loss,
+20,000-step, full-batch, higher-rate, and zero-initialization controls.
+
+The production readout architecture and solver conditioning are confirmed
+failures. An initial CPU `float64` ridge split inside the small protected-eval
+cache was unstable and correctly retained as diagnostic-only:
+
+```text
+selection validation:       RMSE=0.027788 direction=0.500000 rank=0.485507
+diagnostic confirmation:    RMSE=0.028203 direction=0.529742 rank=0.565657
+```
+
+The frozen checkpoints were then replayed over `[0,730)` with zero optimizer
+steps, producing `6,570` training rows. The real gate selects alpha wholly
+inside training using `[0,554)`, purge `[554,584)`, and validation `[584,730)`.
+No candidate clears the unchanged `0.95` direction and rank thresholds. The
+lowest-RMSE diagnostic fallback (`alpha=1e-10`) records:
+
+```text
+inner train validation: direction=0.805936 rank=0.793760 corr=0.687220
+protected eval:         direction=0.810976 rank=0.785908 corr=0.740333
+```
+
+Thus the frozen post-adapter features contain stable, material signal, and the
+near-random production head is a genuine readout failure. The remaining gap to
+`0.95/0.95` is also genuine upstream representation/context quality loss. A
+calibrated readout can recover much of the present signal but cannot solve the
+benchmark alone. The controlled outer-input augmentation ablation has now
+completed; its result is recorded below. The unconsumed `[1088,1170)` holdout
+remains sealed.
+
+The new deterministic augmentation test separately records:
+
+```text
+light_phase_safe_v2 retention: H4=0.5, H10=0.8, H30=0.9
+period-8 oracle direction:     H4=0.96875, H10=1.0, H30=1.0
+```
+
+Temporal augmentation is disproportionately destructive to short histories,
+but it does not by itself explain a random forecast head.
+
+Evidence:
+
+```text
+artifacts/synthetic_mdn_cached_feature_runtime_head_parity.v1.report
+artifacts/synthetic_mdn_frozen_affine_calibration_sidecar_v1.report
+artifacts/synthetic_mdn_frozen_affine_objective_ladder_v1.report
+artifacts/synthetic_mdn_frozen_affine_optimizer_parity_v1.report
+artifacts/synthetic_mdn_frozen_feature_ridge_diagnostic.v1.report
+artifacts/synthetic_mdn_frozen_train_eval_ridge_gate.v1.report
+artifacts/synthetic_mtf_augmentation_phase_diagnostic.v1.report
+artifacts/synthetic_mtf_outer_input_augmentation_off_v1.report
+artifacts/synthetic_mtf_vicreg_weak_view_augmentation_off_v1.report
+artifacts/synthetic_mtf_vicreg_gradient_off_v1.report
+```
+
+Reproduction:
+
+```text
+src/scripts/benchmarks/synthetic_continuous_graph_v1/
+  run_mdn_cached_feature_runtime_head_parity.sh
+  run_mdn_frozen_affine_calibration_sidecar.sh
+  run_mdn_frozen_affine_objective_ladder.sh
+  run_mdn_frozen_affine_optimizer_parity.sh
+  run_mdn_frozen_feature_capture.sh
+  run_mtf_outer_input_augmentation_off_ablation.sh
+  run_mtf_vicreg_weak_view_augmentation_off_ablation.sh
+  run_mtf_vicreg_gradient_off_ablation.sh
+
+src/config/benchmarks/synthetic_continuous_graph_v1/
+  wikimyei.representation.mtf_jepa_mae_vicreg.vicreg_weak_view_augmentation_off_v1.jkimyei
+  wikimyei.representation.mtf_jepa_mae_vicreg.vicreg_gradient_off_v1.jkimyei
+
+SYNTHETIC_MDN_RUNTIME_HEAD_PARITY_RIDGE_ONLY=true \
+  bash \
+  src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_cached_feature_runtime_head_parity.sh
+
+make -C src/tests/bench/jkimyei/training/channel_graph_first_launchers \
+  run-test_jkimyei_mtf_jepa_mae_vicreg_augmentations
+```
+
+## Outer-Input Augmentation-Off Result
+
+The 2026-07-14 control retrained a fresh representation and matched MDN while
+neutralizing only the six launcher-owned outer mechanisms. The hidden VICReg
+weak-view time drop (`0.01`) and Gaussian jitter (`0.005`) remained active, so
+this is an outer-stack control rather than a complete no-augmentation run.
+
+Values are `direction / rank / correlation / RMSE`:
+
+| Surface and split | Baseline | Outer off | Delta |
+|---|---:|---:|---:|
+| Raw representation, inner validation | `0.730594 / 0.700913 / 0.578101 / 0.023612` | `0.696347 / 0.694064 / 0.546996 / 0.023653` | `-0.034247 / -0.006849 / -0.031106 / +0.000041` |
+| Raw representation, historical eval | `0.743225 / 0.722900 / 0.627061 / 0.021694` | `0.707656 / 0.693428 / 0.584996 / 0.022502` | `-0.035569 / -0.029472 / -0.042065 / +0.000809` |
+| Post-MDN, inner validation | `0.805936 / 0.793760 / 0.687220 / 0.020837` | `0.765601 / 0.763318 / 0.662225 / 0.021203` | `-0.040335 / -0.030441 / -0.024995 / +0.000366` |
+| Post-MDN, historical eval | `0.810976 / 0.785908 / 0.740333 / 0.018693` | `0.775068 / 0.758130 / 0.706236 / 0.019694` | `-0.035908 / -0.027778 / -0.034097 / +0.001001` |
+
+The raw selected alpha moved from `1e-10` to `1e-8`; a fixed-`1e-10` control
+also worsened historical direction/rank to `0.718157/0.701220`. Post-MDN alpha
+stayed at `1e-10`. Both selected outputs replay byte-identically, both gates
+remain below `0.95/0.95`, and `[1088,1170)` was never opened.
+
+The outer stack is therefore not the primary bottleneck and appears modestly
+helpful in this one-seed diagnostic. Effective rank and conditioning improved
+when it was disabled, but task-aligned decodability worsened, so geometry-only
+health metrics are not sufficient. The follow-up restored
+`light_phase_safe_v2` and disabled only the model-internal VICReg weak views;
+its result is below.
+
+For the raw probe, the comparator's emitted post-adapter boundary label is
+misleading: the actual surface is the pre-MDN-adapter `H=32` representation
+encoding with `[base, quote, base - quote]`. The post-MDN `H=128`/400-feature
+probe is the true post-adapter surface.
+
+## Hidden VICReg Weak-View Augmentation-Off Result
+
+The follow-up changed only the internal weak-view Gaussian jitter (`0.005 ->
+0`) and time-dropout scale (`0.10 -> 0`, effective probability `0.01 -> 0`).
+The zero-effect implementation still consumed the legacy RNG draws. Outer
+augmentation, masks, losses, optimizer, seed, 3,000/3,500-step budgets, and
+all ranges stayed fixed.
+
+Values are `direction / rank / correlation / RMSE`:
+
+| Surface and split | Baseline | Hidden weak views off | Delta |
+|---|---:|---:|---:|
+| Raw representation, inner validation | `0.730594 / 0.700913 / 0.578101 / 0.023612` | `0.688737 / 0.694064 / 0.550651 / 0.024272` | `-0.041857 / -0.006849 / -0.027450 / +0.000661` |
+| Raw representation, historical eval | `0.743225 / 0.722900 / 0.627061 / 0.021694` | `0.724255 / 0.708333 / 0.610111 / 0.022026` | `-0.018970 / -0.014566 / -0.016950 / +0.000332` |
+| Post-MDN, inner validation | `0.805936 / 0.793760 / 0.687220 / 0.020837` | `0.805936 / 0.785388 / 0.682145 / 0.020944` | `+0.000000 / -0.008371 / -0.005075 / +0.000108` |
+| Post-MDN, historical eval | `0.810976 / 0.785908 / 0.740333 / 0.018693` | `0.798780 / 0.778794 / 0.753269 / 0.018278` | `-0.012195 / -0.007114 / +0.012936 / -0.000415` |
+
+Both surfaces kept `alpha=1e-10`, both selected outputs replay byte-identically,
+and neither clears `0.95/0.95`. Historical post-MDN correlation and RMSE move
+slightly in the favorable direction, but the direction/rank gate does not:
+the weak views are not the primary bottleneck and may be modestly useful at
+this seed. `[1088,1170)` remains unopened.
+
+The representation objective is still dominated by global VICReg pressure:
+its weighted contribution is about `0.197399`, 82% of mean loss `0.240950`.
+The next clean upstream test keeps both augmentation layers and the VICReg
+branch active while changing only `LAMBDA_VICREG=0.05 -> 0`.
+
+## Aggregate VICReg Gradient-Off Result
+
+The follow-up made only that one-line coefficient change. The VICReg branch,
+canonical weak views, RNG draws, outer augmentation, masks, optimizer, model,
+seeds, 3,000/3,500-step budgets, and all ranges stayed fixed. The control still
+computed the global VICReg aggregate, but its contribution to the representation
+gradient was zero.
+
+This sharply improved intrinsic latent geometry:
+
+```text
+effective-rank fraction: 0.665276 -> 0.715283
+condition number:        94.1924  -> 31.1743
+isotropy score:          0.014639 -> 0.0373614
+```
+
+It did not improve the forecasting task. Values are
+`direction / rank / correlation / RMSE`:
+
+| Surface and split | Baseline | VICReg gradient off | Delta |
+|---|---:|---:|---:|
+| Raw representation, inner validation | `0.730594 / 0.700913 / 0.578101 / 0.023612` | `0.729072 / 0.701674 / 0.556664 / 0.023451` | `-0.001522 / +0.000761 / -0.021438 / -0.000161` |
+| Raw representation, historical eval | `0.743225 / 0.722900 / 0.627061 / 0.021694` | `0.741531 / 0.695799 / 0.602476 / 0.022208` | `-0.001694 / -0.027100 / -0.024585 / +0.000514` |
+| Post-MDN, inner validation | `0.805936 / 0.793760 / 0.687220 / 0.020837` | `0.799087 / 0.755708 / 0.658574 / 0.021759` | `-0.006849 / -0.038052 / -0.028646 / +0.000922` |
+| Post-MDN, historical eval | `0.810976 / 0.785908 / 0.740333 / 0.018693` | `0.786924 / 0.762195 / 0.722576 / 0.019257` | `-0.024051 / -0.023713 / -0.017756 / +0.000564` |
+
+Raw alpha selection moved from `1e-10` to `1e-9`. At fixed canonical
+`alpha=1e-10`, validation direction/rank is `0.728311/0.702435` and historical
+direction/rank is `0.742886/0.697493`; the historical rank regression remains.
+Raw selected, raw fixed-alpha, and post-MDN probes each replay byte-identically.
+Both selected gates remain below `0.95/0.95`, and `[1088,1170)` remains
+unopened.
+
+The matched production direct head also remains near random at
+`0.515033/0.509114` direction/rank with correlation `-0.001655`. Aggregate
+VICReg removal therefore does not solve either failure. At seed 17 it appears
+useful for task decodability, especially after MDN context, despite making the
+latent geometry look less ideal. Keep canonical augmentation and
+`LAMBDA_VICREG=0.05`; do not continue broad augmentation/VICReg removal.
+
+The specialized MTF report does not accumulate the already-computed VICReg
+similarity, variance, and covariance subterms. This run cannot identify a
+component cause. If component work is revisited, add no-math-change telemetry
+and measure weighted shared-encoder gradients before choosing one component
+arm.
+
+The sealed result is recorded in
+`artifacts/synthetic_mtf_vicreg_gradient_off_v1.report` and reproduced by
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mtf_vicreg_gradient_off_ablation.sh`.
+
+## Actual-Train-Range Affine Optimizer Parity Result
+
+The frozen post-adapter surface was next tested on the real development range
+`[0,730)`, with the already-consumed historical diagnostic range
+`[760,1088)` used only for confirmation. Adam settings were fixed in advance.
+The analytic ridge retained its purged train-only selection split and refit on
+all development anchors.
+
+| Readout and split | Direction | Rank | RMSE |
+|---|---:|---:|---:|
+| Production head, development | `0.483257` | `0.512938` | `0.028359` |
+| Production head, historical | `0.481030` | `0.508130` | `0.028395` |
+| Trainable affine Adam, development | `0.543836` | `0.553425` | `0.035386` |
+| Trainable affine Adam, historical | `0.537940` | `0.550813` | `0.035622` |
+| Analytic affine, development refit | `0.841705` | `0.824962` | `0.016640` |
+| Analytic affine, historical | `0.810976` | `0.785908` | `0.018693` |
+
+This reproduces the optimizer/readout failure on the actual training range.
+The decisive copy control also proves that the registered affine module can
+represent the closed-form solution: copying the analytic mean, scale, weights,
+and biases into its per-edge `nn::Linear` modules changed predictions by at
+most `4.55e-13` on development and `4.66e-10` historically, with zero
+direction/rank change and sub-`1e-13` RMSE drift. The parameterization and
+feature reconstruction are sound; the current Adam plus production-objective
+path fails to find the representable solution.
+
+This does not yet separate optimizer from objective, wire the affine sidecar
+into the live MDN checkpoint path, or prove that no honest nonlinear readout
+can exceed the affine result. Affine decodability remains below the
+`0.95/0.95` gate. The two GPU baselines and two copy controls each replay
+byte-identically. The
+legacy captures are protected by a fresh full-content evidence manifest rather
+than claimed as originally stage-sealed. Maximum inspected anchor is 1087;
+`[1088,1170)` remains unopened.
+
+The durable record is
+`artifacts/synthetic_mdn_frozen_affine_optimizer_parity_v1.report`; reproduce
+it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_frozen_affine_optimizer_parity.sh`.
+
+## Exportable Diagnostic Affine Calibration Sidecar Result
+
+The development-only analytic affine refit is now a real public diagnostic
+module, `PerEdgeAffineReturnHead`, with strict save/load metadata and no live
+MDN or policy wiring. It accepts post-direct-adapter context or the exact
+400-value cached readout feature tensor. The cached first `3H=384` values are
+required to equal `[base, quote, base - quote]` reconstructed from context; the
+remaining 16 cached identity values are explicitly ignored. The canonical run
+found bit-exact feature prefixes across all inspected rows.
+
+The artifact records only fit/selection provenance: fit `[0,554)`, purge
+`[554,584)`, validation `[584,730)`, refit `[0,730)`, and `valid_from=730`.
+Historical confirmation is deliberately absent from its metadata. Its loaded
+metrics reproduce the analytic decoder:
+
+| Split | Direction | Rank | RMSE | Maximum analytic prediction delta |
+|---|---:|---:|---:|---:|
+| Development `[0,730)` | `0.841705` | `0.824962` | `0.016640` | `4.55e-13` |
+| Historical `[760,1088)` | `0.810976` | `0.785908` | `0.018693` | `4.66e-10` |
+
+Source and loaded tensors are exactly equal, all parameters remain frozen,
+canonical metadata and semantic state digest round-trip, and context,
+cached-readout, in-memory, and reloaded predictions are bit-exact with one
+another. Main/replay probes and metadata are byte-identical. The physical
+Torch archives differ because their basenames differ; archive byte identity is
+observational only, while semantic state and loaded predictions are the
+acceptance authority.
+
+The sidecar therefore closes the export/reload and feature-contract question,
+not the `0.95/0.95` quality gap. It remains diagnostic-only. Its durable record
+is
+`artifacts/synthetic_mdn_frozen_affine_calibration_sidecar_v1.report`; reproduce
+or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_frozen_affine_calibration_sidecar.sh`.
+Maximum inspected anchor is 1087; `[1088,1170)` remains unopened.
+
+The next readout control should hold Adam, initialization, batching, seed, and
+frozen features fixed while adding objective ingredients in order: raw-target
+MSE; target scaling plus Huber regression; direction; then rank. Judge every
+arm against the reloaded sidecar using the existing closeness tolerances and do
+not tune on historical confirmation. Failure of raw-target MSE would redirect
+the diagnosis to optimizer, batching, and conditioning.
+
+## Frozen-Affine Objective Ladder Result
+
+That predeclared ladder is now complete on the exact frozen post-adapter
+development surface. Selection used fit `[0,554)`, purge `[554,584)`, and
+validation `[584,730)`. No arm passed, so refit was inapplicable, the
+previously consumed historical confirmation `[760,1088)` was not opened, and
+the final `[1088,1170)` holdout remains sealed. Maximum loaded anchor is 729.
+
+The float64 analytic ridge oracle reached
+`0.805936 / 0.793760 / 0.020837` direction/rank/RMSE. Its separately remapped,
+frozen CUDA-float32 affine copy reached
+`0.806697 / 0.794521 / 0.020834` and passed every parity gate, proving that the
+registered candidate surface can express an oracle-level solution.
+
+| Arm | Direction | Rank | RMSE | Result |
+|---|---:|---:|---:|---|
+| L0 raw MSE, mini-batch Adam | `0.574581` | `0.588280` | `0.028125` | fail |
+| L1 scaled Huber | `0.513699` | `0.528919` | `0.033824` | fail |
+| L2 plus direction | `0.514460` | `0.515982` | `0.031274` | fail |
+| L3 plus rank | `0.508371` | `0.528919` | `0.034331` | fail |
+| B2 raw MSE, full-batch Adam | `0.559361` | `0.570015` | `0.028043` | fail |
+| B3 PCA-whitened mini-batch Adam | `0.771689` | `0.767884` | `0.022291` | fail |
+| B4 raw MSE, full-batch LBFGS | `0.700913` | `0.694064` | `0.024414` | fail |
+
+L0 and B2 clipped zero updates, so clipping and mini-batch noise are not the
+primary explanation. In contrast, every L1-L3 update clipped, with final
+full-gradient norms above 12,900; the scaled composite objective aggravates
+the failure but cannot be its sole cause because raw MSE also fails.
+
+The strongest boundary is conditioning. Each raw 384-coordinate edge surface
+retains only 26 eigen-directions at the declared threshold, has nullity 358,
+effective rank near 1.41, and retained condition number above `6.6e9`.
+Standardization raises retained ranks to only `121/119/120`, while condition
+numbers remain near `1e10`. PCA whitening recovers most of the available
+signal, but B3 still misses the oracle gates by `0.034247` direction,
+`0.025875` rank, and `0.001454` RMSE. Its raw-weight collapse also misses the
+separate float32 deployability delta by `6.50e-6`.
+
+The diagnosis is therefore two-layered: the current training path fails to
+recover signal the same CUDA affine module can represent, and the analytic
+affine ceiling itself remains below the benchmark's `0.95/0.95` requirement.
+Optimizer/conditioning repair comes first; upstream feature quality remains a
+real second problem.
+
+The canonical runner sealed the development capture and every actual input.
+It carried the historical probe only as a conditional CLI pathname and did not
+require, read, validate, hash, or seal its raw content. Since selection was
+empty, the helper never opened it. Main and replay probes are byte-identical at
+`1b43e31eae93a8a88ebe07b7ac9c7ab23b4881bf4b101f60566694286f8b4c7f`,
+both success logs are empty, and the exact validator pins 1,109 result keys.
+
+The durable record is
+`artifacts/synthetic_mdn_frozen_affine_objective_ladder_v1.report`; reproduce
+or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_frozen_affine_objective_ladder.sh`.
+
+## Frozen-Affine Conditioning-Parity Result
+
+The ordered follow-up is complete on the same sealed post-adapter development
+surface, with fit `[0,554)`, purge `[554,584)`, validation `[584,730)`, and no
+anchor above 729 loaded. It compares retained PCA coordinates, ordinary
+full-rank coordinates, and a full-rank damped eigenspace under the same
+`alpha=1e-10` mapped-weight ridge objective. It remains diagnostic-only,
+contains no policy path, and leaves `[1088,1170)` sealed.
+
+Analytic rows in this experiment are fit-objective noninferiority references:
+they are optimized on the fit range and then measured on validation. The
+separate affine sidecar was fitted on all `[0,730)` development anchors, so
+its metrics on `[584,730)` are descriptive and in-sample only; it is not a
+gate reference.
+
+| Method | Direction | Rank | RMSE | Scientific result | Raw-f32 collapse |
+|---|---:|---:|---:|---|---|
+| Full analytic, all 384 modes | `0.805936` | `0.793760` | `0.02083634` | reference | fail, `1.814e-4` |
+| R0 retained PCA analytic, ranks `121/119/120` | `0.765601` | `0.756469` | `0.02251255` | operational fail | pass, `1.701e-5` |
+| R1 retained PCA, full-batch Adam | `0.762557` | `0.754947` | `0.02255043` | pass | pass, `1.756e-5` |
+| R1 retained PCA, full-batch LBFGS | `0.765601` | `0.756469` | `0.02251255` | pass in 3 iterations | pass, `1.901e-5` |
+| R2 ordinary full-rank LBFGS | `0.694064` | `0.691781` | `0.02452816` | fail after 500 iterations | pass for failed state |
+| R2 damped full-rank LBFGS | `0.805936` | `0.793760` | `0.02083634` | pass in 3 iterations | fail, `1.654e-4` |
+
+The retained analytic reference itself misses the full-reference gate by
+`0.040335` direction, `0.037291` rank, and `0.001676` RMSE. PCA truncation
+therefore discards material signal; optimizer repair inside that reduced basis
+cannot recover the all-mode result. Explicit retained-coordinate LBFGS does,
+however, recover its own fit objective to a `5.43e-12` relative gap, proving
+that the reduced surface is straightforward to optimize when left
+uncollapsed.
+
+The full-rank comparison isolates the conditioning failure on this affine
+diagnostic. Ordinary LBFGS exhausts 500 iterations with an `0.8746` relative
+objective gap. The damped coordinate system keeps every one of the 384 modes
+and changes no objective, data, initialization, or solver, yet reaches a
+`3.23e-14` relative gap in three iterations and matches the full reference.
+Coordinate conditioning therefore causally closes this measured optimizer
+gap. It does not explain why the full affine reference itself remains below
+the benchmark's `0.95/0.95` requirement, and it makes no new causal claim
+about augmentation.
+
+Deployment remains a separate issue. Direct transformed-coordinate float32
+evaluation has only `3.64e-9` maximum quantization error, but collapsing the
+successful full-rank damped state into raw float32 affine weights changes
+development predictions by `1.654e-4`, above the `2e-5` tolerance. The
+ordinary arm's collapse passes only because it stopped far from the desired
+high-weight solution. A production repair should therefore retain centered
+damped coordinates explicitly or establish a higher-precision collapse
+contract; scientific parity alone is insufficient.
+
+Main and replay probes are byte-identical at
+`1f218f938d965cdb2ee6ef59dc4152a35e4c41ec3189b95dd47dc16252485fd1`,
+both success logs are empty, and all 608 keys are pinned. The canonical
+master-manifest file is sealed at
+`414242616aa71e74aaa5812a05d620073099b26cb7c014a0bc3b75eeb480329e`.
+The durable record is
+`artifacts/synthetic_mdn_frozen_affine_conditioning_parity_v1.report`;
+reproduce or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_frozen_affine_conditioning_parity.sh`.
+
+## Frozen-Affine Deployment-Bridge Result
+
+The conditioned full-rank affine solution now crosses an actual diagnostic
+runtime boundary. The canonical experiment is development-only: it uses
+anchors `[0,730)`, with fit `[0,554)`, purge `[554,584)`, validation
+`[584,730)`, and maximum loaded anchor 729. The final `[1088,1170)` holdout
+remains sealed. No policy path is present; the v2 artifact is run-only and
+policy-ineligible.
+
+The bridge reconstructs the conditioning diagnostic's damped analytic state,
+prediction digest, and fit objective exactly. The trained damped arm differs
+from that analytic reference by at most `1.8626451e-8`, so this is a deployment
+test of the successful conditioned solution rather than a new fit.
+
+| Runtime path | Maximum development delta | `2e-5` gate |
+|---|---:|---|
+| Uncentered mapped float32 | `1.5605241e-4` | fail |
+| Centered mapped float32 | `1.5287660e-4` | fail |
+| Explicit damped transform in float32 | `2.1270663e-4` | fail |
+| Float32 normalize, then centered mapped float64 | `1.6942620e-5` | pass |
+
+The passing path preserves the capture's exact float32 normalization order,
+promotes on the same device, then subtracts the fit-only edge center and
+performs the mapped-weight dot product plus bias in float64 before casting the
+output to float32. Centering in float32 is not enough, and evaluating the
+explicit damped transform wholly in float32 is worse. The matched centered
+comparison therefore identifies higher-precision accumulation as the repair
+for this measured deployment-arithmetic failure.
+
+The v2 artifact's semantic digest is
+`84c92fb959c0b6b2f6e27fbfe8744f51a0d4e42ae0ad6172571e176308af0c38`.
+CPU/CUDA maximum disagreement is only `1.4551915e-11`; full/chunked,
+in-memory/reloaded, and suffix-perturbation comparisons are exact. The
+main/replay probe is byte-identical at
+`00a382d060d20d7a8277d9f120fdc6578c572072264847157424c8a09207d3fb`,
+with 504 pinned keys and key-set digest
+`275b86d4ece31ec00bbb9591724d439335d9de5f9a72a99fe84d0fd1abc82f6b`.
+The archives are byte-identical at
+`7c2e2008a9b8560c6db630da9e68a061b3a038eba26def6237dcc89a77731739`,
+and the master-manifest file is sealed at
+`467c69c9a05035c9b58f26d90e29df127fdc11dec36f4e7deed8c7b905b23a91`.
+
+The deployment pass is narrow: `1.6942620e-5` consumes `84.7131%` of the
+tolerance and leaves about `3.06e-6` headroom. It proves this arithmetic and
+archive contract on the frozen affine development surface; it does not prove
+upstream representation quality, production nonlinear forecasting recovery,
+augmentation causality, or policy performance.
+
+The durable record is
+`artifacts/synthetic_mdn_frozen_affine_deployment_bridge_v1.report`;
+reproduce or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_frozen_affine_deployment_bridge.sh`.
+
+## Raw-History MDN Isolation Result
+
+The production `ChannelContextMdn` and canonical NLL trainer have now been
+tested without the representation engine or policy. The diagnostic projects
+30 causal 1d close returns into the exact four-node uniform gauge and predicts
+the next node return. It uses effective fit anchors `[1,554)`, purge
+`[554,584)`, and validation `[584,730)`; the helper receives only frozen
+760-row CSV prefixes, loads no anchor above 729, and never opens historical
+`[760,1088)` or final holdout `[1088,1170)` data.
+
+| Arm | Validation direction | Margin direction | Rank | RMSE | NLL | Diagnostic result |
+|---|---:|---:|---:|---:|---:|---|
+| K=1 | `0.965753` | `1.000000` | `1.000000` | `0.00023336` | `-4.604219` | pass |
+| K=3 | `0.986301` | `1.000000` | `1.000000` | `0.00028118` | `-4.258433` | main validation passes; canary fails |
+
+This establishes that the raw synthetic charts are sequentially learnable and
+that the MDN backbone, distribution path, and NLL objective can learn them
+without a representation checkpoint. K=1 passes every gate. K=3 also learns
+the main fit/validation surface, but its 16-anchor repeated-batch density
+canary fails because NLL worsens from `-0.745463` to `1.868101` even while
+margin direction and rank reach 1.0. In that canary, mixture entropy contracts
+from `1.048788` to `0.028079`, component 2 usage reaches `0.996120`, and mean
+sigma falls from `0.108147` to `0.006464`.
+
+The K=3 observation supports a mixture/density-dynamics hypothesis, not a
+single-seed causal attribution. NLL scores absolute four-node densities while
+the forecast metrics score base-minus-quote differences of mixture
+expectations, so common-mode node error, component cancellation, over-tight
+sigma, or a few density outliers can preserve excellent edge forecasts while
+damaging likelihood. The result rules out "these simple charts are not
+forecastable" and "the MDN cannot learn raw causal history" as explanations
+for the near-random integrated result. It does not by itself distinguish the
+representation, representation-to-MDN interface, or integrated optimization
+path.
+
+Main and replay probes are byte-identical at
+`f5b14f48081b84100f153635cd2663a76a08b5598ad6d8ac4bbf38f700918ecb`;
+the master-manifest file is sealed at
+`7745ec13ba9d914bfab289980d4f55b4cc79c57399703fe98c43ef8310964eac`.
+The durable record is
+`artifacts/synthetic_mdn_raw_history_isolation_v1.report`; reproduce or verify
+it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_raw_history_isolation.sh`.
+
+## Frozen-Representation K=1 Isolation Result
+
+The same K=1 `ChannelContextMdn` and NLL schedule were then applied to the
+frozen production representation, still without policy, checkpoint writes,
+historical confirmation, or final holdout access. The probe reconstructs the
+channel-2 node context exactly from the canonical representation capture and
+uses fit `[1,554)`, purge `[554,584)`, and readout validation `[584,730)`.
+
+| Input arm | Margin direction | Margin rank | Correlation | Prediction/target std | NLL |
+|---|---:|---:|---:|---:|---:|
+| Native frozen representation | `0.501235` | `0.503480` | `-0.027769` | `0.000088` | `-2.463191` |
+| Fit-only featurewise z-score | `0.525926` | `0.522042` | `0.096803` | `0.023072` | `-2.518800` |
+| Previous-return control | `0.814815` | `0.740139` | `0.653617` | `0.998690` | n/a |
+| Authored seasonal-lag oracle | `1.000000` | `1.000000` | `1.000000` | `1.000000` | n/a |
+
+Both representation arms fail. The standardized arm ends slightly worse than
+the unconditional per-node Gaussian validation NLL of `-2.524585`, and its
+mean prediction collapses to about `2.3%` of target standard deviation.
+Featurewise scaling is therefore not a sufficient repair. In contrast, the
+raw-history K=1 arm using the identical batch schedule reached `1.0/1.0`
+margin direction/rank, so this is not a generic MDN-capacity or synthetic-data
+failure.
+
+This experiment is a frozen-feature readout diagnostic, not a representation
+generalization result. The representation checkpoint itself trained on all
+anchors `[0,730)`, so `[584,730)` is held out only from the fresh K=1
+optimizer. Overlapping upstream windows expose 145 of its 146 target rows as
+later representation contexts. The aggregate capture count nevertheless
+proves all `8,760 = 730 * 4 * 3` context-mask slots were valid; the helper's
+all-true mask reconstruction is not an untested assumption.
+
+Main and replay reports are byte-identical at
+`8d1bc98a9ef766871781262eb63a87f2cb2c7c6d0eaec9906d7a31fcfa98de38`;
+the master-manifest file is sealed at
+`1bc73921d059c71c1a8c17a56fd3d73b580445ff3ecab750e6057235aa1e3994`.
+The durable record is
+`artifacts/synthetic_mdn_frozen_representation_k1_isolation_v1.report`;
+reproduce or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_frozen_representation_k1_isolation.sh`.
+
+## Cached Direct-Head Input-Normalization A/B
+
+The production direct head was next isolated at its exact cached post-adapter
+400-coordinate input. The two arms have identical initial parameter bytes,
+edge specialization, batches, Adam state, `100/5/5` objective, target scale
+36, and 3,500-step schedule. The only arithmetic difference is whether the
+registered per-sample `input_norm` forward call executes.
+
+| Arm | Canary margin direction/rank | Validation margin direction/rank | Correlation |
+|---|---:|---:|---:|
+| Current sample LayerNorm | `0.758065 / 0.702899` | `0.506984 / 0.517401` | `-0.018226` |
+| Exact LayerNorm bypass | `0.741935 / 0.702899` | `0.480690 / 0.470998` | `-0.000991` |
+
+Neither arm passes the predeclared `0.95/0.95` 16-anchor capacity canary. The
+bypass also fails to improve the full validation result, so the report's
+causal-evidence gate is false and it makes no claim that removing LayerNorm
+repairs the trainable head. This does not erase the separate closed-form
+finding that sample LayerNorm loses substantial linear signal; it proves that
+bypassing that operation alone is insufficient because the unconditioned
+head/optimizer/objective path still collapses.
+
+Main and replay reports are byte-identical at
+`70b9e5bbf51645642239fde69cd4b7c24e53ae06b1e04bc4d44309b68122c670`;
+the master-manifest file is sealed at
+`6ab981c63852e01100ee3ac3b0995d109278ed7f6b0e0c948784faf7a51d1760`.
+The durable record is
+`artifacts/synthetic_mdn_cached_feature_input_norm_ablation_v1.report`;
+reproduce or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_cached_feature_input_norm_ablation.sh`.
+
+## Frozen-Representation K=1 Objective A/B
+
+The final isolation holds the fit-zscored representation, K=1 model,
+initialization, batches, optimizer, and schedule fixed. Arm A is byte-exact to
+one canonical `ChannelContextMdnNllTrainer` step. Arm B optimizes the same K=1
+mixture mean directly in edge-return space with production target scale 36
+and Smooth-L1 beta `0.5`; its logit/sigma slices and the separate direct head
+remain unchanged.
+
+| Decoder/objective | Canary margin direction/rank | Validation margin direction/rank | Correlation |
+|---|---:|---:|---:|
+| Trainable-sigma node NLL | `0.568182 / 0.744681` | `0.525926 / 0.522042` | `0.096803` |
+| Target-scaled edge Huber | `1.000000 / 0.978723` | `0.651852 / 0.545244` | `0.305033` |
+| Fit-only standardized per-edge linear control | n/a | `0.908642 / 0.907193` | `0.911848` |
+
+Direct edge supervision causally rescues mechanical fitting: its canary reaches
+near-perfect signal recovery while NLL does not. On the full development
+slice it adds `0.125926` margin-direction accuracy but only `0.023202` rank,
+and it remains far below the exact linear control. The report therefore calls
+this a mechanical-fit rescue without a material validation rescue. Arm B
+changes both loss family and target geometry, so this result implicates the
+combined trainable-density/node-gauge/edge-objective alignment bundle; it does
+not isolate sigma alone.
+
+The linear control is the strongest current boundary. The frozen
+representation contains much more deterministic edge signal than either MDN
+objective extracts, but even that transductive development decoder remains
+below the `0.95/0.95` oracle gate. The diagnosis is therefore layered rather
+than binary: readout objective and optimization are the immediate failure,
+while upstream representation quality still sets a lower ceiling than the
+authored chart permits.
+
+Main and replay reports are byte-identical at
+`c687a00d3b3e2f17b79f4127d1d5521fa88f25e4bb0ca361dd54478a463988a8`;
+the master-manifest file is sealed at
+`27ca3446f60a8155be28080d66e9690ab6e34dbfc7965591c2657505c366daaa`.
+The durable record is
+`artifacts/synthetic_mdn_frozen_representation_k1_objective_ab_v1.report`;
+reproduce or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_frozen_representation_k1_objective_ab.sh`.
+
+## Production-Loader Conditioned Direct-Feature Bridge
+
+The conditioned v2 per-edge readout has now crossed the real production MDN
+boundary. The sealed helper reconstructs the captured representation tensor as
+`[730,4,3,32]`, creates the exact production `ChannelContextMdn`, and loads the
+real checkpoint through
+`channel_graph_first_inference_launcher_detail::load_channel_mdn_checkpoint_file`
+with the complete non-null checkpoint identity. It then runs the backbone,
+channel adapters, and direct readout-feature constructor in the original
+64-anchor CUDA batches and applies the archived conditioned head.
+
+| Checked surface | Maximum absolute delta | Exact tensor equality |
+|---|---:|---:|
+| Recomputed versus cached `[730,3,3,400]` direct features | `0.0` | true |
+| Recomputed versus cached conditioned predictions | `0.0` | true |
+| Recomputed validation metrics versus the sealed shadow report | `0.0` | n/a |
+| Recomputed validation production objective versus the sealed shadow report | `0.0` | n/a |
+
+The live recomputed validation result is direction `0.805936`, rank `0.793760`,
+correlation `0.687225`, RMSE `0.02083614`, and production direct-edge objective
+`42.651226`. Primary and replay reports are byte-identical at
+`b1468a46a054f7c0099fea42da119f5bfda04014c90f4b8148e9d2c934c9a876`;
+the master-manifest file is sealed at
+`bca6b33872bd64bac1319ab208c8789b24b5442e9032b7e5205e5e398350e119`.
+
+This removes the cache/export boundary as an explanation: the signal recovered
+by the conditioned affine head exists exactly at the real checkpoint's direct
+feature seam. The immediate integrated failure is therefore in the learned
+readout/training path, not an accidental probe reconstruction or deployment
+arithmetic mismatch. It still does not prove unseen-future generalization.
+The upstream representation and MDN both trained on development `[0,730)`, and
+this bridge deliberately did not run representation forward, the MDN
+distribution head, policy, or the end-to-end forecasting launcher. Historical
+confirmation and final holdout `[1088,1170)` remain unopened.
+
+The durable record is
+`artifacts/synthetic_mdn_frozen_conditioned_affine_mdn_forward_bridge_v1.report`;
+reproduce or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_frozen_conditioned_affine_mdn_forward_bridge.sh`.
+
+## No-Refit Historical Conditioned-Head Confirmation
+
+The conditioned v2 head also passes the predeclared no-refit confirmation on
+historical anchors `[760,1088)`. The frozen representation and MDN checkpoints
+were trained only on development `[0,730)`, and the conditioned artifact was
+fit on `[0,554)`, purged on `[554,584)`, and selected on `[584,730)`. The
+confirmation loads the exact production MDN checkpoint head and the exact
+conditioned artifact against the same captured `[328,3,3,400]` feature surface;
+it performs zero optimizer steps and writes no checkpoint.
+
+| Readout on `[760,1088)` | Direction | Rank | Correlation | RMSE | Production objective |
+|---|---:|---:|---:|---:|---:|
+| Frozen checkpoint direct head | `0.481030` | `0.508130` | `-0.007598` | `0.028335` | `67.259834` |
+| Frozen conditioned v2 head | `0.802507` | `0.780488` | `0.729269` | `0.019188` | `39.528431` |
+| Conditioned improvement | `+0.321477` | `+0.272358` | n/a | `0.677177x` | n/a |
+
+All seven gates declared before this evaluation pass: direction and rank at
+least `0.65`, correlation at least `0.50`, RMSE at most `0.025`, direction and
+rank improvements of at least `0.10`, and RMSE at most `0.90x` the checkpoint
+head. This is the cleanest localization so far. A fixed readout fit entirely on
+development transfers strong signal through the frozen representation and MDN
+direct-feature surface, while the learned checkpoint head remains random. The
+immediate production failure is therefore the learned direct-readout/training
+path, not a cache boundary and not an absence of generalizing information in
+the frozen feature surface.
+
+This is an honest model-unseen and no-refit test, but not a pristine project
+holdout: `[760,1088)` had already been inspected by earlier diagnostic
+experiments. It does not validate the MDN distribution output, policy, or the
+complete forecast-to-action path. The only computationally unconsumed one-shot
+interval remains `[1088,1170)`, and it was not opened by this evaluation. The
+HTML chart may already have made that segment human-visible, so it must not be
+described as a human-blind holdout.
+
+Primary and replay reports are byte-identical at
+`134487c2c60285377abd0a14771204ddbb59a9d5ba5a8dc51129679405a5e411`;
+the 378-file master-manifest file is sealed at
+`237b3dcb4b599c835d78eeb7fc3989e4df71c3b19b35ffbc3ef772d98c2748e0`.
+The durable record is
+`artifacts/synthetic_mdn_frozen_conditioned_affine_historical_confirmation_v1.report`;
+reproduce or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_mdn_frozen_conditioned_affine_historical_confirmation.sh`.
+
+## Real-Launcher Conditioned-Shadow Non-Mutation A/B
+
+The opt-in conditioned v2 shadow has now run through the complete production
+Channel Graph-First representation and MDN launcher on validation
+`[584,730)`. Control and treatment each loaded the same frozen representation
+and MDN checkpoints, processed exactly `146` anchors in `64+64+18`, performed
+zero optimizer steps, wrote no checkpoint or feature probe, and did not enter
+replay or policy.
+
+The shadow is non-mutating at the actual launcher boundary. Across all three
+batches, canonical `log_pi`, `mu`, `sigma`, and `direct_edge_return` are both
+`torch::equal` and raw-byte equal with maximum delta zero. The returned
+canonical launcher reports are also byte-identical. The live conditioned
+readout remains strong: direction `0.806697`, rank `0.792237`, correlation
+`0.686404`, and RMSE `0.0208663`, with all `1,314` targets and rank pairs
+present. It clears the four preregistered absolute quality gates.
+
+The initial smoke run deliberately failed its stronger demand for exact metric
+equality with the older cached `[0,730)` capture. A direct probe comparison
+localized the discrepancy. Targets and the 16-coordinate identity suffix are
+exact; only anchors `704..711` change in the 384-coordinate dynamic prefix when
+validation is launched alone. Of `525,600` feature values, `14,877` differ,
+with maximum delta `1.90735e-6`, mean absolute delta `2.14866e-9`, and delta
+RMSE `2.61192e-8`. The old full-development capture used a final 26-anchor
+batch beginning at 704, while the validation-only launcher places 704..711 in
+a full 64-anchor batch. The highly conditioned affine mapping amplifies this
+small batch-shape floating-point difference into one directional decision and
+two rank decisions out of 1,314. The checkpoint head's canonical outputs are
+unchanged by the shadow.
+
+The sealed fact records this honestly as `exact=false` plus count-aware
+operational equivalence: continuous cached-metric drift is at most
+`8.20722e-4`, directional disagreement is one decision, and rank disagreement
+is two decisions. No candidate, artifact, fit, or scientific gate was changed.
+The validation-only batch-partition probe is sealed by content at
+`07bcc23d8848f1abebcb725151a08ee724127ab3aeab02ed2046aa7ff1c0e755`.
+
+Primary and replay facts are byte-identical at
+`efee030e84a6868afef579086c88355951283b69023d55096a195f31f8fbf173`;
+the canonical report is sealed at
+`856cd8bd354ec65120aecb9991885a13e2faf1df1eca6e1e4f2eae2fbd0210bd`,
+the live shadow report at
+`4689d70470682434d76a23d536ae8d11020ff03b55266a8180775d0a285c1f10`,
+and the master manifest at
+`bf663d19ad76a8f403ee3ac982624819d51c758d800dfeb17a478bfebdb96bdd`.
+The durable record is
+`artifacts/synthetic_mdn_channel_graph_first_conditioned_affine_shadow_eval_v1.report`;
+reproduce or verify it with
+`src/scripts/benchmarks/synthetic_continuous_graph_v1/run_channel_graph_first_conditioned_affine_shadow_eval.sh`.
+The maximum opened anchor remains 1087; final `[1088,1170)` was not read.
+
+## Current Failure Model
+
+The accumulated evidence no longer supports a single-cause explanation:
+
+1. The raw charts are deterministic and forecastable; raw-history K=1 reaches
+   the oracle gates.
+2. The frozen representation/MDN direct-feature surface is not random or
+   collapsed. A development-fitted conditioned head transfers to model-unseen
+   history at `0.8025/0.7805` direction/rank. This still leaves a real upstream
+   quality gap to the authored chart's `0.95/0.95` oracle.
+3. Trainable-sigma node NLL is badly aligned with the desired edge forecast.
+   Edge Huber fixes tiny-set fitting and some direction accuracy, not rank.
+4. The learned checkpoint readout fails to recover signal available to the
+   conditioned affine solution: on the same historical feature tensor it is
+   `0.4810/0.5081` while the frozen conditioned head is `0.8025/0.7805`.
+   Full-rank conditioning recovers the affine optimum and transfers it; the
+   ordinary training coordinates do not. The real-launcher shadow proves this
+   rescue can be attached without changing a byte of canonical MDN output.
+5. Per-sample LayerNorm loses useful closed-form signal, but its isolated
+   bypass is not a repair. Conditioning must be changed as a complete contract,
+   including stored fit statistics and deployment arithmetic.
+6. The production 800-step direct-head-only warmup trains a head above a frozen
+   random trunk, and the all-nine-target NLL is dominated by several activity
+   coordinates. These remain high-confidence aggravating mechanisms requiring
+   exact production-path A/Bs, not explanations assumed from configuration.
+
 ## Next Investigation
 
 Useful questions to answer next:
 
 ```text
-1. Why does MDN loss improvement fail to improve edge-return sign/rank despite
-   frozen representation features containing partial edge signal?
-2. Why does a dedicated MDN direct edge-return readout fail on the train range
-   when the frozen-representation supervised probe is materially above random?
-3. Why did the identity-conditioned/per-edge direct readout remain near random
-   even though gradients flowed, parameters moved, and prediction variance was
-   present?
-4. Are target scaling and target-feature weights causing close/edge information
-   to be dominated by easier magnitude/activity coordinates?
-5. Are node/channel identity and cross-node/cross-channel context too weak for
-   this synthetic graph?
-6. Would representation training recover oracle-grade phase if exposed to a
-   stronger phase/lag diagnostic or a no-augmentation control?
-7. Why does PPO produce many invalid actions despite positive final equity over
-   the short validation replay?
-8. Why is the policy-training fact's snapshot bundle/causal closure mismatched
-   after an otherwise clean no-lookahead handoff?
+1. Decompose the objective bundle with fixed-sigma node MSE, raw edge MSE, and
+   target-scaled edge Huber under identical initialization and coordinates.
+   This separates sigma optimization, node-gauge geometry, and loss saturation.
+2. Add a causal raw-close-history residual/bypass beside the learned
+   representation. The raw K=1 oracle proves this information is sufficient;
+   the bypass tests whether a representation bottleneck can be made nonfatal.
+3. Replace the direct-head-only frozen-random-trunk warmup with a same-seed A/B
+   that either updates the trunk/adapters or prefits the conditioned readout.
+4. Run close-only before all-nine-target training, then add targets one group at
+   a time with fit-derived normalization so activity coordinates cannot dominate
+   price/return gradients.
+5. Build and review the already preregistered one-shot `[1088,1170)` executable
+   closure before opening it. Preserve the exact representation, MDN, artifact,
+   no-refit rule, seven gates, checkpoint control, and publish-on-failure rule.
+6. If the conditioned edge path still plateaus below `0.95/0.95`, change the
+   representation input itself: preserve phase/raw temporal residuals and
+   normalize price versus activity scales before MTF tokenization.
+7. Only after the forecast path passes should PPO invalid-action and snapshot
+   closure issues return to the critical path.
 ```

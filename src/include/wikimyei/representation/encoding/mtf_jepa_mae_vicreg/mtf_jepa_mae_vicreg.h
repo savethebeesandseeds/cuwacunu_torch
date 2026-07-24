@@ -82,6 +82,9 @@ struct mtf_jepa_mae_vicreg_config_t {
   bool mask_same_channel_block{false};
   double max_context_target_time_overlap{0.50};
 
+  double vicreg_view_gaussian_jitter_std{0.005};
+  double vicreg_view_time_dropout_scale{0.10};
+
   std::string augmentation_profile{"unset"};
   double gaussian_jitter_std{0.0};
   double feature_dropout_prob{0.0};
@@ -370,6 +373,13 @@ validate_training_config(const mtf_jepa_mae_vicreg_config_t &config) {
   validate_probability(config.min_context_ratio, "min_context_ratio");
   validate_probability(config.max_context_target_time_overlap,
                        "max_context_target_time_overlap");
+  if (!std::isfinite(config.vicreg_view_gaussian_jitter_std) ||
+      config.vicreg_view_gaussian_jitter_std < 0.0) {
+    throw std::runtime_error(
+        "[mtf_jepa_mae_vicreg] invalid VICReg view Gaussian jitter");
+  }
+  validate_probability(config.vicreg_view_time_dropout_scale,
+                       "vicreg_view_time_dropout_scale");
   if (config.lambda_jepa < 0.0 || config.lambda_mae < 0.0 ||
       config.lambda_tf_align < 0.0 || config.lambda_vicreg < 0.0 ||
       config.lambda_global_vicreg < 0.0 || config.lambda_channel_vicreg < 0.0 ||
@@ -455,6 +465,47 @@ canonicalize_input(const torch::Tensor &x, const torch::Tensor &feature_mask,
         torch::TensorOptions().dtype(torch::kBool).device(config.device));
   }
   mask = mask.logical_and(torch::isfinite(data));
+  data = torch::where(mask, data, torch::zeros_like(data));
+  return {data, mask};
+}
+
+inline double resolved_vicreg_view_time_dropout_prob(
+    const mtf_jepa_mae_vicreg_config_t &config) {
+  return std::min(
+      0.10,
+      std::max(0.0,
+               config.mask_ratio_time * config.vicreg_view_time_dropout_scale));
+}
+
+inline mtf_input_t apply_vicreg_weak_view_augmentation(
+    const torch::Tensor &x, const torch::Tensor &feature_mask,
+    const mtf_jepa_mae_vicreg_config_t &config) {
+  auto input = canonicalize_input(x, feature_mask, config);
+  auto mask = input.feature_mask.clone();
+  const double feature_drop =
+      std::min(0.20, std::max(0.0, config.mask_ratio_channel));
+  if (feature_drop > 0.0) {
+    const auto keep = torch::rand(input.data.sizes(), input.data.options())
+                          .lt(1.0 - feature_drop);
+    mask = mask.logical_and(keep);
+  }
+  const double time_drop = resolved_vicreg_view_time_dropout_prob(config);
+  // Preserve the legacy RNG schedule when the experiment disables only the
+  // effect: MASK_RATIO_TIME still owns whether this draw exists.
+  if (config.mask_ratio_time > 0.0) {
+    auto keep_shape = input.data.sizes().vec();
+    keep_shape.back() = 1;
+    const auto keep = torch::rand(keep_shape, input.data.options())
+                          .lt(1.0 - time_drop)
+                          .expand_as(input.data);
+    mask = mask.logical_and(keep);
+  }
+  auto data = torch::where(mask, input.data, torch::zeros_like(input.data));
+  data = data + torch::where(
+                    mask,
+                    torch::randn_like(data) *
+                        config.vicreg_view_gaussian_jitter_std,
+                    torch::zeros_like(data));
   data = torch::where(mask, data, torch::zeros_like(data));
   return {data, mask};
 }
@@ -2118,30 +2169,8 @@ private:
 
   [[nodiscard]] mtf_input_t weak_augment(const torch::Tensor &x,
                                          const torch::Tensor &feature_mask) {
-    auto input = detail::canonicalize_input(x, feature_mask, config_);
-    auto mask = input.feature_mask.clone();
-    const double feature_drop =
-        std::min(0.20, std::max(0.0, config_.mask_ratio_channel));
-    if (feature_drop > 0.0) {
-      const auto keep = torch::rand(input.data.sizes(), input.data.options())
-                            .lt(1.0 - feature_drop);
-      mask = mask.logical_and(keep);
-    }
-    const double time_drop =
-        std::min(0.10, std::max(0.0, config_.mask_ratio_time * 0.10));
-    if (time_drop > 0.0) {
-      auto keep_shape = input.data.sizes().vec();
-      keep_shape.back() = 1;
-      const auto keep = torch::rand(keep_shape, input.data.options())
-                            .lt(1.0 - time_drop)
-                            .expand_as(input.data);
-      mask = mask.logical_and(keep);
-    }
-    auto data = torch::where(mask, input.data, torch::zeros_like(input.data));
-    data = data + torch::where(mask, torch::randn_like(data) * 0.005,
-                               torch::zeros_like(data));
-    data = torch::where(mask, data, torch::zeros_like(data));
-    return {data, mask};
+    return detail::apply_vicreg_weak_view_augmentation(x, feature_mask,
+                                                       config_);
   }
 
   [[nodiscard]] vicreg_branch_loss_result_t

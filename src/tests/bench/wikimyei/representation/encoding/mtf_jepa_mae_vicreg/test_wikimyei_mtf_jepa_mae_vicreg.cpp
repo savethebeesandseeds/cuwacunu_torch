@@ -76,6 +76,112 @@ torch::Tensor synthetic_multichannel_input(int64_t batch = 2,
   return base;
 }
 
+mtf::mtf_input_t legacy_vicreg_weak_view_augmentation(
+    const torch::Tensor &x, const torch::Tensor &feature_mask,
+    const mtf::mtf_jepa_mae_vicreg_config_t &config) {
+  auto input = mtf::detail::canonicalize_input(x, feature_mask, config);
+  auto mask = input.feature_mask.clone();
+  const double feature_drop =
+      std::min(0.20, std::max(0.0, config.mask_ratio_channel));
+  if (feature_drop > 0.0) {
+    const auto keep = torch::rand(input.data.sizes(), input.data.options())
+                          .lt(1.0 - feature_drop);
+    mask = mask.logical_and(keep);
+  }
+  const double time_drop =
+      std::min(0.10, std::max(0.0, config.mask_ratio_time * 0.10));
+  if (time_drop > 0.0) {
+    auto keep_shape = input.data.sizes().vec();
+    keep_shape.back() = 1;
+    const auto keep = torch::rand(keep_shape, input.data.options())
+                          .lt(1.0 - time_drop)
+                          .expand_as(input.data);
+    mask = mask.logical_and(keep);
+  }
+  auto data = torch::where(mask, input.data, torch::zeros_like(input.data));
+  data = data + torch::where(mask, torch::randn_like(data) * 0.005,
+                             torch::zeros_like(data));
+  data = torch::where(mask, data, torch::zeros_like(data));
+  return {data, mask};
+}
+
+void test_vicreg_weak_view_controls_and_rng_parity() {
+  auto config = small_config();
+  config.mask_ratio_time = 0.10;
+  config.mask_ratio_channel = 0.0;
+  auto input = synthetic_input(3);
+  auto feature_mask = torch::ones_like(input).to(torch::kBool);
+
+  check(std::fabs(mtf::detail::resolved_vicreg_view_time_dropout_prob(config) -
+                  0.01) < 1.0e-12,
+        "default VICReg weak-view time drop does not match legacy behavior");
+
+  torch::manual_seed(73);
+  const auto legacy =
+      legacy_vicreg_weak_view_augmentation(input, feature_mask, config);
+  const auto legacy_next = torch::randn({8}, input.options());
+  torch::manual_seed(73);
+  const auto current = mtf::detail::apply_vicreg_weak_view_augmentation(
+      input, feature_mask, config);
+  const auto current_next = torch::randn({8}, input.options());
+  check(torch::equal(legacy.data, current.data) &&
+            torch::equal(legacy.feature_mask, current.feature_mask),
+        "explicit VICReg weak-view defaults do not reproduce legacy output");
+  check(torch::equal(legacy_next, current_next),
+        "explicit VICReg weak-view defaults changed the RNG schedule");
+
+  auto disabled = config;
+  disabled.vicreg_view_gaussian_jitter_std = 0.0;
+  disabled.vicreg_view_time_dropout_scale = 0.0;
+  torch::manual_seed(73);
+  const auto neutral = mtf::detail::apply_vicreg_weak_view_augmentation(
+      input, feature_mask, disabled);
+  const auto neutral_next = torch::randn({8}, input.options());
+  check(torch::equal(neutral.data, input) &&
+            torch::equal(neutral.feature_mask, feature_mask),
+        "disabled VICReg weak-view controls are not an exact identity");
+  check(torch::equal(current_next, neutral_next),
+        "disabled VICReg weak-view effects changed the RNG schedule");
+
+  auto default_tokens = mtf::TimeFrequencyViewBuilder(config)->forward(
+      input, feature_mask);
+  auto disabled_tokens = mtf::TimeFrequencyViewBuilder(disabled)->forward(
+      input, feature_mask);
+  torch::manual_seed(91);
+  const auto default_masks =
+      mtf::JEPAContextTargetMasker(config).create_masks(default_tokens);
+  torch::manual_seed(91);
+  const auto disabled_masks =
+      mtf::JEPAContextTargetMasker(disabled).create_masks(disabled_tokens);
+  check(torch::equal(default_masks.context_mask, disabled_masks.context_mask) &&
+            torch::equal(default_masks.target_mask,
+                         disabled_masks.target_mask),
+        "VICReg weak-view controls changed primary JEPA masking");
+
+  auto invalid_noise = config;
+  invalid_noise.vicreg_view_gaussian_jitter_std = -0.001;
+  bool rejected_noise = false;
+  try {
+    auto model = mtf::MtfJepaMaeVicreg(invalid_noise);
+    (void)model;
+  } catch (const std::runtime_error &) {
+    rejected_noise = true;
+  }
+  check(rejected_noise, "negative VICReg weak-view noise was accepted");
+
+  auto invalid_scale = config;
+  invalid_scale.vicreg_view_time_dropout_scale =
+      std::numeric_limits<double>::quiet_NaN();
+  bool rejected_scale = false;
+  try {
+    auto model = mtf::MtfJepaMaeVicreg(invalid_scale);
+    (void)model;
+  } catch (const std::runtime_error &) {
+    rejected_scale = true;
+  }
+  check(rejected_scale, "non-finite VICReg weak-view scale was accepted");
+}
+
 void assert_no_pair_leakage(const mtf::mtf_token_batch_t &tokens,
                             const mtf::jepa_context_target_mask_t &masks,
                             const std::string &message) {
@@ -715,6 +821,7 @@ void test_target_branch_deterministic_in_train_mode() {
 int main() {
   torch::manual_seed(7);
   test_config_construction();
+  test_vicreg_weak_view_controls_and_rng_parity();
   test_multiscale_tokenizer_shape();
   test_frequency_tokenizer_shape();
   test_masker_correctness();

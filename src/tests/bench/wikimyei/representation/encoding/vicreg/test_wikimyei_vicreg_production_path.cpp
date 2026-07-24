@@ -179,6 +179,145 @@ mdn::channel_context_mdn_train_options_t make_direct_edge_readout_options() {
   return options;
 }
 
+void test_channel_mdn_close_coord_resolves_selected_target_slot() {
+  mdn::MdnOut out{};
+  out.log_pi = torch::zeros({1, 3, 1, 2, 1}, torch::kFloat32);
+  out.mu = torch::zeros({1, 3, 1, 2, 1}, torch::kFloat32);
+  out.sigma = torch::ones({1, 3, 1, 2, 1}, torch::kFloat32);
+  out.mu.index_put_({0, 0, 0, 0, 0}, 1.0);
+  out.mu.index_put_({0, 1, 0, 0, 0}, 3.0);
+  out.mu.index_put_({0, 2, 0, 0, 0}, -1.0);
+  out.direct_edge_return =
+      torch::tensor({2.0, -2.0}, torch::kFloat32).view({1, 2, 1});
+
+  auto future = torch::zeros({1, 3, 1, 2}, torch::kFloat32);
+  future.index_put_({0, 0, 0, 0}, 1.0);
+  future.index_put_({0, 1, 0, 0}, 3.0);
+  future.index_put_({0, 2, 0, 0}, -1.0);
+  const auto combined_mask = torch::ones({1, 3, 1, 2}, torch::kBool);
+  const std::vector<int64_t> reordered_target_coords{3, 0};
+
+  mdn::channel_context_mdn_train_step_result_t metrics{};
+  mdn::channel_context_mdn_train_detail::accumulate_expected_value_metrics(
+      metrics, out, future, combined_mask, reordered_target_coords);
+  check(metrics.edge_return_projection_valid_count == 2,
+        "expected-value edge metrics resolve raw close coord to selected slot");
+  close(metrics.edge_return_projection_squared_error_sum, 0.0, 1e-12,
+        "expected-value edge metrics use the resolved close slot");
+  mdn::channel_context_mdn_train_detail::
+      accumulate_direct_edge_return_readout_metrics(
+          metrics, out, future, combined_mask, reordered_target_coords);
+  check(metrics.direct_edge_return_readout_valid_count == 2,
+        "direct-readout metrics resolve raw close coord to selected slot");
+  close(metrics.direct_edge_return_readout_squared_error_sum, 0.0, 1e-12,
+        "direct-readout metrics use the resolved close slot");
+
+  mdn::channel_context_mdn_train_options_t edge_options{};
+  edge_options.edge_return_auxiliary_loss_weight = 1.0;
+  const auto edge_loss =
+      mdn::channel_context_mdn_train_detail::compute_edge_return_auxiliary_loss(
+          out, future, combined_mask, edge_options, reordered_target_coords);
+  check(edge_loss.valid_count == 2,
+        "edge auxiliary loss resolves raw close coord to selected slot");
+  close(edge_loss.regression_loss.item<double>(), 0.0, 1e-12,
+        "edge auxiliary loss uses the resolved close slot");
+
+  mdn::channel_context_mdn_train_options_t direct_options{};
+  direct_options.direct_edge_return_readout_enabled = true;
+  direct_options.direct_edge_return_readout_loss_weight = 1.0;
+  const auto direct_loss = mdn::channel_context_mdn_train_detail::
+      compute_direct_edge_return_readout_loss(
+          out, future, combined_mask, direct_options, reordered_target_coords);
+  check(direct_loss.valid_count == 2,
+        "direct-readout loss resolves raw close coord to selected slot");
+  close(direct_loss.regression_loss.item<double>(), 0.0, 1e-12,
+        "direct-readout loss uses the resolved close slot");
+
+  const std::vector<int64_t> missing_close_coords{0, 1};
+  mdn::channel_context_mdn_train_step_result_t missing_metrics{};
+  mdn::channel_context_mdn_train_detail::accumulate_expected_value_metrics(
+      missing_metrics, out, future, combined_mask, missing_close_coords);
+  mdn::channel_context_mdn_train_detail::
+      accumulate_direct_edge_return_readout_metrics(
+          missing_metrics, out, future, combined_mask, missing_close_coords);
+  check(missing_metrics.edge_return_projection_valid_count == 0 &&
+            missing_metrics.direct_edge_return_readout_valid_count == 0,
+        "close metrics stay unavailable when raw close is not selected");
+
+  bool edge_loss_rejected = false;
+  try {
+    (void)mdn::channel_context_mdn_train_detail::
+        compute_edge_return_auxiliary_loss(out, future, combined_mask,
+                                           edge_options, missing_close_coords);
+  } catch (const std::exception &ex) {
+    edge_loss_rejected =
+        std::string(ex.what()).find("raw close coordinate 3") !=
+        std::string::npos;
+  }
+  check(edge_loss_rejected,
+        "enabled edge auxiliary loss clearly rejects a missing raw close");
+
+  bool direct_loss_rejected = false;
+  try {
+    (void)mdn::channel_context_mdn_train_detail::
+        compute_direct_edge_return_readout_loss(
+            out, future, combined_mask, direct_options, missing_close_coords);
+  } catch (const std::exception &ex) {
+    direct_loss_rejected =
+        std::string(ex.what()).find("raw close coordinate 3") !=
+        std::string::npos;
+  }
+  check(direct_loss_rejected,
+        "enabled direct-readout loss clearly rejects a missing raw close");
+}
+
+void test_channel_mdn_scheduled_objective_accounts_nll() {
+  mdn::channel_context_mdn_train_options_t options{};
+  options.direct_edge_return_readout_enabled = true;
+  options.direct_edge_return_readout_warmup_steps = 1;
+  options.direct_edge_return_readout_warmup_nll_weight = 0.0;
+  options.direct_edge_return_readout_post_warmup_nll_weight = 0.25;
+  options.direct_edge_return_readout_warmup_direct_head_only = true;
+
+  mdn::channel_context_mdn_train_detail::edge_return_auxiliary_loss_t edge{};
+  edge.loss = torch::tensor(2.0);
+  edge.regression_loss = torch::tensor(2.0);
+  edge.direction_loss = torch::tensor(0.0);
+  edge.rank_loss = torch::tensor(0.0);
+  mdn::channel_context_mdn_train_detail::edge_return_auxiliary_loss_t direct{};
+  direct.loss = torch::tensor(3.0);
+  direct.regression_loss = torch::tensor(3.0);
+  direct.direction_loss = torch::tensor(0.0);
+  direct.rank_loss = torch::tensor(0.0);
+
+  mdn::channel_context_mdn_train_step_result_t warmup{};
+  mdn::channel_context_mdn_train_detail::record_scheduled_objective(
+      warmup, torch::tensor(4.0), edge, direct, options,
+      /*optimizer_step_index=*/0);
+  check(warmup.direct_edge_return_readout_warmup_active &&
+            warmup.direct_edge_return_readout_direct_head_only_warmup_active,
+        "scheduled objective records warmup flags");
+  close(warmup.direct_edge_return_readout_scheduled_nll_weight, 0.0, 1e-12,
+        "scheduled objective records warmup NLL weight");
+  close(warmup.loss.item<double>(), 5.0, 1e-12,
+        "scheduled objective excludes NLL during zero-weight warmup");
+
+  mdn::channel_context_mdn_train_step_result_t post_warmup{};
+  mdn::channel_context_mdn_train_detail::record_scheduled_objective(
+      post_warmup, torch::tensor(4.0), edge, direct, options,
+      /*optimizer_step_index=*/1);
+  check(!post_warmup.direct_edge_return_readout_warmup_active &&
+            !post_warmup
+                 .direct_edge_return_readout_direct_head_only_warmup_active,
+        "scheduled objective records post-warmup flags");
+  close(post_warmup.nll.item<double>(), 4.0, 1e-12,
+        "scheduled objective assigns the raw NLL");
+  close(post_warmup.direct_edge_return_readout_scheduled_nll_weight, 0.25,
+        1e-12, "scheduled objective records post-warmup NLL weight");
+  close(post_warmup.loss.item<double>(), 6.0, 1e-12,
+        "scheduled objective applies NLL weight and both auxiliary losses");
+}
+
 void test_channel_mdn_balanced_channel_feature_loss() {
   using torch::indexing::Slice;
   auto nll = torch::zeros({1, 3, 2, 1}, torch::kFloat32);
@@ -909,6 +1048,8 @@ int main() {
     test_vicreg_safe_augmentations();
     test_production_assemblies();
     test_channel_mdn_zero_valid_targets();
+    test_channel_mdn_close_coord_resolves_selected_target_slot();
+    test_channel_mdn_scheduled_objective_accounts_nll();
     test_channel_mdn_direct_edge_readout_updates_head();
     test_channel_mdn_direct_edge_readout_warmup_updates_only_head();
     test_channel_mdn_direct_edge_readout_fixed_batch_loss_decreases();

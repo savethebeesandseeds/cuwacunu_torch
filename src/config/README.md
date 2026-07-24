@@ -405,6 +405,19 @@ operate on FFT bins before tokenization, and node dropout uses graph node
 identity metadata from the channel-node adapter. Edge dropout is declared but
 must remain `0.0` until the MTF trainer carries graph-edge metadata.
 
+That launcher-owned stack (`GAUSSIAN_JITTER_STD` through
+`MAGNITUDE_NORMALIZATION_NOISE_STD`) is distinct from the two model-internal
+weak views encoded only for the VICReg branch.
+`VICREG_VIEW_GAUSSIAN_JITTER_STD` controls masked Gaussian noise on each view.
+`VICREG_VIEW_TIME_DROPOUT_SCALE` resolves to
+`min(0.10, MASK_RATIO_TIME * scale)`. Their backward-compatible defaults are
+`0.005` and `0.10`; with canonical `MASK_RATIO_TIME = 0.10`, effective time
+drop is `0.01`. Setting both to zero preserves the legacy random draws for a
+matched ablation, but does not disable outer augmentation, and a nonzero
+`MASK_RATIO_CHANNEL` can still drop weak-view features. Representation reports
+persist both authored values and `vicreg_view_time_dropout_prob_effective`;
+probe-enabled debug jobs classify all three as representation augmentation.
+
 Protocol variants live under `kikijyeba.protocol.*.dsl` and are selected by
 `[KIKIJYEBA].kikijyeba_protocol_dsl_path` in `.config`. The default protocol is
 `cwu_02v`, which docks the MTF-JEPA-MAE-VICReg representation. `cwu_01v` remains

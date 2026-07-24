@@ -22,6 +22,7 @@
 
 #include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
 #include "hero/runtime_hero/runtime/wave_settings.h"
+#include "jkimyei/training/inference/channel_mdn_conditioned_affine_shadow.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
 #include "kikijyeba/topology/dock_binding.h"
@@ -43,6 +44,8 @@ struct channel_graph_first_inference_launcher_options_t {
   std::function<void(std::string_view)> learning_probe_report_sink{};
   std::filesystem::path representation_edge_feature_probe_path{};
   std::filesystem::path mdn_edge_context_feature_probe_path{};
+  std::optional<channel_mdn_conditioned_affine_shadow_options_t>
+      conditioned_affine_shadow{};
   bool force_empty_targets_for_test{false};
   cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
       runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
@@ -2094,6 +2097,28 @@ inline void freeze_vicreg_encoder(EncoderT &encoder) {
   }
 }
 
+[[nodiscard]] inline int64_t read_channel_mdn_optimizer_step_index(
+    torch::serialize::InputArchive &root) {
+  torch::Tensor saved_optimizer_step_index{};
+  try {
+    root.read("meta/optimizer_step_index", saved_optimizer_step_index);
+  } catch (const std::exception &) {
+    // Checkpoints written before the dedicated schedule counter used the
+    // completed optimizer-step total as the only persisted equivalent.
+    root.read("meta/optimizer_steps", saved_optimizer_step_index);
+  }
+  TORCH_CHECK(saved_optimizer_step_index.defined() &&
+                  saved_optimizer_step_index.numel() == 1,
+              "[channel_graph_first_inference_launcher] MDN checkpoint "
+              "optimizer step index must be a scalar");
+  const auto optimizer_step_index =
+      saved_optimizer_step_index.to(torch::kCPU).template item<int64_t>();
+  TORCH_CHECK(optimizer_step_index >= 0,
+              "[channel_graph_first_inference_launcher] MDN checkpoint "
+              "optimizer step index must be nonnegative");
+  return optimizer_step_index;
+}
+
 inline void save_channel_mdn_checkpoint_file(
     const std::filesystem::path &path,
     const channel_graph_first_inference_training_report_t &report,
@@ -2136,6 +2161,8 @@ inline void save_channel_mdn_checkpoint_file(
                  {report.direct_edge_return_readout_adapter_hidden_dim}, i64));
   root.write("meta/optimizer_steps",
              torch::tensor({report.optimizer_steps}, i64));
+  root.write("meta/optimizer_step_index",
+             torch::tensor({model.optimizer_step_index()}, i64));
   root.write(
       "meta/component_assembly_id_bytes",
       int64_tensor_from_vector(string_to_bytes(report.component_assembly_id)));
@@ -2247,7 +2274,8 @@ inline void load_channel_mdn_checkpoint_file(
     cuwacunu::wikimyei::inference::expected_value::mdn::ChannelContextMdn
         &model,
     torch::optim::Optimizer *optimizer = nullptr,
-    const channel_mdn_checkpoint_identity_t *expected_identity = nullptr) {
+    const channel_mdn_checkpoint_identity_t *expected_identity = nullptr,
+    int64_t *optimizer_step_index = nullptr) {
   TORCH_CHECK(!path.empty(),
               "[channel_graph_first_inference_launcher] MDN checkpoint path "
               "is empty");
@@ -2464,6 +2492,9 @@ inline void load_channel_mdn_checkpoint_file(
     root.read("optimizer", optimizer_archive);
     optimizer->load(optimizer_archive);
   }
+  if (optimizer_step_index != nullptr) {
+    *optimizer_step_index = read_channel_mdn_optimizer_step_index(root);
+  }
 }
 
 } // namespace channel_graph_first_inference_launcher_detail
@@ -2656,6 +2687,17 @@ public:
         cuwacunu::kikijyeba::protocol::active_protocol_uses_mtf_jepa_mae_vicreg(
             bundle);
     const bool train_target = effective_train_target();
+    if (options_.conditioned_affine_shadow.has_value() && train_target) {
+      throw std::runtime_error(
+          "[channel_graph_first_inference_launcher] conditioned affine "
+          "shadow evaluation is forbidden when train_target=true");
+    }
+    if (options_.conditioned_affine_shadow.has_value() &&
+        options_.force_empty_targets_for_test) {
+      throw std::runtime_error(
+          "[channel_graph_first_inference_launcher] conditioned affine "
+          "shadow evaluation does not allow forced-empty targets");
+    }
 
     const auto &training_spec = bundle.channel_mdn_training;
     const auto checkpoint_every = training_spec.checkpoint_every;
@@ -2831,6 +2873,47 @@ public:
     report.source_cursor_token = source_cursor_report.cursor_token();
     report.source_anchor_count =
         static_cast<int64_t>(source_cursor_report.accepted_anchor_count);
+
+    std::unique_ptr<channel_mdn_conditioned_affine_shadow_t>
+        conditioned_affine_shadow;
+    if (options_.conditioned_affine_shadow.has_value()) {
+      const bool uses_edge_embedding =
+          report.direct_edge_return_readout_identity_mode == "edge_embedding" ||
+          report.direct_edge_return_readout_identity_mode ==
+              "edge_embedding_per_edge";
+      const auto readout_feature_dim =
+          3 * report.hidden_width +
+          (uses_edge_embedding
+               ? report.direct_edge_return_readout_identity_embedding_dim
+               : 0);
+      std::vector<std::filesystem::path> forbidden_report_paths{
+          options_.report_path,
+          options_.representation_edge_feature_probe_path,
+          options_.mdn_edge_context_feature_probe_path,
+      };
+      channel_mdn_conditioned_affine_shadow_identity_t shadow_identity{
+          .graph_order_fingerprint = report.graph_order_fingerprint,
+          .node_ids = report.node_ids,
+          .edge_ids = report.edge_ids,
+          .target_coords = report.target_coords,
+          .channel_count = report.channel_count,
+          .readout_feature_dim = readout_feature_dim,
+          .requested_anchor_index_begin = report.requested_anchor_index_begin,
+          .requested_anchor_index_end = report.requested_anchor_index_end,
+          .requested_source_key_begin = report.requested_source_key_begin,
+          .requested_source_key_end = report.requested_source_key_end,
+          .representation_checkpoint_path =
+              training_spec.input_representation_checkpoint_path,
+          .mdn_checkpoint_path = training_spec.input_mdn_checkpoint_path,
+          .device = builder_.options().device,
+          .forbidden_report_paths = std::move(forbidden_report_paths),
+      };
+      conditioned_affine_shadow =
+          std::make_unique<channel_mdn_conditioned_affine_shadow_t>(
+              *options_.conditioned_affine_shadow, std::move(shadow_identity));
+      conditioned_affine_shadow->validate_source_cursor(
+          report.source_cursor_token);
+    }
 
     cuwacunu::wikimyei::inference::expected_value::mdn::
         channel_context_mdn_train_model_t *model_ptr = nullptr;
@@ -3549,10 +3632,13 @@ public:
               channel_graph_first_inference_launcher_detail::
                   checkpoint_identity_from_report(report);
           auto *optimizer = train_target ? &model_ptr->optimizer() : nullptr;
+          int64_t restored_optimizer_step_index = 0;
           channel_graph_first_inference_launcher_detail::
               load_channel_mdn_checkpoint_file(
                   training_spec.input_mdn_checkpoint_path, model_ptr->model(),
-                  optimizer, &expected_identity);
+                  optimizer, &expected_identity,
+                  &restored_optimizer_step_index);
+          model_ptr->set_optimizer_step_index(restored_optimizer_step_index);
           report.mdn_checkpoint_loaded = true;
         }
         report.mdn_parameter_device_check =
@@ -3561,17 +3647,23 @@ public:
                                          builder_.options().device);
       }
 
+      torch::Tensor mdn_edge_context_features{};
+      auto ensure_mdn_edge_context_features = [&]() -> const torch::Tensor & {
+        if (!mdn_edge_context_features.defined()) {
+          mdn_edge_context_features = model_ptr->direct_edge_context_features(
+              input.context, input.context_mask);
+        }
+        return mdn_edge_context_features;
+      };
+
       if (!train_target &&
           !options_.mdn_edge_context_feature_probe_path.empty() &&
           report.mdn_edge_context_feature_probe_error.empty()) {
         try {
-          const auto edge_context_features =
-              model_ptr->direct_edge_context_features(input.context,
-                                                      input.context_mask);
           const auto rows = channel_graph_first_inference_launcher_detail::
               append_mdn_edge_context_feature_probe_rows(
                   options_.mdn_edge_context_feature_probe_path,
-                  edge_context_features, channel_batch, batch,
+                  ensure_mdn_edge_context_features(), channel_batch, batch,
                   report.edge_return_projection_close_feature_index);
           if (rows > 0) {
             report.mdn_edge_context_feature_probe_written = true;
@@ -3613,11 +3705,13 @@ public:
           cuwacunu::wikimyei::inference::expected_value::mdn::
               channel_context_mdn_train_detail::
                   accumulate_expected_value_metrics(step, out, input.future,
-                                                    combined_mask);
+                                                    combined_mask,
+                                                    input.target_coords);
           cuwacunu::wikimyei::inference::expected_value::mdn::
               channel_context_mdn_train_detail::
                   accumulate_direct_edge_return_readout_metrics(
-                      step, out, input.future, combined_mask);
+                      step, out, input.future, combined_mask,
+                      input.target_coords);
           step.nll_per_channel = cuwacunu::wikimyei::inference::expected_value::
               mdn::mdn_masked_mean_per_channel(nll_map, combined_mask);
           step.nll_per_target_feature =
@@ -3634,7 +3728,7 @@ public:
           step.valid_count_per_channel_target_feature =
               cuwacunu::wikimyei::inference::expected_value::mdn::
                   mdn_valid_count_per_channel_target_feature(combined_mask);
-          step.loss = cuwacunu::wikimyei::inference::expected_value::mdn::
+          step.nll = cuwacunu::wikimyei::inference::expected_value::mdn::
               compute_channel_context_mdn_nll(
                   out, input,
                   cuwacunu::wikimyei::inference::expected_value::mdn::
@@ -3681,18 +3775,18 @@ public:
           const auto edge_auxiliary = cuwacunu::wikimyei::inference::
               expected_value::mdn::channel_context_mdn_train_detail::
                   compute_edge_return_auxiliary_loss(
-                      out, input.future, combined_mask, eval_train_options);
-          cuwacunu::wikimyei::inference::expected_value::mdn::
-              channel_context_mdn_train_detail::
-                  record_edge_return_auxiliary_loss(step, edge_auxiliary);
+                      out, input.future, combined_mask, eval_train_options,
+                      input.target_coords);
           const auto direct_readout = cuwacunu::wikimyei::inference::
               expected_value::mdn::channel_context_mdn_train_detail::
                   compute_direct_edge_return_readout_loss(
-                      out, input.future, combined_mask, eval_train_options);
+                      out, input.future, combined_mask, eval_train_options,
+                      input.target_coords);
           cuwacunu::wikimyei::inference::expected_value::mdn::
               channel_context_mdn_train_detail::
-                  record_direct_edge_return_readout_loss(step, direct_readout);
-          step.loss = step.loss + edge_auxiliary.loss + direct_readout.loss;
+                  record_scheduled_objective(
+                      step, step.nll, edge_auxiliary, direct_readout,
+                      eval_train_options, model_ptr->optimizer_step_index());
           step.sigma_mean =
               out.sigma.mean().to(torch::kCPU).template item<double>();
           step.sigma_min =
@@ -3718,6 +3812,13 @@ public:
           if (inference_batch_observer_) {
             inference_batch_observer_(out, batch, channel_batch,
                                       report.wave_pulses_attempted);
+          }
+          if (conditioned_affine_shadow) {
+            conditioned_affine_shadow->observe(
+                ensure_mdn_edge_context_features(), input.future, combined_mask,
+                input.target_coords,
+                static_cast<int64_t>(channel_batch.cursor.begin_anchor_index),
+                static_cast<int64_t>(channel_batch.cursor.anchor_count()));
           }
         }
       }
@@ -4177,6 +4278,11 @@ public:
     if (!options_.write_report ||
         report.last_report_attempted_step != report.steps_attempted) {
       write_report();
+    }
+    if (conditioned_affine_shadow) {
+      conditioned_affine_shadow->write_report_atomic(
+          report.steps_attempted, report.steps_completed,
+          report.wave_streamed_anchor_count);
     }
     return report;
   }

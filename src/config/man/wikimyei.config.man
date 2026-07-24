@@ -86,6 +86,21 @@ nonstandard grammar overrides.
 
 `src/config/.config` section: `[JKIMYEI]`
 
+- `wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path`
+  - Default grammar:
+    `grammar/wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei.bnf`.
+  - Experimental MTF-JEPA-MAE-VICReg training profile. In addition to
+    JEPA/MAE masking and launcher-owned augmentation, it owns the two
+    model-internal weak-view controls used only by the VICReg branch.
+  - `VICREG_VIEW_GAUSSIAN_JITTER_STD` is finite and non-negative; its
+    backward-compatible default is `0.005`.
+  - `VICREG_VIEW_TIME_DROPOUT_SCALE` is in `[0,1]`; its backward-compatible
+    default is `0.10`. The effective time-drop probability is
+    `min(0.10, MASK_RATIO_TIME * VICREG_VIEW_TIME_DROPOUT_SCALE)`.
+  - Setting both fields to `0.0` disables those two effects but does not
+    disable launcher-owned augmentation or weak-view feature drop derived from
+    `MASK_RATIO_CHANNEL`. Both authored controls are part of protocol identity;
+    reports also persist the resolved effective time-drop probability.
 - `wikimyei_inference_expected_value_mdn_jkimyei_path`
   - Default grammar:
     `grammar/wikimyei.inference.expected_value.mdn.jkimyei.bnf`.

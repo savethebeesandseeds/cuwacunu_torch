@@ -639,6 +639,8 @@ fixture_paths_t make_config_fixture(
              "  VICREG_COV_WEIGHT = 1.0;\n"
              "  VICREG_VARIANCE_FLOOR = 1.0;\n"
              "  VICREG_VARIANCE_EPSILON = 0.0001;\n"
+             "  VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.005;\n"
+             "  VICREG_VIEW_TIME_DROPOUT_SCALE = 0.10;\n"
              "  TARGET_EMA_TAU = 0.990;\n"
              "  USE_TARGET_EMA = true;\n"
              "  STOP_GRADIENT_TARGET = true;\n"
@@ -1996,6 +1998,22 @@ void test_mtf_representation_runs_through_runtime() {
   check(report.find("representation_architecture=mtf_jepa_mae_vicreg.v1") !=
             std::string::npos,
         "MTF report records architecture");
+  check(report.find("vicreg_view_gaussian_jitter_std=0.005") !=
+                std::string::npos &&
+            report.find("vicreg_view_time_dropout_scale=0.1") !=
+                std::string::npos &&
+            report.find("vicreg_view_time_dropout_prob_effective=0.01") !=
+                std::string::npos,
+        "MTF report records resolved VICReg weak-view controls");
+  check(runtime::job_events_probe::is_representation_augmentation_metric_name(
+            "vicreg_view_gaussian_jitter_std") &&
+            runtime::job_events_probe::
+                is_representation_augmentation_metric_name(
+                    "vicreg_view_time_dropout_scale") &&
+            runtime::job_events_probe::
+                is_representation_augmentation_metric_name(
+                    "vicreg_view_time_dropout_prob_effective"),
+        "MTF weak-view controls are classified as augmentation metrics");
   check(report.find("primary_value_shape=[B_flat,De]") != std::string::npos &&
             report.find("channel_value_shape=[B_flat,C,De]") !=
                 std::string::npos &&
