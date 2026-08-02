@@ -3,7 +3,8 @@ set -euo pipefail
 shopt -s inherit_errexit
 umask 077
 
-readonly schema_id="synthetic_v2_representation_ablation_isolated_v2_retry2"
+readonly schema_id="synthetic_v2_representation_ablation_isolated_v2_retry3"
+readonly retry2_schema_id="synthetic_v2_representation_ablation_isolated_v2_retry2"
 readonly retry1_schema_id="synthetic_v2_representation_ablation_isolated_v2_retry1"
 readonly prior_failed_schema_id="synthetic_v2_representation_ablation_isolated_v2"
 readonly failure_closure_schema_id="synthetic_v2_representation_ablation_isolated_v2_prejob_failure_closure_v1"
@@ -21,7 +22,7 @@ readonly expected_retry1_endpoint_report_sha256="99e370677d4dd1932aa4fd3af66b954
 readonly expected_retry1_endpoint_manifest_sha256="f1e514f84f05ae898b8616204e75cfe4034f2b23ff972c525f62635349905c7c"
 readonly expected_retry1_endpoint_checkpoint_sha256="09c286c5374e4769feb19644c3efa26aa081e37620f1eb5acf3bd9cf534b26ec"
 readonly expected_retry2_amendment_sha256="414211345e95965f52d8a0ceb672b5efff74b2c495d67619ca2b3ac788060591"
-readonly retry2_bootstrap_failure_closure_schema_id="${schema_id}_bootstrap_publication_failure_closure_v1"
+readonly retry2_bootstrap_failure_closure_schema_id="${retry2_schema_id}_bootstrap_publication_failure_closure_v1"
 readonly expected_retry2_bootstrap_failure_receipt_sha256="1bf5f81f63cc9a53d35eec9c7f56264d2de9f3a9d0567c52ee1772196931fab6"
 readonly expected_retry2_bootstrap_failure_regular_inventory_sha256="b2c215543b34c79169fc62f6030cddf43cd53a747653367e0e797dc281646f3a"
 readonly expected_retry2_bootstrap_failure_directory_inventory_sha256="2ac4b2ac3bf3941adac1d9b0d251b4fb95a0ee18775ca85c92da05a9c680f3c9"
@@ -46,19 +47,51 @@ readonly expected_retry2_bootstrap_failure_sealer_bytes="36718"
 readonly expected_retry2_bootstrap_failure_file_count="9"
 readonly expected_retry2_bootstrap_failure_directory_count="4"
 readonly expected_retry2_bootstrap_failure_entry_count="13"
-readonly retry2_windows_safe_publication_authority_schema_id="${schema_id}.windows_safe_publication_authority.v1"
+readonly retry2_windows_safe_publication_authority_schema_id="${retry2_schema_id}.windows_safe_publication_authority.v1"
 readonly expected_retry2_windows_safe_publication_authority_sha256="12c45c6d2c933fb426c73c9101623b2f61840d2aef6ceba1cde919a2f807a177"
 readonly expected_retry2_windows_safe_publication_runner_sha256="a099539da4d9d561ffe213cbb6aaabe510b942db5e73be60265042d2d4523cdb"
 readonly expected_retry2_windows_safe_publication_runner_inode="168884986026428276"
 readonly expected_retry2_windows_safe_publication_runner_device="66"
 readonly expected_retry2_windows_safe_publication_runner_bytes="399999"
-readonly retry2_tmp_scan_race_observation_schema_id="${schema_id}.pre_attempt_tmp_scan_race_observation.v1"
+readonly retry2_tmp_scan_race_observation_schema_id="${retry2_schema_id}.pre_attempt_tmp_scan_race_observation.v1"
 readonly expected_retry2_tmp_scan_race_observation_sha256="2ff00d3706a5edc8ed43d7f54e91006da45f8ceb3953545f12b569a0c332b776"
 readonly expected_retry2_tmp_scan_race_observation_bytes="3202"
 readonly expected_retry2_tmp_scan_race_observation_lines="57"
 readonly expected_retry2_published_runtime_inode="110901140824013045"
 readonly expected_retry2_published_runtime_lock_inode="23643898044239335"
-readonly retry2_windows_safe_publication_authority_v2_schema_id="${schema_id}.windows_safe_publication_authority.v2"
+readonly retry2_windows_safe_publication_authority_v2_schema_id="${retry2_schema_id}.windows_safe_publication_authority.v2"
+
+# Retry3 is deliberately inert until the independently published Retry2
+# interruption closure and completed-prefix bundle are pinned here.  All-zero
+# SHA-256 values are fail-closed design sentinels, never wildcard authorities.
+readonly retry2_stage04_interruption_closure_schema_id="${retry2_schema_id}_stage04_interruption_closure_v1"
+readonly retry2_completed_prefix_bundle_schema_id="${retry2_schema_id}_completed_prefix_bundle_for_retry3_v1"
+readonly unsealed_authority_sha256="0000000000000000000000000000000000000000000000000000000000000000"
+readonly expected_retry2_stage04_interruption_closure_receipt_sha256="d3b5c587f135335d97ed27a20dd6aa17d9f02e67760378524f04f437bfe87903"
+readonly expected_retry2_stage04_interruption_regular_inventory_sha256="943faa9ee84a7d8f9a2bc50ab2b710be6061f19c57489139de39f8aefab5ab9f"
+readonly expected_retry2_stage04_interruption_directory_inventory_sha256="4b08c785ea4d3be07fa03d21dca4842149eed8b06da89ecbc914528ebf3aeef1"
+readonly expected_retry2_stage04_interruption_amendment_sha256="c0310d27fea46c97ee9517362b809c6f53c8d848a3ea9023a3d7aaf1c3a347f6"
+readonly expected_retry2_stage04_interruption_sealer_sha256="c7ea8d0ab52a8395da19aaca5e8d9136a1f0f4ed74c62c94df9a7b94eda0e05f"
+readonly expected_retry2_completed_prefix_bundle_receipt_sha256="f0bf3009089c132a23f107e8286d7f785c25e64ed78b62f9419ab25fe6eb2b35"
+readonly expected_retry2_completed_prefix_regular_inventory_sha256="82a9b96c4f0eaeb651aa1312d00ecf8f060cf6f2e6614b22fa1f32c3937603a5"
+readonly expected_retry2_completed_prefix_directory_inventory_sha256="74d8f94798d1f5dcddcfdb952c6fa5ffe38f2a5e8657c9198b3579d54317114c"
+readonly expected_retry2_completed_prefix_sealer_sha256="17dbdc1dc9d1e542d1c59f8f62ffe8ee0655f84638bcd7fce0dd8c54ac5e3d3d"
+readonly expected_retry2_operational_runner_sha256="91915b7d32f0c1679d69e9077bbf8eb88777e367f590b34c2832a11fdcc26768"
+readonly expected_retry2_stage00_attempt_sha256="ed75d13c10f3381023b9bd648eca4a25dc4eb1d5956ef28340049ef27d07fa69"
+readonly expected_retry2_stage00_completion_sha256="3cccdeae5b2765cbcc2c7c03095562b4a3963538ce7618e439a62ad703635433"
+readonly expected_retry2_stage01_attempt_sha256="629bec6dd7ec10465c1c11bf51c9710af2598bd4aa25cba3ca29b72c82c883c3"
+readonly expected_retry2_stage01_completion_sha256="5f35515e76287c647e2bdd09a6b466b548c98393c8b40b3705f986def02ef741"
+readonly expected_retry2_stage02_attempt_sha256="901c1d9e0501cdf23c2754fd1c18872dd05c905755aa3fa009d4d290a3356243"
+readonly expected_retry2_stage02_completion_sha256="54371e6aa019d4b2af3be819c13162812a9dd13c80624c7efd7340dd166900f8"
+readonly expected_retry2_stage03_attempt_sha256="ec7c471d3c4fafb959734d1ad8e7b716ab5535027951d55db0c812bb7fee6f1c"
+readonly expected_retry2_stage03_completion_sha256="d0ba0e40b8489a660196e23ccb1c63bfc198dfa22a2d3b40115e48b12fd60693"
+readonly expected_retry2_stage04_attempt_sha256="19a7597dbe5a94f97908de3103cfa62d4e144c7648a5c91fbe82398d6cb82ae2"
+readonly expected_retry2_time_only_training_status_sha256="2643e01ff5788665a82da62408c98ff543421b941aee882ad1c8a692f28557b9"
+readonly expected_retry2_time_only_checkpoint_sha256="f30aef1d8ea1c69ce17b2817e287355cf0d38e77076deaae4acdd560218972ac"
+readonly expected_retry2_time_only_manifest_sha256="fb6ea4be431ffb18221f450b00876f3d40c98cd8a9911a907a9babc72b070dd9"
+readonly expected_retry2_time_only_result_sha256="0334acc68fbde37deea3a578d4f8e08c5e2028d2c3ac070b5df5cd50bfc5bebe"
+readonly expected_retry2_time_only_report_sha256="1a8323434eddd890ccabde2d85bdfe3584410f86da5f8ca185a02d15a8e8f4d1"
+readonly expected_retry2_time_only_log_sha256="3ed5a767ce37af82a1d6a649f17718006b9dd5f22a5cb5e17293a736053dfe7a"
 
 # These pins identify the separately sealed immutable retry1 endpoint bundle.
 # Retry2 verifies that bundle directly and consumes only its own second copy.
@@ -148,11 +181,11 @@ readonly canonical_training_id="synthetic_continuous_graph_v2_mtf_jepa_mae_vicre
 readonly -a all_arms=(canonical endpoint_scale time_only no_tf_alignment)
 readonly -a challenger_arms=(endpoint_scale time_only no_tf_alignment)
 readonly -a development_stage_names=(
-  initialize
-  canonical_import
-  endpoint_import
-  time_only_training
-  no_tf_alignment_training
+  initialize_from_retry2_prefix
+  canonical_import_from_retry2
+  endpoint_import_from_retry2
+  time_only_import_from_retry2
+  no_tf_alignment_training_restart
   endpoint_scale_capture
   time_only_capture
   no_tf_alignment_capture
@@ -183,13 +216,16 @@ readonly -a effective_grammar_data_keys=(
 )
 
 fail() {
-  echo "v2 representation ablation retry2: $*" >&2
+  echo "v2 representation ablation retry3: $*" >&2
   exit 1
 }
 
 reject_forbidden_path() {
   local path="$1"
   case "${path}" in
+  "${retry2_runtime}" | "${retry2_runtime}"/*)
+    fail "terminal Retry2 runtime is forbidden; consume only its sealed completed-prefix bundle: ${path}"
+    ;;
   */data/raw | */data/raw/* | */data/final | */data/final/*)
     fail "canonical raw/final data path is forbidden: ${path}"
     ;;
@@ -286,6 +322,7 @@ script_path="$(realpath -e -- "${BASH_SOURCE[0]}")"
 script_dir="$(dirname "${script_path}")"
 repo_root="$(realpath -e -- "${script_dir}/../../../..")"
 process_owner_uid="$(id -u)"
+process_owner_gid="$(id -g)"
 process_start_runner_sha256="$(sha256_of "${script_path}")"
 process_start_runner_inode="$(stat -c '%i' -- "${script_path}")"
 process_start_runner_device="$(stat -c '%d' -- "${script_path}")"
@@ -293,7 +330,7 @@ process_start_runner_bytes="$(stat -c '%s' -- "${script_path}")"
 process_start_runner_owner="$(stat -c '%u' -- "${script_path}")"
 [[ "${process_start_runner_sha256}" =~ ^[0-9a-f]{64}$ ]] ||
   fail "could not snapshot a valid operational runner sha256"
-readonly process_owner_uid process_start_runner_sha256
+readonly process_owner_uid process_owner_gid process_start_runner_sha256
 readonly process_start_runner_inode process_start_runner_device
 readonly process_start_runner_bytes process_start_runner_owner
 
@@ -555,6 +592,23 @@ numeric_gate() {
 benchmark_root="${repo_root}/src/config/benchmarks/synthetic_continuous_graph_v2"
 runtime_parent="${repo_root}/.runtime/benchmarks/synthetic_continuous_graph_v2"
 runtime_root="${runtime_parent}/${schema_id}"
+retry2_runtime="${runtime_parent}/${retry2_schema_id}"
+retry2_stage04_interruption_closure="${runtime_parent}/${retry2_stage04_interruption_closure_schema_id}"
+retry2_stage04_interruption_closure_receipt="${retry2_stage04_interruption_closure}/interruption_closure.status"
+retry2_stage04_interruption_regular_inventory="${retry2_stage04_interruption_closure}/source_regular_files.inventory.tsv"
+retry2_stage04_interruption_directory_inventory="${retry2_stage04_interruption_closure}/source_directories.inventory.tsv"
+retry2_stage04_interruption_snapshot="${retry2_stage04_interruption_closure}/source_snapshot"
+retry2_stage04_interruption_live_amendment="${script_dir}/REPRESENTATION_ABLATION_RETRY2_STAGE04_INTERRUPTION_RECOVERY_AMENDMENT.md"
+retry2_stage04_interruption_live_sealer="${script_dir}/seal_and_verify_representation_ablation_retry2_stage04_interruption_closure_v1.sh"
+retry2_stage04_interruption_frozen_amendment="${retry2_stage04_interruption_closure}/frozen_sources/$(basename "${retry2_stage04_interruption_live_amendment}")"
+retry2_stage04_interruption_frozen_sealer="${retry2_stage04_interruption_closure}/frozen_sources/$(basename "${retry2_stage04_interruption_live_sealer}")"
+retry2_completed_prefix_bundle="${runtime_parent}/${retry2_completed_prefix_bundle_schema_id}"
+retry2_completed_prefix_bundle_receipt="${retry2_completed_prefix_bundle}/completed_prefix_bundle.status"
+retry2_completed_prefix_regular_inventory="${retry2_completed_prefix_bundle}/regular_files.inventory.tsv"
+retry2_completed_prefix_directory_inventory="${retry2_completed_prefix_bundle}/directories.inventory.tsv"
+retry2_completed_prefix_snapshot="${retry2_completed_prefix_bundle}/completed_prefix"
+retry2_completed_prefix_live_sealer="${script_dir}/seal_and_verify_representation_ablation_retry2_completed_prefix_bundle_for_retry3_v1.sh"
+retry2_completed_prefix_frozen_sealer="${retry2_completed_prefix_bundle}/frozen_sources/$(basename "${retry2_completed_prefix_live_sealer}")"
 retry2_bootstrap_failure_closure="${runtime_parent}/${retry2_bootstrap_failure_closure_schema_id}"
 retry2_bootstrap_failure_closure_candidate="${runtime_parent}/.${retry2_bootstrap_failure_closure_schema_id}.candidate"
 retry2_bootstrap_failure_receipt="${retry2_bootstrap_failure_closure}/failure.status"
@@ -567,7 +621,7 @@ retry2_bootstrap_failure_frozen_erratum="${retry2_bootstrap_failure_frozen_root}
 retry2_bootstrap_failure_frozen_observation="${retry2_bootstrap_failure_frozen_root}/failure_observation.txt"
 retry2_bootstrap_failure_frozen_sealer="${retry2_bootstrap_failure_frozen_root}/quarantine_sealer.sh"
 retry2_bootstrap_failure_residue="${retry2_bootstrap_failure_closure}/residue"
-retry2_bootstrap_failure_quarantined_candidate="${retry2_bootstrap_failure_residue}/${schema_id}.runtime_root.candidate"
+retry2_bootstrap_failure_quarantined_candidate="${retry2_bootstrap_failure_residue}/${retry2_schema_id}.runtime_root.candidate"
 retry2_bootstrap_failure_quarantined_lock="${retry2_bootstrap_failure_quarantined_candidate}/.development.lock"
 prior_failed_runtime="${runtime_parent}/${prior_failed_schema_id}"
 failure_closure_runtime="${runtime_parent}/${failure_closure_schema_id}"
@@ -687,14 +741,14 @@ canonical_net="${repo_root}/src/config/wikimyei.representation.mtf_jepa_mae_vicr
 canonical_mtf_net_bnf="${repo_root}/src/config/grammar/wikimyei.representation.mtf_jepa_mae_vicreg.net.bnf"
 
 frozen_root="${runtime_root}/frozen_sources"
-frozen_runner="${frozen_root}/run_representation_ablation_v2_retry2.sh"
+frozen_runner="${frozen_root}/run_representation_ablation_v2_retry3.sh"
 frozen_helper="${frozen_root}/frozen_representation_affine_probe.cpp"
 frozen_binary="${frozen_root}/frozen_representation_affine_probe"
 arms_root="${runtime_root}/arms"
 config_closure="${runtime_root}/config_inputs.status"
 effective_grammar_closure="${runtime_root}/effective_grammar_closure.status"
 input_receipt="${runtime_root}/inputs.status"
-retry_attempt_sentinel="${runtime_root}/stage.00.initialize.status"
+retry_attempt_sentinel="${runtime_root}/stage.00.initialize_from_retry2_prefix.status"
 development_receipt="${runtime_root}/development.status"
 selection_receipt="${runtime_root}/selection.status"
 certified_attempt="${runtime_root}/certified.attempt.status"
@@ -708,10 +762,28 @@ certified_replay_log="${runtime_root}/certified/replay/synthetic_v2_frozen_encod
 result_receipt="${runtime_root}/result.status"
 canonical_import_receipt="${arms_root}/canonical/import.status"
 endpoint_imports_root="${runtime_root}/imports"
-endpoint_import_root="${endpoint_imports_root}/retry1_endpoint_v1"
+endpoint_import_root="${endpoint_imports_root}/retry2_endpoint_v1"
 endpoint_import_checkpoint="${endpoint_import_root}/channel_representation.report.mtf_jepa_mae_vicreg.pt"
-endpoint_import_source_bundle_receipt="${endpoint_import_root}/source_endpoint_import_bundle.status"
+endpoint_import_source_bundle_receipt="${endpoint_import_root}/source_completed_prefix_bundle.status"
+endpoint_import_source_status="${endpoint_import_root}/source_endpoint_import.status"
 endpoint_import_receipt="${endpoint_import_root}/endpoint_import.status"
+time_only_import_root="${endpoint_imports_root}/retry2_time_only_v1"
+time_only_import_checkpoint="${time_only_import_root}/channel_representation.report.mtf_jepa_mae_vicreg.pt"
+time_only_import_source_bundle_receipt="${time_only_import_root}/source_completed_prefix_bundle.status"
+time_only_import_source_status="${time_only_import_root}/source_training.status"
+time_only_import_receipt="${time_only_import_root}/time_only_import.status"
+
+retry2_prefix_canonical_status="${retry2_completed_prefix_snapshot}/arms/canonical/import.status"
+retry2_prefix_canonical_main_report="${retry2_completed_prefix_snapshot}/arms/canonical/affine/main.report"
+retry2_prefix_canonical_replay_report="${retry2_completed_prefix_snapshot}/arms/canonical/affine/replay.report"
+retry2_prefix_endpoint_status="${retry2_completed_prefix_snapshot}/imports/retry1_endpoint_v1/endpoint_import.status"
+retry2_prefix_endpoint_checkpoint="${retry2_completed_prefix_snapshot}/imports/retry1_endpoint_v1/channel_representation.report.mtf_jepa_mae_vicreg.pt"
+retry2_prefix_time_only_status="${retry2_completed_prefix_snapshot}/arms/time_only/training.status"
+retry2_prefix_time_only_checkpoint="${retry2_completed_prefix_snapshot}/arms/time_only/training/job/channel_representation.report.mtf_jepa_mae_vicreg.pt"
+retry2_prefix_time_only_manifest="${retry2_completed_prefix_snapshot}/arms/time_only/training/job/job.manifest"
+retry2_prefix_time_only_result="${retry2_completed_prefix_snapshot}/arms/time_only/training/job/runtime.result.fact"
+retry2_prefix_time_only_report="${retry2_completed_prefix_snapshot}/arms/time_only/training/job/channel_representation.report"
+retry2_prefix_time_only_log="${retry2_completed_prefix_snapshot}/arms/time_only/training.log"
 runtime_development_lock="${runtime_root}/.development.lock"
 historical_bootstrap_scratch_root="${runtime_parent}/.${schema_id}.preflight_scratch"
 bootstrap_scratch_root="${runtime_parent}/.${schema_id}.windows_safe.preflight_scratch"
@@ -744,13 +816,32 @@ print_plan() {
 schema_id=${schema_id}.plan
 development_driver=one_fixed_stage_per_advance_invocation
 development_stage_count=${development_stage_count}
-development_stage_order=00_initialize,01_canonical_import,02_endpoint_import,03_time_only_training,04_no_tf_alignment_training,05_endpoint_scale_capture,06_time_only_capture,07_no_tf_alignment_capture,08_endpoint_scale_affine,09_time_only_affine,10_no_tf_alignment_affine,11_selection_and_development
+development_stage_order=00_initialize_from_retry2_prefix,01_canonical_import_from_retry2,02_endpoint_import_from_retry2,03_time_only_import_from_retry2,04_no_tf_alignment_training_restart,05_endpoint_scale_capture,06_time_only_capture,07_no_tf_alignment_capture,08_endpoint_scale_affine,09_time_only_affine,10_no_tf_alignment_affine,11_selection_and_development
 legacy_run_development_enabled=false
 completed_prefix_policy=verify_and_skip
 attempt_without_completion_policy=terminal
 partial_payload_adoption_authorized=false
 checkpoint_resume_authorized=false
-endpoint_historical_training_reuse=verified_retry2_local_import_copy_only
+retry2_stage04_interruption_closure_schema_id=${retry2_stage04_interruption_closure_schema_id}
+retry2_stage04_interruption_closure_receipt=${retry2_stage04_interruption_closure_receipt}
+retry2_stage04_interruption_closure_receipt_sha256=${expected_retry2_stage04_interruption_closure_receipt_sha256}
+retry2_completed_prefix_bundle_schema_id=${retry2_completed_prefix_bundle_schema_id}
+retry2_completed_prefix_bundle_receipt=${retry2_completed_prefix_bundle_receipt}
+retry2_completed_prefix_bundle_receipt_sha256=${expected_retry2_completed_prefix_bundle_receipt_sha256}
+retry2_completed_prefix_payload=${retry2_completed_prefix_snapshot}
+retry2_direct_runtime_access=false
+retry2_completed_prefix_count=4
+retry2_completed_prefix_head_sha256=${expected_retry2_stage03_completion_sha256}
+retry2_terminal_stage04_attempt_sha256=${expected_retry2_stage04_attempt_sha256}
+retry2_partial_stage04_artifact_reuse_authorized=false
+endpoint_historical_training_reuse=verified_retry2_prefix_bundle_local_import_copy_only
+time_only_historical_training_reuse=verified_retry2_prefix_bundle_local_import_copy_only
+time_only_retry2_optimizer_steps=3000
+time_only_retry3_optimizer_steps=0
+time_only_retry3_training_job_created=false
+no_tf_alignment_retry3_optimizer_start_step=0
+no_tf_alignment_retry3_optimizer_steps=3000
+no_tf_alignment_input_checkpoint=none
 retry1_interruption_closure_receipt=${retry1_interruption_closure_receipt}
 retry1_interruption_closure_receipt_sha256=${expected_retry1_interruption_closure_receipt_sha256}
 retry1_runtime_content_inventory_sha256=${expected_retry1_runtime_content_inventory_sha256}
@@ -790,7 +881,7 @@ endpoint_bundle_capture_config_sha256=${expected_endpoint_bundle_capture_config_
 endpoint_import_root=${endpoint_import_root}
 endpoint_import_copy_mode=cp_reflink_never
 endpoint_import_hardlink_authorized=false
-endpoint_import_retry2_optimizer_steps=0
+endpoint_import_retry3_optimizer_steps=0
 minimum_cuwacunu_available_bytes=${minimum_cuwacunu_available_bytes}
 minimum_root_available_bytes=${minimum_root_available_bytes}
 maximum_tmp_regular_file_bytes=${maximum_tmp_regular_file_bytes}
@@ -855,6 +946,7 @@ effective_grammar_key_count_per_config=14
 effective_grammar_tuple_count=84
 runtime_dry_run_preflight_jobs=0
 initialization_stage_receipt=${retry_attempt_sentinel}
+initialization_kind=fresh_retry3_with_fixed_retry2_prefix_authority
 runtime_wave_id=train_core_mtf_jepa_mae_vicreg
 cursor_alignment_correction=${cursor_alignment_correction}
 cursor_alignment_erratum_verifier=${cursor_alignment_erratum_verifier}
@@ -871,7 +963,11 @@ canonical_data_raw_access=false
 canonical_arm_source=existing_immutable_development_checkpoint_and_probes
 challenger_arms=endpoint_scale,time_only,no_tf_alignment
 challenger_seed=17
-challenger_optimizer_steps=${expected_steps}
+endpoint_scale_retry3_optimizer_steps=0
+time_only_historical_optimizer_steps=3000
+time_only_retry3_optimizer_steps=0
+no_tf_alignment_retry3_optimizer_start_step=0
+no_tf_alignment_retry3_optimizer_steps=${expected_steps}
 endpoint_scale_only_diff=TIME_SCALES:8,16,32,64->8,16,32,1
 time_only_only_diff=USE_FREQUENCY_TOKENS:true->false
 no_tf_alignment_only_diff=LAMBDA_TF_ALIGN:0.10->0.00
@@ -1841,9 +1937,9 @@ verify_retry1_interruption_authority() {
     partial_artifact_reuse_authorized false
   expect_kv "${retry1_interruption_closure_receipt}" resume_authorized false
   expect_kv "${retry1_interruption_closure_receipt}" \
-    retry2_schema_id "${schema_id}"
+    retry2_schema_id "${retry2_schema_id}"
   expect_kv "${retry1_interruption_closure_receipt}" \
-    retry2_runtime_root "${runtime_root}"
+    retry2_runtime_root "${retry2_runtime}"
   expect_kv "${retry1_interruption_closure_receipt}" \
     retry2_time_only_restart_optimizer_step 0
   expect_kv "${retry1_interruption_closure_receipt}" \
@@ -3370,13 +3466,13 @@ freeze_sources() {
   candidate="$(mktemp -d "${scratch_root}/${schema_id}.frozen_sources.XXXXXXXX")"
   assert_operational_runner_identity
   cp -- "${script_path}" \
-    "${candidate}/run_representation_ablation_v2_retry2.sh"
+    "${candidate}/run_representation_ablation_v2_retry3.sh"
   cp -- "${affine_helper_source}" \
     "${candidate}/frozen_representation_affine_probe.cpp"
   cp -- "${affine_binary_source}" \
     "${candidate}/frozen_representation_affine_probe"
   assert_operational_runner_identity
-  chmod 0444 "${candidate}/run_representation_ablation_v2_retry2.sh" \
+  chmod 0444 "${candidate}/run_representation_ablation_v2_retry3.sh" \
     "${candidate}/frozen_representation_affine_probe.cpp"
   chmod 0555 "${candidate}/frozen_representation_affine_probe"
   mv -T -n "${candidate}" "${frozen_root}" ||
@@ -3894,7 +3990,30 @@ emit_config_closure() {
       "${canonical_untrained_capture_config}" \
       "${canonical_untrained_mdn_policy}" \
       "${canonical_policy}" "${canonical_net}" "${canonical_mtf_net_bnf}" \
-      "${effective_grammar_closure}" "${retry2_amendment}" \
+      "${effective_grammar_closure}" \
+      "${retry2_stage04_interruption_closure_receipt}" \
+      "${retry2_stage04_interruption_regular_inventory}" \
+      "${retry2_stage04_interruption_directory_inventory}" \
+      "${retry2_stage04_interruption_live_amendment}" \
+      "${retry2_stage04_interruption_live_sealer}" \
+      "${retry2_completed_prefix_bundle_receipt}" \
+      "${retry2_completed_prefix_regular_inventory}" \
+      "${retry2_completed_prefix_directory_inventory}" \
+      "${retry2_completed_prefix_live_sealer}" \
+      "${retry2_completed_prefix_frozen_sealer}" \
+      "${retry2_completed_prefix_snapshot}/arms/endpoint_scale/config/representation.jkimyei" \
+      "${retry2_completed_prefix_snapshot}/arms/endpoint_scale/config/representation.net" \
+      "${retry2_completed_prefix_snapshot}/arms/endpoint_scale/config/train.config" \
+      "${retry2_completed_prefix_snapshot}/arms/endpoint_scale/config/capture.config" \
+      "${retry2_completed_prefix_snapshot}/arms/time_only/config/representation.jkimyei" \
+      "${retry2_completed_prefix_snapshot}/arms/time_only/config/representation.net" \
+      "${retry2_completed_prefix_snapshot}/arms/time_only/config/train.config" \
+      "${retry2_completed_prefix_snapshot}/arms/time_only/config/capture.config" \
+      "${retry2_completed_prefix_snapshot}/arms/no_tf_alignment/config/representation.jkimyei" \
+      "${retry2_completed_prefix_snapshot}/arms/no_tf_alignment/config/representation.net" \
+      "${retry2_completed_prefix_snapshot}/arms/no_tf_alignment/config/train.config" \
+      "${retry2_completed_prefix_snapshot}/arms/no_tf_alignment/config/capture.config" \
+      "${retry2_amendment}" \
       "${retry2_windows_safe_publication_authority}" \
       "${retry2_tmp_scan_race_observation}" \
       "${retry2_windows_safe_publication_authority_v2}" \
@@ -4092,7 +4211,9 @@ emit_inputs() {
     echo "endpoint_bundle_capture_config_path=${endpoint_bundle_capture_config}"
     echo "endpoint_bundle_capture_config_sha256=$(sha256_of "${endpoint_bundle_capture_config}")"
     echo "endpoint_direct_retry1_use_authorized=false"
-    echo "endpoint_retry2_local_import_required=true"
+    echo "retry2_completed_prefix_bundle_required=true"
+    echo "endpoint_retry3_local_import_required=true"
+    echo "time_only_retry3_local_import_required=true"
     emit_recovery_authority_bindings
     echo "preregistration_path=${preregistration}"
     echo "preregistration_sha256=$(sha256_of "${preregistration}")"
@@ -4205,7 +4326,11 @@ emit_inputs() {
     done
     echo "challenger_count=3"
     echo "challenger_seed=17"
-    echo "challenger_optimizer_steps=${expected_steps}"
+    echo "endpoint_scale_retry3_optimizer_steps=0"
+    echo "time_only_historical_optimizer_steps=3000"
+    echo "time_only_retry3_optimizer_steps=0"
+    echo "no_tf_alignment_retry3_optimizer_start_step=0"
+    echo "no_tf_alignment_retry3_optimizer_steps=${expected_steps}"
     echo "train_anchor_range=[${train_begin},${train_end})"
     echo "validation_anchor_range=[${validation_begin},${validation_end})"
     echo "maximum_development_anchor_read=$((validation_end - 1))"
@@ -4252,7 +4377,10 @@ verify_inputs() {
   expect_kv "${input_receipt}" endpoint_bundle_checkpoint_sha256 \
     "${expected_endpoint_bundle_checkpoint_sha256}"
   expect_kv "${input_receipt}" endpoint_direct_retry1_use_authorized false
-  expect_kv "${input_receipt}" endpoint_retry2_local_import_required true
+  expect_kv "${input_receipt}" retry2_live_runtime_direct_use_authorized false
+  expect_kv "${input_receipt}" retry2_completed_prefix_bundle_required true
+  expect_kv "${input_receipt}" endpoint_retry3_local_import_required true
+  expect_kv "${input_receipt}" time_only_retry3_local_import_required true
   verify_ablation_runner_bindings "${input_receipt}"
   verify_recovery_authority_bindings "${input_receipt}"
   verify_mdn_retry1_authority_bindings "${input_receipt}"
@@ -4290,7 +4418,12 @@ verify_inputs() {
   expect_kv "${input_receipt}" required_route representation_ablation_screen
   expect_kv "${input_receipt}" challenger_count 3
   expect_kv "${input_receipt}" challenger_seed 17
-  expect_kv "${input_receipt}" challenger_optimizer_steps "${expected_steps}"
+  expect_kv "${input_receipt}" endpoint_scale_retry3_optimizer_steps 0
+  expect_kv "${input_receipt}" time_only_historical_optimizer_steps 3000
+  expect_kv "${input_receipt}" time_only_retry3_optimizer_steps 0
+  expect_kv "${input_receipt}" no_tf_alignment_retry3_optimizer_start_step 0
+  expect_kv "${input_receipt}" no_tf_alignment_retry3_optimizer_steps \
+    "${expected_steps}"
   expect_kv "${input_receipt}" authoritative_accepted_anchor_count 3261
   expect_kv "${input_receipt}" authoritative_candidate_anchor_count 3261
   expect_kv "${input_receipt}" authoritative_maximum_anchor_index 3260
@@ -5242,6 +5375,9 @@ arm_checkpoint_path() {
   elif [[ "${arm}" == endpoint_scale ]]; then
     verify_endpoint_import >/dev/null
     printf '%s' "${endpoint_import_checkpoint}"
+  elif [[ "${arm}" == time_only ]]; then
+    verify_time_only_import >/dev/null
+    printf '%s' "${time_only_import_checkpoint}"
   else
     bound_file "$(arm_training_status "${arm}")" checkpoint_path \
       checkpoint_sha256
@@ -5598,16 +5734,26 @@ emit_development_receipt() {
     emit_cursor_alignment_erratum_binding
     for arm in "${challenger_arms[@]}"; do
       if [[ "${arm}" == endpoint_scale ]]; then
-        echo "arm.${arm}.training_authority_kind=retry1_endpoint_import"
+        echo "arm.${arm}.training_authority_kind=retry2_completed_prefix_endpoint_import"
         echo "arm.${arm}.endpoint_import_status_path=${endpoint_import_receipt}"
         echo "arm.${arm}.endpoint_import_status_sha256=$(sha256_of "${endpoint_import_receipt}")"
-        echo "arm.${arm}.retry2_training_job_created=false"
-        echo "arm.${arm}.retry2_training_status_created=false"
-        echo "arm.${arm}.retry2_optimizer_steps=0"
+        echo "arm.${arm}.retry3_training_job_created=false"
+        echo "arm.${arm}.retry3_training_status_created=false"
+        echo "arm.${arm}.retry3_optimizer_steps=0"
+      elif [[ "${arm}" == time_only ]]; then
+        echo "arm.${arm}.training_authority_kind=retry2_completed_prefix_time_only_import"
+        echo "arm.${arm}.time_only_import_status_path=${time_only_import_receipt}"
+        echo "arm.${arm}.time_only_import_status_sha256=$(sha256_of "${time_only_import_receipt}")"
+        echo "arm.${arm}.historical_optimizer_steps=3000"
+        echo "arm.${arm}.retry3_training_job_created=false"
+        echo "arm.${arm}.retry3_training_status_created=false"
+        echo "arm.${arm}.retry3_optimizer_steps=0"
       else
-        echo "arm.${arm}.training_authority_kind=fresh_retry2_training"
+        echo "arm.${arm}.training_authority_kind=fresh_retry3_training_from_optimizer_step_zero"
         echo "arm.${arm}.training_status_path=$(arm_training_status "${arm}")"
         echo "arm.${arm}.training_status_sha256=$(sha256_of "$(arm_training_status "${arm}")")"
+        echo "arm.${arm}.retry3_optimizer_start_step=0"
+        echo "arm.${arm}.retry3_optimizer_steps=${expected_steps}"
       fi
       echo "arm.${arm}.capture_status_path=$(arm_capture_status "${arm}")"
       echo "arm.${arm}.capture_status_sha256=$(sha256_of "$(arm_capture_status "${arm}")")"
@@ -5616,7 +5762,9 @@ emit_development_receipt() {
     done
     echo "challenger_count=3"
     echo "challenger_seed=17"
-    echo "challenger_optimizer_steps=${expected_steps}"
+    echo "time_only_historical_optimizer_steps=3000"
+    echo "time_only_retry3_optimizer_steps=0"
+    echo "no_tf_alignment_retry3_optimizer_steps=${expected_steps}"
     echo "train_anchor_range=[${train_begin},${train_end})"
     echo "validation_anchor_range=[${validation_begin},${validation_end})"
     echo "maximum_anchor_read=2815"
@@ -5706,8 +5854,8 @@ audit_development_job_set() {
       fail "development job escaped the development ranges: ${manifest}"
     reject_data_raw_file "${manifest}"
   done <<<"${manifests}"
-  [[ "${count}" == 8 ]] ||
-    fail "expected two fresh training jobs and six challenger capture jobs, found ${count}"
+  [[ "${count}" == 7 ]] ||
+    fail "expected one fresh no-TF training job and six challenger capture jobs, found ${count}"
 }
 
 verify_development_core() {
@@ -6366,8 +6514,8 @@ audit_complete_job_set() {
       fail "job manifest crossed the isolated development prefix: ${manifest}"
     reject_data_raw_file "${manifest}"
   done <<<"${manifests}"
-  [[ "${count}" == 9 ]] ||
-    fail "expected eight development jobs and one certified job, found ${count}"
+  [[ "${count}" == 8 ]] ||
+    fail "expected seven development jobs and one certified job, found ${count}"
 }
 
 verify_result_receipt() {
@@ -6865,8 +7013,10 @@ verify_endpoint_bundle_authority_static() {
     retry2_second_copy_requires_distinct_inode_tuple true
   expect_kv "${endpoint_bundle_receipt}" \
     retry2_second_copy_requires_link_count_one true
-  expect_kv "${endpoint_bundle_receipt}" retry2_runtime_schema_id "${schema_id}"
-  expect_kv "${endpoint_bundle_receipt}" retry2_runtime_root "${runtime_root}"
+  expect_kv "${endpoint_bundle_receipt}" \
+    retry2_runtime_schema_id "${retry2_schema_id}"
+  expect_kv "${endpoint_bundle_receipt}" \
+    retry2_runtime_root "${retry2_runtime}"
   expect_kv "${endpoint_bundle_receipt}" \
     retry2_endpoint_consumption \
     retry2_local_second_copy_only_after_stage_verifier
@@ -7095,8 +7245,11 @@ verify_arm_checkpoint_authority() {
   endpoint_scale)
     verify_endpoint_import
     ;;
-  time_only | no_tf_alignment)
-    verify_training_status "${arm}"
+  time_only)
+    verify_time_only_import
+    ;;
+  no_tf_alignment)
+    verify_training_status no_tf_alignment
     ;;
   *)
     fail "no challenger checkpoint authority for arm ${arm}"
@@ -7109,21 +7262,35 @@ emit_arm_checkpoint_authority_binding() {
   case "${arm}" in
   endpoint_scale)
     cat <<AUTHORITY
-checkpoint_authority_kind=retry1_endpoint_import
+checkpoint_authority_kind=retry2_completed_prefix_endpoint_import
 endpoint_import_status_path=${endpoint_import_receipt}
 endpoint_import_status_sha256=$(sha256_of "${endpoint_import_receipt}")
-retry2_training_job_created=false
-retry2_training_status_created=false
-retry2_optimizer_steps=0
+retry3_training_job_created=false
+retry3_training_status_created=false
+retry3_optimizer_steps=0
 AUTHORITY
     ;;
-  time_only | no_tf_alignment)
-    status="$(arm_training_status "${arm}")"
+  time_only)
     cat <<AUTHORITY
-checkpoint_authority_kind=fresh_retry2_training
+checkpoint_authority_kind=retry2_completed_prefix_time_only_import
+time_only_import_status_path=${time_only_import_receipt}
+time_only_import_status_sha256=$(sha256_of "${time_only_import_receipt}")
+historical_optimizer_steps=3000
+retry3_training_job_created=false
+retry3_training_status_created=false
+retry3_optimizer_steps=0
+AUTHORITY
+    ;;
+  no_tf_alignment)
+    status="$(arm_training_status no_tf_alignment)"
+    cat <<AUTHORITY
+checkpoint_authority_kind=fresh_retry3_training_from_optimizer_step_zero
 training_status_path=${status}
 training_status_sha256=$(sha256_of "${status}")
-retry2_optimizer_steps=${expected_steps}
+retry3_optimizer_start_step=0
+retry3_optimizer_steps=${expected_steps}
+input_representation_checkpoint_path=none
+input_mdn_checkpoint_path=none
 AUTHORITY
     ;;
   *) fail "unsupported checkpoint authority binding arm: ${arm}" ;;
@@ -7691,17 +7858,24 @@ emit_stage_primary_bindings() {
     echo "primary_artifact_sha256=$(sha256_of "${canonical_import_receipt}")"
     ;;
   2)
-    echo "primary_artifact_kind=retry1_endpoint_import"
+    echo "primary_artifact_kind=retry2_completed_prefix_endpoint_import"
     echo "primary_artifact_path=${endpoint_import_receipt}"
     echo "primary_artifact_sha256=$(sha256_of "${endpoint_import_receipt}")"
     echo "endpoint_import_checkpoint_path=${endpoint_import_checkpoint}"
     echo "endpoint_import_checkpoint_sha256=$(sha256_of "${endpoint_import_checkpoint}")"
     ;;
-  3 | 4)
-    if ((index == 3)); then arm=time_only; else arm=no_tf_alignment; fi
+  3)
+    echo "primary_artifact_kind=retry2_completed_prefix_time_only_import"
+    echo "primary_artifact_path=${time_only_import_receipt}"
+    echo "primary_artifact_sha256=$(sha256_of "${time_only_import_receipt}")"
+    echo "time_only_import_checkpoint_path=${time_only_import_checkpoint}"
+    echo "time_only_import_checkpoint_sha256=$(sha256_of "${time_only_import_checkpoint}")"
+    ;;
+  4)
+    arm=no_tf_alignment
     status="$(arm_training_status "${arm}")"
     log="$(arm_root "${arm}")/training.log"
-    echo "primary_artifact_kind=fresh_retry2_training"
+    echo "primary_artifact_kind=fresh_retry3_training_from_optimizer_step_zero"
     echo "primary_artifact_path=${status}"
     echo "primary_artifact_sha256=$(sha256_of "${status}")"
     echo "training_log_path=${log}"
@@ -7714,7 +7888,7 @@ emit_stage_primary_bindings() {
     7) arm=no_tf_alignment ;;
     esac
     status="$(arm_capture_status "${arm}")"
-    echo "primary_artifact_kind=retry2_feature_capture"
+    echo "primary_artifact_kind=retry3_feature_capture"
     echo "primary_artifact_path=${status}"
     echo "primary_artifact_sha256=$(sha256_of "${status}")"
     echo "capture_train_log_path=$(arm_root "${arm}")/capture/train.log"
@@ -7729,7 +7903,7 @@ emit_stage_primary_bindings() {
     10) arm=no_tf_alignment ;;
     esac
     status="$(arm_affine_status "${arm}")"
-    echo "primary_artifact_kind=retry2_affine_development"
+    echo "primary_artifact_kind=retry3_affine_development"
     echo "primary_artifact_path=${status}"
     echo "primary_artifact_sha256=$(sha256_of "${status}")"
     ;;
@@ -7827,6 +8001,19 @@ emit_stage_attempt() {
     echo "pre_attempt_tmp_same_as_root=${observed_tmp_same}"
     echo "pre_attempt_tmp_oversize_regular_file_count=${observed_tmp_count}"
     echo "pre_attempt_resource_gate_pass=true"
+    if ((index == 3)); then
+      echo "time_only_authority_kind=retry2_completed_prefix_import"
+      echo "time_only_historical_optimizer_steps=3000"
+      echo "time_only_retry3_optimizer_steps=0"
+      echo "time_only_retry3_training_job_created=false"
+    elif ((index == 4)); then
+      echo "source_retry2_terminal_stage04_attempt_sha256=${expected_retry2_stage04_attempt_sha256}"
+      echo "source_retry2_partial_payload_reuse_authorized=false"
+      echo "retry3_optimizer_start_step=0"
+      echo "retry3_requested_optimizer_steps=${expected_steps}"
+      echo "input_representation_checkpoint_path=none"
+      echo "input_mdn_checkpoint_path=none"
+    fi
     echo "attempt_without_completion_terminal=true"
     echo "partial_payload_adoption_authorized=false"
     echo "checkpoint_resume_authorized=false"
@@ -8023,9 +8210,19 @@ assert_stage_payload_absent() {
         fail "endpoint-import or forbidden endpoint-training payload predates attempt: ${path}"
     done
     ;;
-  3 | 4)
-    local arm
-    if ((index == 3)); then arm=time_only; else arm=no_tf_alignment; fi
+  3)
+    for path in "${time_only_import_root}" \
+      "${time_only_import_checkpoint}" "${time_only_import_receipt}" \
+      "$(arm_root time_only)/training" \
+      "$(arm_train_job time_only)" \
+      "$(arm_training_status time_only)" \
+      "$(arm_root time_only)/training.log"; do
+      path_is_absent "${path}" ||
+        fail "time-only import or forbidden training payload predates its Retry3 stage attempt: ${path}"
+    done
+    ;;
+  4)
+    local arm=no_tf_alignment
     for path in "$(arm_root "${arm}")/training" \
       "$(arm_train_job "${arm}")" \
       "$(arm_training_status "${arm}")" "$(arm_root "${arm}")/training.log"; do
@@ -8081,8 +8278,7 @@ verify_stage_artifacts() {
   1) verify_canonical_import ;;
   2) verify_endpoint_import >/dev/null ;;
   3)
-    verify_training_status time_only >/dev/null
-    verify_success_log "$(arm_root time_only)/training.log"
+    verify_time_only_import >/dev/null
     ;;
   4)
     verify_training_status no_tf_alignment >/dev/null
@@ -8201,8 +8397,7 @@ run_one_development_stage() {
   1) import_canonical_arm ;;
   2) run_endpoint_import ;;
   3)
-    run_training_arm time_only
-    seal_success_log "$(arm_root time_only)/training.log"
+    run_time_only_import
     ;;
   4)
     run_training_arm no_tf_alignment
@@ -8340,6 +8535,1421 @@ preflight_without_attempt() {
   preflight_read_only
   assert_directory_empty "${bootstrap_scratch_root}" "bootstrap scratch"
   resource_safety_gate
+}
+
+# ---------------------------------------------------------------------------
+# Retry3 recovery boundary.
+#
+# These definitions intentionally override the inherited Retry2 authority
+# emitters at runtime.  No Retry2 receipt is ever reproduced with Retry3's
+# current runner binding.  Historical claims are accepted only through the
+# fixed-hash interruption closure and its separately sealed completed-prefix
+# bundle.
+
+retry2_completed_prefix_expected_files() {
+  cat <<'FILES'
+completed_prefix_bundle.status
+directories.inventory.tsv
+frozen_sources/seal_and_verify_representation_ablation_retry2_completed_prefix_bundle_for_retry3_v1.sh
+regular_files.inventory.tsv
+completed_prefix/operational_authority/run_representation_ablation_v2_retry2.sh
+completed_prefix/synthetic_benchmark.train_core_mtf_jepa_mae_vicreg.isolated.config
+completed_prefix/effective_grammar_closure.status
+completed_prefix/config_inputs.status
+completed_prefix/inputs.status
+completed_prefix/frozen_sources/run_representation_ablation_v2_retry2.sh
+completed_prefix/frozen_sources/frozen_representation_affine_probe.cpp
+completed_prefix/frozen_sources/frozen_representation_affine_probe
+completed_prefix/arms/endpoint_scale/config/capture.config
+completed_prefix/arms/endpoint_scale/config/representation.jkimyei
+completed_prefix/arms/endpoint_scale/config/representation.net
+completed_prefix/arms/endpoint_scale/config/train.config
+completed_prefix/arms/time_only/config/capture.config
+completed_prefix/arms/time_only/config/representation.jkimyei
+completed_prefix/arms/time_only/config/representation.net
+completed_prefix/arms/time_only/config/train.config
+completed_prefix/arms/no_tf_alignment/config/capture.config
+completed_prefix/arms/no_tf_alignment/config/representation.jkimyei
+completed_prefix/arms/no_tf_alignment/config/representation.net
+completed_prefix/arms/no_tf_alignment/config/train.config
+completed_prefix/arms/canonical/affine/main.report
+completed_prefix/arms/canonical/affine/replay.report
+completed_prefix/arms/canonical/import.status
+completed_prefix/imports/retry1_endpoint_v1/channel_representation.report.mtf_jepa_mae_vicreg.pt
+completed_prefix/imports/retry1_endpoint_v1/endpoint_import.status
+completed_prefix/imports/retry1_endpoint_v1/source_endpoint_import_bundle.status
+completed_prefix/arms/time_only/training/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg/spawns/lws_ca75885f5cadac7c/component_spawn.ref
+completed_prefix/arms/time_only/training/job/channel_representation.report
+completed_prefix/arms/time_only/training/job/channel_representation.report.mtf_jepa_mae_vicreg.pt
+completed_prefix/arms/time_only/training/job/job.manifest
+completed_prefix/arms/time_only/training/job/job.state
+completed_prefix/arms/time_only/training/job/lattice.checkpoint.fact
+completed_prefix/arms/time_only/training/job/lattice.exposure.fact
+completed_prefix/arms/time_only/training/job/lattice.source_analytics.fact
+completed_prefix/arms/time_only/training/job/runtime.checkpoint_io.fact
+completed_prefix/arms/time_only/training/job/runtime.component_training_update.fact
+completed_prefix/arms/time_only/training/job/runtime.health_measurement.fact
+completed_prefix/arms/time_only/training/job/runtime.job_events.probe
+completed_prefix/arms/time_only/training/job/runtime.result.fact
+completed_prefix/arms/time_only/training/system/component_spawn_registry.v1.lls
+completed_prefix/arms/time_only/training/system/runtime_layout.v1.lls
+completed_prefix/arms/time_only/training.log
+completed_prefix/arms/time_only/training.status
+completed_prefix/stage.00.initialize.attempt.status
+completed_prefix/stage.00.initialize.status
+completed_prefix/stage.01.canonical_import.attempt.status
+completed_prefix/stage.01.canonical_import.status
+completed_prefix/stage.02.endpoint_import.attempt.status
+completed_prefix/stage.02.endpoint_import.status
+completed_prefix/stage.03.time_only_training.attempt.status
+completed_prefix/stage.03.time_only_training.status
+FILES
+}
+
+retry2_completed_prefix_expected_directories() {
+  cat <<'DIRECTORIES'
+.
+./completed_prefix
+./completed_prefix/operational_authority
+./completed_prefix/frozen_sources
+./completed_prefix/arms
+./completed_prefix/arms/endpoint_scale
+./completed_prefix/arms/endpoint_scale/config
+./completed_prefix/arms/time_only
+./completed_prefix/arms/time_only/config
+./completed_prefix/arms/time_only/training
+./completed_prefix/arms/time_only/training/components
+./completed_prefix/arms/time_only/training/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg
+./completed_prefix/arms/time_only/training/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg/spawns
+./completed_prefix/arms/time_only/training/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg/spawns/lws_ca75885f5cadac7c
+./completed_prefix/arms/time_only/training/job
+./completed_prefix/arms/time_only/training/system
+./completed_prefix/arms/no_tf_alignment
+./completed_prefix/arms/no_tf_alignment/config
+./completed_prefix/arms/canonical
+./completed_prefix/arms/canonical/affine
+./completed_prefix/imports
+./completed_prefix/imports/retry1_endpoint_v1
+./frozen_sources
+DIRECTORIES
+}
+
+assert_retry3_recovery_pins_sealed() {
+  local label pin
+  while IFS='=' read -r label pin; do
+    [[ "${pin}" =~ ^[0-9a-f]{64}$ && \
+      "${pin}" != "${unsealed_authority_sha256}" ]] ||
+      fail "Retry3 recovery authority is not sealed: ${label}"
+  done <<PINS
+stage04_interruption_receipt=${expected_retry2_stage04_interruption_closure_receipt_sha256}
+stage04_interruption_regular_inventory=${expected_retry2_stage04_interruption_regular_inventory_sha256}
+stage04_interruption_directory_inventory=${expected_retry2_stage04_interruption_directory_inventory_sha256}
+stage04_interruption_amendment=${expected_retry2_stage04_interruption_amendment_sha256}
+stage04_interruption_sealer=${expected_retry2_stage04_interruption_sealer_sha256}
+completed_prefix_receipt=${expected_retry2_completed_prefix_bundle_receipt_sha256}
+completed_prefix_regular_inventory=${expected_retry2_completed_prefix_regular_inventory_sha256}
+completed_prefix_directory_inventory=${expected_retry2_completed_prefix_directory_inventory_sha256}
+completed_prefix_sealer=${expected_retry2_completed_prefix_sealer_sha256}
+PINS
+}
+
+validate_retry3_inventory_relative_path() {
+  local relative_path="$1" allow_dot="${2:-false}"
+  [[ -n "${relative_path}" && "${relative_path}" != /* && \
+    "${relative_path}" != *$'\n'* && "${relative_path}" != *$'\r'* && \
+    "${relative_path}" != *$'\t'* ]] ||
+    fail "unsafe Retry3 recovery inventory relative path: ${relative_path}"
+  if [[ "${relative_path}" == . ]]; then
+    [[ "${allow_dot}" == true ]] ||
+      fail "dot is forbidden for a regular-file inventory path"
+    return
+  fi
+  [[ "/${relative_path}/" != *'/../'* && \
+    "/${relative_path}/" != *'/./'* && \
+    "/${relative_path}/" != *'//'* ]] ||
+    fail "non-canonical Retry3 recovery inventory relative path: ${relative_path}"
+}
+
+verify_retry2_stage04_interruption_closure_inventory_tree() {
+  local regular_header directory_header regular_fd directory_fd
+  local relative_path source_mode source_uid source_gid source_links
+  local source_bytes source_inode source_device source_mtime source_sha256
+  local snapshot_mode snapshot_uid snapshot_gid snapshot_links snapshot_bytes
+  local snapshot_inode snapshot_device snapshot_mtime snapshot_sha256
+  local inodes_distinct bytes_identical path actual_metadata
+  local regular_count=0 directory_count=0 regular_bytes=0
+  local actual_files actual_directories total_files total_directories
+  local snapshot_content_sha256 special
+  declare -A seen_regular_paths=() seen_directory_paths=()
+
+  IFS= read -r regular_header \
+    <"${retry2_stage04_interruption_regular_inventory}" ||
+    fail "could not read Retry2 interruption regular inventory header"
+  [[ "${regular_header}" == $'relative_path\tsource_mode\tsource_uid\tsource_gid\tsource_links\tsource_bytes\tsource_inode\tsource_device\tsource_mtime\tsource_sha256\tsnapshot_mode\tsnapshot_uid\tsnapshot_gid\tsnapshot_links\tsnapshot_bytes\tsnapshot_inode\tsnapshot_device\tsnapshot_mtime\tsnapshot_sha256\tinodes_distinct\tbytes_identical' ]] ||
+    fail "Retry2 interruption regular inventory header drifted"
+  awk -F '\t' 'NR == 1 { next } NF != 21 { exit 42 }
+    END { if (NR != 61) exit 43 }' \
+    "${retry2_stage04_interruption_regular_inventory}" ||
+    fail "Retry2 interruption regular inventory shape drifted"
+  exec {regular_fd}<"${retry2_stage04_interruption_regular_inventory}" ||
+    fail "could not open Retry2 interruption regular inventory"
+  IFS= read -r regular_header <&${regular_fd} ||
+    fail "could not consume Retry2 interruption regular inventory header"
+  while IFS=$'\t' read -r relative_path source_mode source_uid source_gid \
+    source_links source_bytes source_inode source_device source_mtime \
+    source_sha256 snapshot_mode snapshot_uid snapshot_gid snapshot_links \
+    snapshot_bytes snapshot_inode snapshot_device snapshot_mtime \
+    snapshot_sha256 inodes_distinct bytes_identical <&${regular_fd}; do
+    validate_retry3_inventory_relative_path "${relative_path}"
+    [[ -z "${seen_regular_paths[${relative_path}]+x}" ]] ||
+      fail "duplicate Retry2 interruption regular inventory path: ${relative_path}"
+    seen_regular_paths["${relative_path}"]=1
+    [[ "${source_mode}" =~ ^[0-7]{3,4}$ && \
+      "${source_uid}" =~ ^[0-9]+$ && "${source_gid}" =~ ^[0-9]+$ && \
+      "${source_links}" =~ ^[0-9]+$ && "${source_bytes}" =~ ^[0-9]+$ && \
+      "${source_inode}" =~ ^[0-9]+$ && "${source_device}" =~ ^[0-9]+$ && \
+      -n "${source_mtime}" && "${source_sha256}" =~ ^[0-9a-f]{64}$ && \
+      "${snapshot_mode}" =~ ^[0-7]{3,4}$ && \
+      "${snapshot_uid}" =~ ^[0-9]+$ && "${snapshot_gid}" =~ ^[0-9]+$ && \
+      "${snapshot_links}" =~ ^[0-9]+$ && \
+      "${snapshot_bytes}" =~ ^[0-9]+$ && \
+      "${snapshot_inode}" =~ ^[0-9]+$ && \
+      "${snapshot_device}" =~ ^[0-9]+$ && -n "${snapshot_mtime}" && \
+      "${snapshot_sha256}" =~ ^[0-9a-f]{64}$ ]] ||
+      fail "malformed Retry2 interruption regular inventory row: ${relative_path}"
+    [[ "${source_uid}:${source_gid}:${source_links}" == \
+      "${process_owner_uid}:${process_owner_gid}:1" && \
+      "${snapshot_mode}:${snapshot_uid}:${snapshot_gid}:${snapshot_links}" == \
+      "444:${process_owner_uid}:${process_owner_gid}:1" && \
+      "${source_bytes}" == "${snapshot_bytes}" && \
+      "${source_sha256}" == "${snapshot_sha256}" && \
+      "${source_device}:${source_inode}" != \
+      "${snapshot_device}:${snapshot_inode}" && \
+      "${inodes_distinct}" == true && "${bytes_identical}" == true ]] ||
+      fail "Retry2 interruption regular inventory semantics drifted: ${relative_path}"
+    path="${retry2_stage04_interruption_snapshot}/${relative_path}"
+    require_contained_path "${path}" "${retry2_stage04_interruption_snapshot}"
+    require_file "${path}"
+    actual_metadata="$(stat -c '%a:%u:%g:%h:%s:%i:%d:%y' -- "${path}")"
+    [[ "${actual_metadata}" == \
+      "${snapshot_mode}:${snapshot_uid}:${snapshot_gid}:${snapshot_links}:${snapshot_bytes}:${snapshot_inode}:${snapshot_device}:${snapshot_mtime}" ]] ||
+      fail "Retry2 interruption snapshot file metadata differs from inventory: ${relative_path}"
+    [[ "$(sha256_of "${path}")" == "${snapshot_sha256}" ]] ||
+      fail "Retry2 interruption snapshot file hash differs from inventory: ${relative_path}"
+    regular_count=$((regular_count + 1))
+    regular_bytes=$((regular_bytes + snapshot_bytes))
+  done
+  exec {regular_fd}<&-
+  [[ "${regular_count}" == 60 && "${regular_bytes}" == 58518408 ]] ||
+    fail "Retry2 interruption snapshot regular-file aggregate drifted"
+
+  IFS= read -r directory_header \
+    <"${retry2_stage04_interruption_directory_inventory}" ||
+    fail "could not read Retry2 interruption directory inventory header"
+  [[ "${directory_header}" == $'relative_path\tsource_mode\tsource_uid\tsource_gid\tsource_links\tsource_bytes\tsource_inode\tsource_device\tsource_mtime\tsnapshot_mode\tsnapshot_uid\tsnapshot_gid\tsnapshot_links\tsnapshot_bytes\tsnapshot_inode\tsnapshot_device\tsnapshot_mtime\tinodes_distinct' ]] ||
+    fail "Retry2 interruption directory inventory header drifted"
+  awk -F '\t' 'NR == 1 { next } NF != 18 { exit 42 }
+    END { if (NR != 29) exit 43 }' \
+    "${retry2_stage04_interruption_directory_inventory}" ||
+    fail "Retry2 interruption directory inventory shape drifted"
+  exec {directory_fd}<"${retry2_stage04_interruption_directory_inventory}" ||
+    fail "could not open Retry2 interruption directory inventory"
+  IFS= read -r directory_header <&${directory_fd} ||
+    fail "could not consume Retry2 interruption directory inventory header"
+  while IFS=$'\t' read -r relative_path source_mode source_uid source_gid \
+    source_links source_bytes source_inode source_device source_mtime \
+    snapshot_mode snapshot_uid snapshot_gid snapshot_links snapshot_bytes \
+    snapshot_inode snapshot_device snapshot_mtime inodes_distinct \
+    <&${directory_fd}; do
+    validate_retry3_inventory_relative_path "${relative_path}" true
+    [[ -z "${seen_directory_paths[${relative_path}]+x}" ]] ||
+      fail "duplicate Retry2 interruption directory inventory path: ${relative_path}"
+    seen_directory_paths["${relative_path}"]=1
+    [[ "${source_mode}" =~ ^[0-7]{3,4}$ && \
+      "${source_uid}" =~ ^[0-9]+$ && "${source_gid}" =~ ^[0-9]+$ && \
+      "${source_links}" =~ ^[0-9]+$ && "${source_bytes}" =~ ^[0-9]+$ && \
+      "${source_inode}" =~ ^[0-9]+$ && "${source_device}" =~ ^[0-9]+$ && \
+      -n "${source_mtime}" && "${snapshot_mode}" =~ ^[0-7]{3,4}$ && \
+      "${snapshot_uid}" =~ ^[0-9]+$ && "${snapshot_gid}" =~ ^[0-9]+$ && \
+      "${snapshot_links}" =~ ^[0-9]+$ && \
+      "${snapshot_bytes}" =~ ^[0-9]+$ && \
+      "${snapshot_inode}" =~ ^[0-9]+$ && \
+      "${snapshot_device}" =~ ^[0-9]+$ && -n "${snapshot_mtime}" ]] ||
+      fail "malformed Retry2 interruption directory inventory row: ${relative_path}"
+    [[ "${source_uid}:${source_gid}:${source_links}" == \
+      "${process_owner_uid}:${process_owner_gid}:1" && \
+      "${snapshot_mode}:${snapshot_uid}:${snapshot_gid}:${snapshot_links}" == \
+      "555:${process_owner_uid}:${process_owner_gid}:1" && \
+      "${source_device}:${source_inode}" != \
+      "${snapshot_device}:${snapshot_inode}" && \
+      "${inodes_distinct}" == true ]] ||
+      fail "Retry2 interruption directory inventory semantics drifted: ${relative_path}"
+    if [[ "${relative_path}" == . ]]; then
+      path="${retry2_stage04_interruption_snapshot}"
+    else
+      path="${retry2_stage04_interruption_snapshot}/${relative_path}"
+    fi
+    require_contained_path "${path}" "${retry2_stage04_interruption_snapshot}"
+    require_dir "${path}"
+    actual_metadata="$(stat -c '%a:%u:%g:%h:%s:%i:%d:%y' -- "${path}")"
+    [[ "${actual_metadata}" == \
+      "${snapshot_mode}:${snapshot_uid}:${snapshot_gid}:${snapshot_links}:${snapshot_bytes}:${snapshot_inode}:${snapshot_device}:${snapshot_mtime}" ]] ||
+      fail "Retry2 interruption snapshot directory metadata differs from inventory: ${relative_path}"
+    directory_count=$((directory_count + 1))
+  done
+  exec {directory_fd}<&-
+  [[ "${directory_count}" == 28 ]] ||
+    fail "Retry2 interruption snapshot directory aggregate drifted"
+
+  special="$(find "${retry2_stage04_interruption_snapshot}" -xdev \
+    ! -type f ! -type d -print -quit)" ||
+    fail "could not scan Retry2 interruption snapshot entry types"
+  [[ -z "${special}" ]] ||
+    fail "Retry2 interruption snapshot contains a special entry: ${special}"
+  actual_files="$(find "${retry2_stage04_interruption_snapshot}" -xdev \
+    -type f -printf x | wc -c)" ||
+    fail "could not count Retry2 interruption snapshot files"
+  actual_directories="$(find "${retry2_stage04_interruption_snapshot}" -xdev \
+    -type d -printf x | wc -c)" ||
+    fail "could not count Retry2 interruption snapshot directories"
+  [[ "${actual_files}" == "${regular_count}" && \
+    "${actual_directories}" == "${directory_count}" ]] ||
+    fail "Retry2 interruption snapshot contains an uninventoryed entry"
+  total_files="$(find "${retry2_stage04_interruption_closure}" -xdev \
+    -type f -printf x | wc -c)" ||
+    fail "could not count Retry2 interruption closure files"
+  total_directories="$(find "${retry2_stage04_interruption_closure}" -xdev \
+    -type d -printf x | wc -c)" ||
+    fail "could not count Retry2 interruption closure directories"
+  [[ "${total_files}" == 65 && "${total_directories}" == 30 ]] ||
+    fail "Retry2 interruption closure exact full-tree count drifted"
+  snapshot_content_sha256="$(
+    cd "${retry2_stage04_interruption_snapshot}"
+    find . -xdev -type f -print0 | LC_ALL=C sort -z |
+      xargs -0 sha256sum | sha256sum | awk '{print $1}'
+  )" || fail "could not recompute Retry2 interruption snapshot content inventory"
+  [[ "${snapshot_content_sha256}" =~ ^[0-9a-f]{64}$ ]] ||
+    fail "Retry2 interruption snapshot content inventory is malformed"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_regular_file_count "${regular_count}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_directory_count "${directory_count}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_entry_count_below_root 87
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_regular_file_bytes "${regular_bytes}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_content_inventory_sha256 "${snapshot_content_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_content_inventory_sha256 "${snapshot_content_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_regular_file_count "${regular_count}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_directory_count "${directory_count}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_regular_file_bytes "${regular_bytes}"
+}
+
+verify_retry2_stage04_interruption_closure_authority() {
+  local entries path special
+  assert_retry3_recovery_pins_sealed
+  verify_pinned_mode_file "${retry2_stage04_interruption_closure_receipt}" \
+    "${expected_retry2_stage04_interruption_closure_receipt_sha256}" 444 \
+    "Retry2 stage-04 interruption closure receipt"
+  verify_pinned_mode_file "${retry2_stage04_interruption_regular_inventory}" \
+    "${expected_retry2_stage04_interruption_regular_inventory_sha256}" 444 \
+    "Retry2 stage-04 interruption regular inventory"
+  verify_pinned_mode_file "${retry2_stage04_interruption_directory_inventory}" \
+    "${expected_retry2_stage04_interruption_directory_inventory_sha256}" 444 \
+    "Retry2 stage-04 interruption directory inventory"
+  verify_pinned_mode_file "${retry2_stage04_interruption_live_amendment}" \
+    "${expected_retry2_stage04_interruption_amendment_sha256}" 444 \
+    "Retry2 stage-04 interruption amendment"
+  verify_pinned_mode_file "${retry2_stage04_interruption_frozen_amendment}" \
+    "${expected_retry2_stage04_interruption_amendment_sha256}" 444 \
+    "frozen Retry2 stage-04 interruption amendment"
+  verify_pinned_mode_file "${retry2_stage04_interruption_live_sealer}" \
+    "${expected_retry2_stage04_interruption_sealer_sha256}" 555 \
+    "Retry2 stage-04 interruption sealer"
+  verify_pinned_mode_file "${retry2_stage04_interruption_frozen_sealer}" \
+    "${expected_retry2_stage04_interruption_sealer_sha256}" 444 \
+    "frozen Retry2 stage-04 interruption sealer"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" schema_id \
+    "${retry2_stage04_interruption_closure_schema_id}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" status complete
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_schema_id "${retry2_schema_id}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_runtime_root "${retry2_runtime}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_runtime_mutated false
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_regular_file_inventory_path \
+    "${retry2_stage04_interruption_regular_inventory}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_regular_file_inventory_sha256 \
+    "${expected_retry2_stage04_interruption_regular_inventory_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_directory_inventory_path \
+    "${retry2_stage04_interruption_directory_inventory}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_directory_inventory_sha256 \
+    "${expected_retry2_stage04_interruption_directory_inventory_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_path "${retry2_stage04_interruption_snapshot}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_regular_files_byte_identical true
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_regular_files_distinct_inodes true
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_regular_files_single_link true
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_regular_files_mode 0444
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_directories_mode 0555
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_symlink_count 0
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    source_snapshot_special_entry_count 0
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    interruption_sealer_path "${retry2_stage04_interruption_live_sealer}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    interruption_sealer_process_start_sha256 \
+    "${expected_retry2_stage04_interruption_sealer_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    frozen_interruption_sealer_path "${retry2_stage04_interruption_frozen_sealer}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    frozen_interruption_sealer_sha256 \
+    "${expected_retry2_stage04_interruption_sealer_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    interruption_amendment_path "${retry2_stage04_interruption_live_amendment}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    interruption_amendment_sha256 \
+    "${expected_retry2_stage04_interruption_amendment_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    frozen_interruption_amendment_path "${retry2_stage04_interruption_frozen_amendment}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    frozen_interruption_amendment_sha256 \
+    "${expected_retry2_stage04_interruption_amendment_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_00_attempt_sha256 "${expected_retry2_stage00_attempt_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_00_completion_sha256 "${expected_retry2_stage00_completion_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_01_attempt_sha256 "${expected_retry2_stage01_attempt_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_01_completion_sha256 "${expected_retry2_stage01_completion_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_02_attempt_sha256 "${expected_retry2_stage02_attempt_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_02_completion_sha256 "${expected_retry2_stage02_completion_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_03_attempt_sha256 "${expected_retry2_stage03_attempt_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_03_completion_sha256 "${expected_retry2_stage03_completion_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_04_attempt_sha256 "${expected_retry2_stage04_attempt_sha256}"
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_04_attempt_status consumed
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_04_scientific_attempt_consumed true
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_04_completion_present false
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    stage_04_attempt_without_completion_terminal true
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    partial_payload_adoption_authorized false
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    checkpoint_resume_authorized false
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    same_runtime_reentry_authorized false
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    completed_prefix_import_authorized_by_this_closure false
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    recovery_requires_new_schema true
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    no_tf_alignment_restart_optimizer_step 0
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    certified_input_access false
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" \
+    final_holdout_access false
+  expect_kv "${retry2_stage04_interruption_closure_receipt}" policy_access false
+  require_dir "${retry2_stage04_interruption_snapshot}"
+  special="$(find "${retry2_stage04_interruption_closure}" -xdev \
+    ! -type f ! -type d -print -quit)" ||
+    fail "could not scan Retry2 interruption closure entry types"
+  [[ -z "${special}" ]] ||
+    fail "Retry2 interruption closure contains a symlink or special entry"
+  entries="$(find "${retry2_stage04_interruption_closure}" -xdev -type f -print)" ||
+    fail "could not enumerate Retry2 interruption closure files"
+  while IFS= read -r path; do
+    [[ -n "${path}" ]] || continue
+    require_file "${path}"
+    [[ "$(stat -c '%a:%u:%g:%h' -- "${path}")" == \
+      "444:${process_owner_uid}:${process_owner_gid}:1" ]] ||
+      fail "Retry2 interruption closure file metadata drifted: ${path}"
+  done <<<"${entries}"
+  entries="$(find "${retry2_stage04_interruption_closure}" -xdev -type d -print)" ||
+    fail "could not enumerate Retry2 interruption closure directories"
+  while IFS= read -r path; do
+    [[ -n "${path}" ]] || continue
+    require_dir "${path}"
+    [[ "$(stat -c '%a:%u:%g:%h' -- "${path}")" == \
+      "555:${process_owner_uid}:${process_owner_gid}:1" ]] ||
+      fail "Retry2 interruption closure directory metadata drifted: ${path}"
+  done <<<"${entries}"
+  verify_retry2_stage04_interruption_closure_inventory_tree
+}
+
+verify_retry2_completed_prefix_exact_tree() {
+  local actual expected entries path special
+  require_dir "${retry2_completed_prefix_bundle}"
+  special="$(find "${retry2_completed_prefix_bundle}" -xdev \
+    ! -type f ! -type d -print -quit)" ||
+    fail "could not scan completed-prefix bundle entry types"
+  [[ -z "${special}" ]] ||
+    fail "completed-prefix bundle contains a symlink or special entry: ${special}"
+  actual="$(cd "${retry2_completed_prefix_bundle}" && \
+    find . -xdev -type f -printf '%P\n' | LC_ALL=C sort)" ||
+    fail "could not enumerate completed-prefix bundle files"
+  expected="$(retry2_completed_prefix_expected_files | LC_ALL=C sort)" ||
+    fail "could not construct completed-prefix file allowlist"
+  [[ "${actual}" == "${expected}" ]] ||
+    fail "completed-prefix bundle regular-file tree differs from its exact allowlist"
+  actual="$(cd "${retry2_completed_prefix_bundle}" && \
+    find . -xdev -type d -printf '%p\n' | LC_ALL=C sort)" ||
+    fail "could not enumerate completed-prefix bundle directories"
+  expected="$(retry2_completed_prefix_expected_directories | LC_ALL=C sort)" ||
+    fail "could not construct completed-prefix directory allowlist"
+  [[ "${actual}" == "${expected}" ]] ||
+    fail "completed-prefix bundle directory tree differs from its exact allowlist"
+  entries="$(find "${retry2_completed_prefix_bundle}" -xdev -type f -print)" ||
+    fail "could not enumerate completed-prefix bundle metadata"
+  while IFS= read -r path; do
+    [[ -n "${path}" ]] || continue
+    require_file "${path}"
+    [[ "$(stat -c '%a:%u:%g:%h' -- "${path}")" == \
+      "444:${process_owner_uid}:${process_owner_gid}:1" ]] ||
+      fail "completed-prefix file metadata drifted: ${path}"
+  done <<<"${entries}"
+  entries="$(find "${retry2_completed_prefix_bundle}" -xdev -type d -print)" ||
+    fail "could not enumerate completed-prefix bundle directory metadata"
+  while IFS= read -r path; do
+    [[ -n "${path}" ]] || continue
+    require_dir "${path}"
+    [[ "$(stat -c '%a:%u:%g:%h' -- "${path}")" == \
+      "555:${process_owner_uid}:${process_owner_gid}:1" ]] ||
+      fail "completed-prefix directory metadata drifted: ${path}"
+  done <<<"${entries}"
+}
+
+verify_retry2_completed_prefix_inventory_shape() {
+  local regular_header directory_header regular_fd directory_fd
+  local entry_index source_relative_path source_path source_mode source_uid
+  local source_gid source_links source_bytes source_inode source_device
+  local source_sha256 destination_relative_path destination_path
+  local destination_mode destination_uid destination_gid destination_links
+  local destination_bytes destination_inode destination_device
+  local destination_sha256 byte_identical distinct_inode expected_index
+  local expected_source_path expected_destination_relative_path
+  local expected_destination_path source_metadata destination_metadata prefix
+  local relative_path mode_value uid_value gid_value links_value bytes_value
+  local inode_value device_value path actual_metadata
+  local regular_count=0 directory_count=0 payload_bytes=0
+  local actual_files actual_directories actual_bundle_files
+  local actual_bundle_directories content_inventory_sha256
+  local metadata_inventory_sha256 regular_inventory_sha256
+  local directory_inventory_sha256
+  declare -A seen_destination_paths=() seen_directory_paths=()
+
+  IFS= read -r regular_header <"${retry2_completed_prefix_regular_inventory}" ||
+    fail "could not read completed-prefix regular inventory header"
+  [[ "${regular_header}" == $'entry_index\tsource_relative_path\tsource_path\tsource_mode\tsource_uid\tsource_gid\tsource_links\tsource_bytes\tsource_inode\tsource_device\tsource_sha256\tdestination_relative_path\tdestination_path\tdestination_mode\tdestination_uid\tdestination_gid\tdestination_links\tdestination_bytes\tdestination_inode\tdestination_device\tdestination_sha256\tbyte_identical\tdistinct_inode' ]] ||
+    fail "completed-prefix regular inventory header drifted"
+  [[ "$(wc -l <"${retry2_completed_prefix_regular_inventory}")" == 52 ]] ||
+    fail "completed-prefix regular inventory must contain exactly 51 payload entries"
+  awk -F '\t' -v uid="${process_owner_uid}" \
+    -v gid="${process_owner_gid}" '
+    NR == 1 { next }
+    NF != 23 || $1 != sprintf("%02d", NR - 2) ||
+      $14 != "444" || $15 != uid || $16 != gid || $17 != 1 ||
+      $11 != $21 || $22 != "true" || $23 != "true" { exit 42 }
+  ' "${retry2_completed_prefix_regular_inventory}" ||
+    fail "completed-prefix regular inventory semantics drifted"
+
+  exec {regular_fd}<"${retry2_completed_prefix_regular_inventory}" ||
+    fail "could not open completed-prefix regular inventory"
+  IFS= read -r regular_header <&${regular_fd} ||
+    fail "could not consume completed-prefix regular inventory header"
+  while IFS=$'\t' read -r entry_index source_relative_path source_path \
+    source_mode source_uid source_gid source_links source_bytes source_inode \
+    source_device source_sha256 destination_relative_path destination_path \
+    destination_mode destination_uid destination_gid destination_links \
+    destination_bytes destination_inode destination_device destination_sha256 \
+    byte_identical distinct_inode <&${regular_fd}; do
+    printf -v expected_index '%02d' "${regular_count}"
+    [[ "${entry_index}" == "${expected_index}" ]] ||
+      fail "completed-prefix inventory entry index drifted: ${entry_index}"
+    validate_retry3_inventory_relative_path "${source_relative_path}"
+    validate_retry3_inventory_relative_path "${destination_relative_path}"
+    [[ -z "${seen_destination_paths[${destination_relative_path}]+x}" ]] ||
+      fail "duplicate completed-prefix destination path: ${destination_relative_path}"
+    seen_destination_paths["${destination_relative_path}"]=1
+    if ((regular_count == 0)); then
+      [[ "${source_relative_path}" == @operational_retry2_runner ]] ||
+        fail "completed-prefix operational-runner source label drifted"
+      expected_source_path="${script_dir}/run_representation_ablation_v2_retry2.sh"
+      expected_destination_relative_path=operational_authority/run_representation_ablation_v2_retry2.sh
+    else
+      expected_source_path="${retry2_stage04_interruption_snapshot}/${source_relative_path}"
+      expected_destination_relative_path="${source_relative_path}"
+    fi
+    expected_destination_path="${retry2_completed_prefix_snapshot}/${expected_destination_relative_path}"
+    [[ "${source_path}" == "${expected_source_path}" && \
+      "${destination_relative_path}" == \
+      "${expected_destination_relative_path}" && \
+      "${destination_path}" == "${expected_destination_path}" ]] ||
+      fail "completed-prefix inventory path binding drifted: ${entry_index}"
+    require_file "${source_path}"
+    require_contained_path "${destination_path}" \
+      "${retry2_completed_prefix_snapshot}"
+    require_file "${destination_path}"
+    [[ "${source_mode}" =~ ^[0-7]{3,4}$ && \
+      "${source_uid}" =~ ^[0-9]+$ && "${source_gid}" =~ ^[0-9]+$ && \
+      "${source_links}" =~ ^[0-9]+$ && "${source_bytes}" =~ ^[0-9]+$ && \
+      "${source_inode}" =~ ^[0-9]+$ && "${source_device}" =~ ^[0-9]+$ && \
+      "${source_sha256}" =~ ^[0-9a-f]{64}$ && \
+      "${destination_mode}" =~ ^[0-7]{3,4}$ && \
+      "${destination_uid}" =~ ^[0-9]+$ && \
+      "${destination_gid}" =~ ^[0-9]+$ && \
+      "${destination_links}" =~ ^[0-9]+$ && \
+      "${destination_bytes}" =~ ^[0-9]+$ && \
+      "${destination_inode}" =~ ^[0-9]+$ && \
+      "${destination_device}" =~ ^[0-9]+$ && \
+      "${destination_sha256}" =~ ^[0-9a-f]{64}$ ]] ||
+      fail "malformed completed-prefix regular inventory row: ${entry_index}"
+    [[ "${source_uid}:${source_gid}:${source_links}" == \
+      "${process_owner_uid}:${process_owner_gid}:1" && \
+      "${destination_mode}:${destination_uid}:${destination_gid}:${destination_links}" == \
+      "444:${process_owner_uid}:${process_owner_gid}:1" && \
+      "${source_bytes}" == "${destination_bytes}" && \
+      "${source_sha256}" == "${destination_sha256}" && \
+      "${source_device}:${source_inode}" != \
+      "${destination_device}:${destination_inode}" && \
+      "${byte_identical}" == true && "${distinct_inode}" == true ]] ||
+      fail "completed-prefix regular inventory row semantics drifted: ${entry_index}"
+    if ((regular_count == 0)); then
+      [[ "${source_mode}" == 555 ]] ||
+        fail "completed-prefix operational-runner source mode drifted"
+    else
+      [[ "${source_mode}" == 444 ]] ||
+        fail "completed-prefix closure-snapshot source mode drifted: ${entry_index}"
+    fi
+    source_metadata="$(stat -c '%a:%u:%g:%h:%s:%i:%d' -- "${source_path}")"
+    [[ "${source_metadata}" == \
+      "${source_mode}:${source_uid}:${source_gid}:${source_links}:${source_bytes}:${source_inode}:${source_device}" ]] ||
+      fail "completed-prefix source metadata differs from inventory: ${entry_index}"
+    destination_metadata="$(stat -c '%a:%u:%g:%h:%s:%i:%d' -- \
+      "${destination_path}")"
+    [[ "${destination_metadata}" == \
+      "${destination_mode}:${destination_uid}:${destination_gid}:${destination_links}:${destination_bytes}:${destination_inode}:${destination_device}" ]] ||
+      fail "completed-prefix destination metadata differs from inventory: ${entry_index}"
+    [[ "$(sha256_of "${source_path}")" == "${source_sha256}" && \
+      "$(sha256_of "${destination_path}")" == "${destination_sha256}" ]] ||
+      fail "completed-prefix source or destination hash differs from inventory: ${entry_index}"
+    cmp -s -- "${source_path}" "${destination_path}" ||
+      fail "completed-prefix source and destination bytes differ: ${entry_index}"
+    printf -v prefix 'payload_file_%02d' "${regular_count}"
+    expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+      "${prefix}_source_relative_path" "${source_relative_path}"
+    expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+      "${prefix}_source_path" "${source_path}"
+    expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+      "${prefix}_source_sha256" "${source_sha256}"
+    expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+      "${prefix}_destination_relative_path" "${destination_relative_path}"
+    expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+      "${prefix}_destination_path" "${destination_path}"
+    expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+      "${prefix}_destination_sha256" "${destination_sha256}"
+    expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+      "${prefix}_byte_identical" true
+    expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+      "${prefix}_distinct_inode" true
+    regular_count=$((regular_count + 1))
+    payload_bytes=$((payload_bytes + destination_bytes))
+  done
+  exec {regular_fd}<&-
+  [[ "${regular_count}" == 51 ]] ||
+    fail "completed-prefix regular inventory traversal was incomplete"
+
+  IFS= read -r directory_header <"${retry2_completed_prefix_directory_inventory}" ||
+    fail "could not read completed-prefix directory inventory header"
+  [[ "${directory_header}" == $'relative_path\tmode\tuid\tgid\tlinks\tbytes\tinode\tdevice' ]] ||
+    fail "completed-prefix directory inventory header drifted"
+  [[ "$(wc -l <"${retry2_completed_prefix_directory_inventory}")" == 22 ]] ||
+    fail "completed-prefix directory inventory must contain exactly 21 payload entries"
+  awk -F '\t' -v uid="${process_owner_uid}" \
+    -v gid="${process_owner_gid}" '
+    NR == 1 { next }
+    NF != 8 || $2 != "555" || $3 != uid || $4 != gid || $5 != 1 {
+      exit 42
+    }
+  ' "${retry2_completed_prefix_directory_inventory}" ||
+    fail "completed-prefix directory inventory semantics drifted"
+
+  exec {directory_fd}<"${retry2_completed_prefix_directory_inventory}" ||
+    fail "could not open completed-prefix directory inventory"
+  IFS= read -r directory_header <&${directory_fd} ||
+    fail "could not consume completed-prefix directory inventory header"
+  while IFS=$'\t' read -r relative_path mode_value uid_value gid_value \
+    links_value bytes_value inode_value device_value <&${directory_fd}; do
+    validate_retry3_inventory_relative_path "${relative_path}" true
+    [[ -z "${seen_directory_paths[${relative_path}]+x}" ]] ||
+      fail "duplicate completed-prefix directory inventory path: ${relative_path}"
+    seen_directory_paths["${relative_path}"]=1
+    [[ "${mode_value}" == 555 && "${uid_value}" =~ ^[0-9]+$ && \
+      "${gid_value}" =~ ^[0-9]+$ && "${links_value}" =~ ^[0-9]+$ && \
+      "${bytes_value}" =~ ^[0-9]+$ && "${inode_value}" =~ ^[0-9]+$ && \
+      "${device_value}" =~ ^[0-9]+$ && \
+      "${uid_value}:${gid_value}:${links_value}" == \
+      "${process_owner_uid}:${process_owner_gid}:1" ]] ||
+      fail "malformed completed-prefix directory inventory row: ${relative_path}"
+    if [[ "${relative_path}" == . ]]; then
+      path="${retry2_completed_prefix_snapshot}"
+    else
+      path="${retry2_completed_prefix_snapshot}/${relative_path}"
+    fi
+    require_contained_path "${path}" "${retry2_completed_prefix_snapshot}"
+    require_dir "${path}"
+    actual_metadata="$(stat -c '%a:%u:%g:%h:%s:%i:%d' -- "${path}")"
+    [[ "${actual_metadata}" == \
+      "${mode_value}:${uid_value}:${gid_value}:${links_value}:${bytes_value}:${inode_value}:${device_value}" ]] ||
+      fail "completed-prefix directory metadata differs from inventory: ${relative_path}"
+    directory_count=$((directory_count + 1))
+  done
+  exec {directory_fd}<&-
+  [[ "${directory_count}" == 21 ]] ||
+    fail "completed-prefix directory inventory traversal was incomplete"
+
+  actual_files="$(find "${retry2_completed_prefix_snapshot}" -xdev \
+    -type f -printf x | wc -c)" ||
+    fail "could not count completed-prefix payload files"
+  actual_directories="$(find "${retry2_completed_prefix_snapshot}" -xdev \
+    -type d -printf x | wc -c)" ||
+    fail "could not count completed-prefix payload directories"
+  [[ "${actual_files}" == "${regular_count}" && \
+    "${actual_directories}" == "${directory_count}" ]] ||
+    fail "completed-prefix payload contains an uninventoryed entry"
+  actual_bundle_files="$(find "${retry2_completed_prefix_bundle}" -xdev \
+    -type f -printf x | wc -c)" ||
+    fail "could not count completed-prefix bundle files"
+  actual_bundle_directories="$(find "${retry2_completed_prefix_bundle}" -xdev \
+    -type d -printf x | wc -c)" ||
+    fail "could not count completed-prefix bundle directories"
+  [[ "${actual_bundle_files}" == 55 && \
+    "${actual_bundle_directories}" == 23 ]] ||
+    fail "completed-prefix bundle exact full-tree count drifted"
+
+  regular_inventory_sha256="$(sha256_of \
+    "${retry2_completed_prefix_regular_inventory}")"
+  directory_inventory_sha256="$(sha256_of \
+    "${retry2_completed_prefix_directory_inventory}")"
+  content_inventory_sha256="$(awk -F '\t' \
+    'NR > 1 { print $12 "\t" $21 }' \
+    "${retry2_completed_prefix_regular_inventory}" | \
+    sha256sum | awk '{print $1}')" ||
+    fail "could not recompute completed-prefix content inventory"
+  metadata_inventory_sha256="$(
+    {
+      printf 'regular_files.inventory.tsv\t%s\n' \
+        "${regular_inventory_sha256}"
+      printf 'directories.inventory.tsv\t%s\n' \
+        "${directory_inventory_sha256}"
+    } | sha256sum | awk '{print $1}'
+  )" || fail "could not recompute completed-prefix metadata inventory"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    completed_prefix_content_inventory_algorithm \
+    sha256_of_tab_separated_destination_relative_path_and_destination_sha256_lines
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    completed_prefix_content_inventory_sha256 "${content_inventory_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    completed_prefix_metadata_inventory_algorithm \
+    sha256_of_labeled_regular_and_directory_inventory_sha256_lines
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    completed_prefix_metadata_inventory_sha256 "${metadata_inventory_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    completed_prefix_regular_file_count "${regular_count}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    completed_prefix_directory_count "${directory_count}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    completed_prefix_regular_file_bytes "${payload_bytes}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    bundle_regular_file_count "${actual_bundle_files}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    bundle_directory_count "${actual_bundle_directories}"
+}
+
+verify_retry2_completed_prefix_scientific_files() {
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/operational_authority/run_representation_ablation_v2_retry2.sh" \
+    "${expected_retry2_operational_runner_sha256}" 444 \
+    "Retry2 operational runner bundle copy"
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/frozen_sources/run_representation_ablation_v2_retry2.sh" \
+    "${expected_retry2_operational_runner_sha256}" 444 \
+    "Retry2 runtime-frozen runner bundle copy"
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/stage.00.initialize.attempt.status" \
+    "${expected_retry2_stage00_attempt_sha256}" 444 "Retry2 stage-00 attempt"
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/stage.00.initialize.status" \
+    "${expected_retry2_stage00_completion_sha256}" 444 "Retry2 stage-00 completion"
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/stage.01.canonical_import.attempt.status" \
+    "${expected_retry2_stage01_attempt_sha256}" 444 "Retry2 stage-01 attempt"
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/stage.01.canonical_import.status" \
+    "${expected_retry2_stage01_completion_sha256}" 444 "Retry2 stage-01 completion"
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/stage.02.endpoint_import.attempt.status" \
+    "${expected_retry2_stage02_attempt_sha256}" 444 "Retry2 stage-02 attempt"
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/stage.02.endpoint_import.status" \
+    "${expected_retry2_stage02_completion_sha256}" 444 "Retry2 stage-02 completion"
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/stage.03.time_only_training.attempt.status" \
+    "${expected_retry2_stage03_attempt_sha256}" 444 "Retry2 stage-03 attempt"
+  verify_pinned_mode_file \
+    "${retry2_completed_prefix_snapshot}/stage.03.time_only_training.status" \
+    "${expected_retry2_stage03_completion_sha256}" 444 "Retry2 stage-03 completion"
+  verify_pinned_mode_file "${retry2_prefix_time_only_status}" \
+    "${expected_retry2_time_only_training_status_sha256}" 444 \
+    "Retry2 time-only training status"
+  verify_pinned_mode_file "${retry2_prefix_time_only_checkpoint}" \
+    "${expected_retry2_time_only_checkpoint_sha256}" 444 \
+    "Retry2 time-only checkpoint"
+  verify_pinned_mode_file "${retry2_prefix_time_only_manifest}" \
+    "${expected_retry2_time_only_manifest_sha256}" 444 \
+    "Retry2 time-only manifest"
+  verify_pinned_mode_file "${retry2_prefix_time_only_result}" \
+    "${expected_retry2_time_only_result_sha256}" 444 \
+    "Retry2 time-only Runtime result"
+  verify_pinned_mode_file "${retry2_prefix_time_only_report}" \
+    "${expected_retry2_time_only_report_sha256}" 444 \
+    "Retry2 time-only representation report"
+  verify_pinned_mode_file "${retry2_prefix_time_only_log}" \
+    "${expected_retry2_time_only_log_sha256}" 444 \
+    "Retry2 time-only training log"
+  verify_pinned_mode_file "${retry2_prefix_endpoint_checkpoint}" \
+    "${expected_retry1_endpoint_checkpoint_sha256}" 444 \
+    "Retry2 endpoint import checkpoint"
+  verify_pinned_mode_file "${retry2_prefix_canonical_main_report}" \
+    "${expected_raw96_report_sha256}" 444 "Retry2 canonical main report"
+  verify_pinned_mode_file "${retry2_prefix_canonical_replay_report}" \
+    "${expected_raw96_report_sha256}" 444 "Retry2 canonical replay report"
+  path_is_absent "${retry2_completed_prefix_snapshot}/stage.04.no_tf_alignment_training.attempt.status" ||
+    fail "Retry2 terminal stage-04 attempt leaked into the reusable bundle"
+  path_is_absent "${retry2_completed_prefix_snapshot}/arms/no_tf_alignment/training" &&
+    path_is_absent "${retry2_completed_prefix_snapshot}/arms/no_tf_alignment/training.log" &&
+    path_is_absent "${retry2_completed_prefix_snapshot}/arms/no_tf_alignment/training.status" ||
+    fail "Retry2 partial no-TF payload leaked into the reusable bundle"
+}
+
+verify_retry2_completed_prefix_bundle_authority() {
+  assert_retry3_recovery_pins_sealed
+  verify_pinned_mode_file "${retry2_completed_prefix_bundle_receipt}" \
+    "${expected_retry2_completed_prefix_bundle_receipt_sha256}" 444 \
+    "Retry2 completed-prefix bundle receipt"
+  verify_pinned_mode_file "${retry2_completed_prefix_regular_inventory}" \
+    "${expected_retry2_completed_prefix_regular_inventory_sha256}" 444 \
+    "Retry2 completed-prefix regular inventory"
+  verify_pinned_mode_file "${retry2_completed_prefix_directory_inventory}" \
+    "${expected_retry2_completed_prefix_directory_inventory_sha256}" 444 \
+    "Retry2 completed-prefix directory inventory"
+  verify_pinned_mode_file "${retry2_completed_prefix_live_sealer}" \
+    "${expected_retry2_completed_prefix_sealer_sha256}" 555 \
+    "Retry2 completed-prefix live sealer"
+  verify_pinned_mode_file "${retry2_completed_prefix_frozen_sealer}" \
+    "${expected_retry2_completed_prefix_sealer_sha256}" 444 \
+    "Retry2 completed-prefix frozen sealer"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" schema_id \
+    "${retry2_completed_prefix_bundle_schema_id}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" status complete
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" bundle_root \
+    "${retry2_completed_prefix_bundle}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" completed_prefix_root \
+    "${retry2_completed_prefix_snapshot}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    regular_inventory_path "${retry2_completed_prefix_regular_inventory}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    regular_inventory_sha256 \
+    "${expected_retry2_completed_prefix_regular_inventory_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    directory_inventory_path "${retry2_completed_prefix_directory_inventory}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    directory_inventory_sha256 \
+    "${expected_retry2_completed_prefix_directory_inventory_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    completed_prefix_bundle_sealer_path \
+    "${retry2_completed_prefix_live_sealer}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    completed_prefix_bundle_sealer_process_start_sha256 \
+    "${expected_retry2_completed_prefix_sealer_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    frozen_completed_prefix_bundle_sealer_path \
+    "${retry2_completed_prefix_frozen_sealer}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    frozen_completed_prefix_bundle_sealer_sha256 \
+    "${expected_retry2_completed_prefix_sealer_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    interruption_closure_schema_id \
+    "${retry2_stage04_interruption_closure_schema_id}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    interruption_closure_root "${retry2_stage04_interruption_closure}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    interruption_closure_receipt_path \
+    "${retry2_stage04_interruption_closure_receipt}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    interruption_closure_receipt_sha256 \
+    "${expected_retry2_stage04_interruption_closure_receipt_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    interruption_closure_regular_inventory_path \
+    "${retry2_stage04_interruption_regular_inventory}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    interruption_closure_regular_inventory_sha256 \
+    "${expected_retry2_stage04_interruption_regular_inventory_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    interruption_closure_directory_inventory_path \
+    "${retry2_stage04_interruption_directory_inventory}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    interruption_closure_directory_inventory_sha256 \
+    "${expected_retry2_stage04_interruption_directory_inventory_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    interruption_closure_source_snapshot_root \
+    "${retry2_stage04_interruption_snapshot}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" completed_stage_count 4
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_00_attempt_sha256 "${expected_retry2_stage00_attempt_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_00_completion_sha256 \
+    "${expected_retry2_stage00_completion_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_01_attempt_sha256 "${expected_retry2_stage01_attempt_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_01_completion_sha256 \
+    "${expected_retry2_stage01_completion_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_02_attempt_sha256 "${expected_retry2_stage02_attempt_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_02_completion_sha256 \
+    "${expected_retry2_stage02_completion_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_03_attempt_sha256 "${expected_retry2_stage03_attempt_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_03_completion_sha256 \
+    "${expected_retry2_stage03_completion_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_04_attempt_sha256 "${expected_retry2_stage04_attempt_sha256}"
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    retry2_stage_04_attempt_included false
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    stages_00_through_03_reuse_authorized true
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    stage_04_reuse_authorized false
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    no_tf_alignment_partial_payload_included false
+  expect_kv "${retry2_completed_prefix_bundle_receipt}" \
+    no_tf_alignment_restart_optimizer_step 0
+  verify_retry2_completed_prefix_exact_tree
+  verify_retry2_completed_prefix_inventory_shape
+  verify_retry2_completed_prefix_scientific_files
+}
+
+emit_retry3_recovery_authority_bindings() {
+  verify_retry2_stage04_interruption_closure_authority
+  verify_retry2_completed_prefix_bundle_authority
+  cat <<RECOVERY
+retry2_stage04_interruption_closure_schema_id=${retry2_stage04_interruption_closure_schema_id}
+retry2_stage04_interruption_closure_receipt_path=${retry2_stage04_interruption_closure_receipt}
+retry2_stage04_interruption_closure_receipt_sha256=${expected_retry2_stage04_interruption_closure_receipt_sha256}
+retry2_stage04_interruption_regular_inventory_path=${retry2_stage04_interruption_regular_inventory}
+retry2_stage04_interruption_regular_inventory_sha256=${expected_retry2_stage04_interruption_regular_inventory_sha256}
+retry2_stage04_interruption_directory_inventory_path=${retry2_stage04_interruption_directory_inventory}
+retry2_stage04_interruption_directory_inventory_sha256=${expected_retry2_stage04_interruption_directory_inventory_sha256}
+retry2_completed_prefix_bundle_schema_id=${retry2_completed_prefix_bundle_schema_id}
+retry2_completed_prefix_bundle_receipt_path=${retry2_completed_prefix_bundle_receipt}
+retry2_completed_prefix_bundle_receipt_sha256=${expected_retry2_completed_prefix_bundle_receipt_sha256}
+retry2_completed_prefix_regular_inventory_path=${retry2_completed_prefix_regular_inventory}
+retry2_completed_prefix_regular_inventory_sha256=${expected_retry2_completed_prefix_regular_inventory_sha256}
+retry2_completed_prefix_directory_inventory_path=${retry2_completed_prefix_directory_inventory}
+retry2_completed_prefix_directory_inventory_sha256=${expected_retry2_completed_prefix_directory_inventory_sha256}
+retry2_completed_prefix_count=4
+retry2_completed_prefix_head_sha256=${expected_retry2_stage03_completion_sha256}
+retry2_terminal_stage04_attempt_sha256=${expected_retry2_stage04_attempt_sha256}
+retry2_live_runtime_direct_use_authorized=false
+retry2_partial_stage04_artifact_reuse_authorized=false
+retry3_no_tf_alignment_restart_optimizer_step=0
+RECOVERY
+}
+
+verify_retry3_recovery_authority_bindings() {
+  local receipt="$1"
+  verify_retry2_stage04_interruption_closure_authority
+  verify_retry2_completed_prefix_bundle_authority
+  expect_kv "${receipt}" retry2_stage04_interruption_closure_schema_id \
+    "${retry2_stage04_interruption_closure_schema_id}"
+  expect_kv "${receipt}" retry2_stage04_interruption_closure_receipt_path \
+    "${retry2_stage04_interruption_closure_receipt}"
+  expect_kv "${receipt}" retry2_stage04_interruption_closure_receipt_sha256 \
+    "${expected_retry2_stage04_interruption_closure_receipt_sha256}"
+  expect_kv "${receipt}" retry2_completed_prefix_bundle_schema_id \
+    "${retry2_completed_prefix_bundle_schema_id}"
+  expect_kv "${receipt}" retry2_completed_prefix_bundle_receipt_path \
+    "${retry2_completed_prefix_bundle_receipt}"
+  expect_kv "${receipt}" retry2_completed_prefix_bundle_receipt_sha256 \
+    "${expected_retry2_completed_prefix_bundle_receipt_sha256}"
+  expect_kv "${receipt}" retry2_completed_prefix_count 4
+  expect_kv "${receipt}" retry2_completed_prefix_head_sha256 \
+    "${expected_retry2_stage03_completion_sha256}"
+  expect_kv "${receipt}" retry2_terminal_stage04_attempt_sha256 \
+    "${expected_retry2_stage04_attempt_sha256}"
+  expect_kv "${receipt}" retry2_live_runtime_direct_use_authorized false
+  expect_kv "${receipt}" retry2_partial_stage04_artifact_reuse_authorized false
+  expect_kv "${receipt}" retry3_no_tf_alignment_restart_optimizer_step 0
+}
+
+emit_ablation_runner_bindings() {
+  assert_operational_runner_identity
+  cat <<RUNNER_BINDING
+operational_ablation_runner_path=${script_path}
+operational_ablation_runner_sha256=${process_start_runner_sha256}
+operational_ablation_runner_process_start_sha256=${process_start_runner_sha256}
+operational_ablation_runner_process_start_inode=${process_start_runner_inode}
+operational_ablation_runner_process_start_device=${process_start_runner_device}
+operational_ablation_runner_process_start_bytes=${process_start_runner_bytes}
+operational_ablation_runner_process_start_owner_uid=${process_start_runner_owner}
+operational_ablation_runner_mode=0555
+operational_ablation_runner_links=1
+RUNNER_BINDING
+  emit_retry3_recovery_authority_bindings
+}
+
+verify_ablation_runner_bindings() {
+  local receipt="$1"
+  assert_operational_runner_identity
+  expect_kv "${receipt}" operational_ablation_runner_path "${script_path}"
+  expect_kv "${receipt}" operational_ablation_runner_sha256 \
+    "${process_start_runner_sha256}"
+  expect_kv "${receipt}" operational_ablation_runner_process_start_sha256 \
+    "${process_start_runner_sha256}"
+  expect_kv "${receipt}" operational_ablation_runner_process_start_inode \
+    "${process_start_runner_inode}"
+  expect_kv "${receipt}" operational_ablation_runner_process_start_device \
+    "${process_start_runner_device}"
+  expect_kv "${receipt}" operational_ablation_runner_process_start_bytes \
+    "${process_start_runner_bytes}"
+  expect_kv "${receipt}" operational_ablation_runner_process_start_owner_uid \
+    "${process_start_runner_owner}"
+  expect_kv "${receipt}" operational_ablation_runner_mode 0555
+  expect_kv "${receipt}" operational_ablation_runner_links 1
+  verify_retry3_recovery_authority_bindings "${receipt}"
+}
+
+# Old operational-incident verifiers are never allowed to bind the current
+# Retry3 runner.  Existing internal call sites resolve to these fixed recovery
+# gates instead.
+verify_retry2_bootstrap_failure_closure_authority() {
+  verify_retry2_stage04_interruption_closure_authority
+}
+
+verify_retry2_windows_safe_publication_authority_v2() {
+  verify_retry2_completed_prefix_bundle_authority
+}
+
+preflight_read_only() {
+  assert_operational_runner_identity
+  verify_retry2_stage04_interruption_closure_authority
+  verify_retry2_completed_prefix_bundle_authority
+  verify_recovery_authority
+  verify_read_only_preflight_inputs
+  verify_mdn_retry1_authority
+  canonical_inputs
+  assert_operational_runner_identity
+}
+
+retry2_prefix_arm_policy() {
+  printf '%s/arms/%s/config/representation.jkimyei' \
+    "${retry2_completed_prefix_snapshot}" "$1"
+}
+
+retry2_prefix_arm_net() {
+  printf '%s/arms/%s/config/representation.net' \
+    "${retry2_completed_prefix_snapshot}" "$1"
+}
+
+retry2_prefix_arm_config() {
+  printf '%s/arms/%s/config/train.config' \
+    "${retry2_completed_prefix_snapshot}" "$1"
+}
+
+retry2_prefix_arm_capture_config() {
+  printf '%s/arms/%s/config/capture.config' \
+    "${retry2_completed_prefix_snapshot}" "$1"
+}
+
+verify_retry2_prefix_arm_scientific_equivalence() {
+  local arm="$1" source_policy source_net left right
+  source_policy="$(retry2_prefix_arm_policy "${arm}")"
+  source_net="$(retry2_prefix_arm_net "${arm}")"
+  verify_retry2_completed_prefix_bundle_authority
+  cmp -s -- "${source_policy}" "$(arm_policy "${arm}")" ||
+    fail "Retry3 ${arm} policy differs from its sealed Retry2 prefix authority"
+  cmp -s -- "${source_net}" "$(arm_net "${arm}")" ||
+    fail "Retry3 ${arm} network differs from its sealed Retry2 prefix authority"
+  left="$(mktemp "${scratch_root}/${schema_id}.${arm}.prefix_train_left.XXXXXX")"
+  right="$(mktemp "${scratch_root}/${schema_id}.${arm}.prefix_train_right.XXXXXX")"
+  normalize_endpoint_config_for_equivalence \
+    "$(retry2_prefix_arm_config "${arm}")" "${source_policy}" "${source_net}" \
+    >"${left}"
+  normalize_endpoint_config_for_equivalence "$(arm_config "${arm}")" \
+    "$(arm_policy "${arm}")" "$(arm_net "${arm}")" >"${right}"
+  cmp -s -- "${left}" "${right}" || {
+    rm -f -- "${left}" "${right}"
+    fail "Retry3 ${arm} training config changes more than local absolute paths"
+  }
+  normalize_endpoint_config_for_equivalence \
+    "$(retry2_prefix_arm_capture_config "${arm}")" \
+    "${source_policy}" "${source_net}" >"${left}"
+  normalize_endpoint_config_for_equivalence "$(arm_capture_config "${arm}")" \
+    "$(arm_policy "${arm}")" "$(arm_net "${arm}")" >"${right}"
+  cmp -s -- "${left}" "${right}" || {
+    rm -f -- "${left}" "${right}"
+    fail "Retry3 ${arm} capture config changes more than local absolute paths"
+  }
+  rm -f -- "${left}" "${right}"
+}
+
+verify_endpoint_bundle_scientific_equivalence() {
+  local arm
+  verify_retry2_completed_prefix_bundle_authority
+  for arm in "${challenger_arms[@]}"; do
+    verify_retry2_prefix_arm_scientific_equivalence "${arm}"
+  done
+}
+
+copy_retry2_prefix_file_immutable() {
+  local source="$1" destination="$2" label="$3" candidate
+  require_immutable_file "${source}"
+  path_is_absent "${destination}" ||
+    fail "${label} destination predates its stage attempt: ${destination}"
+  candidate="$(mktemp "${scratch_root}/${schema_id}.prefix_copy.XXXXXX")"
+  cp --reflink=never -- "${source}" "${candidate}" ||
+    fail "could not copy ${label} from the completed-prefix bundle"
+  publish_immutable "${candidate}" "${destination}"
+  cmp -s -- "${source}" "${destination}" ||
+    fail "${label} copy is not byte-identical"
+  [[ "$(stat -c '%i:%d' -- "${source}")" != \
+    "$(stat -c '%i:%d' -- "${destination}")" ]] ||
+    fail "${label} copy aliases its completed-prefix source inode"
+}
+
+emit_canonical_import() {
+  local destination="$1"
+  {
+    echo "schema_id=${schema_id}.retry2_canonical_import.v1"
+    echo "status=complete"
+    echo "arm=canonical"
+    emit_ablation_runner_bindings
+    echo "retry_attempt_sentinel_path=${retry_attempt_sentinel}"
+    echo "retry_attempt_sentinel_sha256=$(sha256_of "${retry_attempt_sentinel}")"
+    echo "source_completed_prefix_bundle_path=${retry2_completed_prefix_bundle_receipt}"
+    echo "source_completed_prefix_bundle_sha256=${expected_retry2_completed_prefix_bundle_receipt_sha256}"
+    echo "source_retry2_stage_01_completion_sha256=${expected_retry2_stage01_completion_sha256}"
+    echo "source_canonical_import_status_path=${retry2_prefix_canonical_status}"
+    echo "source_canonical_import_status_sha256=$(sha256_of "${retry2_prefix_canonical_status}")"
+    echo "source_main_report_path=${retry2_prefix_canonical_main_report}"
+    echo "source_main_report_sha256=${expected_raw96_report_sha256}"
+    echo "source_replay_report_path=${retry2_prefix_canonical_replay_report}"
+    echo "source_replay_report_sha256=${expected_raw96_report_sha256}"
+    echo "imported_main_report_path=$(arm_main_report canonical)"
+    echo "imported_main_report_sha256=$(sha256_of "$(arm_main_report canonical)")"
+    echo "imported_replay_report_path=$(arm_replay_report canonical)"
+    echo "imported_replay_report_sha256=$(sha256_of "$(arm_replay_report canonical)")"
+    echo "copy_method=cp_--reflink=never"
+    echo "byte_identical_copy_verified=true"
+    echo "distinct_source_copy_identity_verified=true"
+    echo "retry3_optimizer_steps=0"
+    echo "canonical_data_raw_access=false"
+    echo "certified_input_access=false"
+    echo "final_holdout_access=false"
+    echo "policy_access=false"
+  } >"${destination}"
+}
+
+verify_canonical_import() {
+  local candidate
+  verify_retry2_completed_prefix_bundle_authority
+  require_dir "$(arm_root canonical)"
+  require_dir "$(arm_root canonical)/affine"
+  [[ "$(stat -c '%a:%u' -- "$(arm_root canonical)")" == \
+    "700:${process_owner_uid}" ]] ||
+    fail "Retry3 canonical import arm directory metadata drifted"
+  [[ "$(stat -c '%a:%u' -- "$(arm_root canonical)/affine")" == \
+    "700:${process_owner_uid}" ]] ||
+    fail "Retry3 canonical import affine directory metadata drifted"
+  verify_pinned_mode_file "$(arm_main_report canonical)" \
+    "${expected_raw96_report_sha256}" 444 "Retry3 canonical main report"
+  verify_pinned_mode_file "$(arm_replay_report canonical)" \
+    "${expected_raw96_report_sha256}" 444 "Retry3 canonical replay report"
+  cmp -s -- "${retry2_prefix_canonical_main_report}" \
+    "$(arm_main_report canonical)" ||
+    fail "Retry3 canonical main import differs from its bundle source"
+  cmp -s -- "${retry2_prefix_canonical_replay_report}" \
+    "$(arm_replay_report canonical)" ||
+    fail "Retry3 canonical replay import differs from its bundle source"
+  require_immutable_file "${canonical_import_receipt}"
+  expect_kv "${canonical_import_receipt}" schema_id \
+    "${schema_id}.retry2_canonical_import.v1"
+  verify_ablation_runner_bindings "${canonical_import_receipt}"
+  candidate="$(mktemp "${scratch_root}/${schema_id}.canonical_import_verify.XXXXXX")"
+  emit_canonical_import "${candidate}"
+  cmp -s -- "${candidate}" "${canonical_import_receipt}" || {
+    rm -f -- "${candidate}"
+    fail "Retry3 canonical import receipt drifted"
+  }
+  rm -f -- "${candidate}"
+}
+
+import_canonical_arm() {
+  verify_retry2_completed_prefix_bundle_authority
+  path_is_absent "$(arm_root canonical)" ||
+    fail "Retry3 canonical import root predates its stage attempt"
+  mkdir -- "$(arm_root canonical)"
+  mkdir -- "$(arm_root canonical)/affine"
+  copy_retry2_prefix_file_immutable "${retry2_prefix_canonical_main_report}" \
+    "$(arm_main_report canonical)" "canonical main report"
+  copy_retry2_prefix_file_immutable "${retry2_prefix_canonical_replay_report}" \
+    "$(arm_replay_report canonical)" "canonical replay report"
+  local candidate
+  candidate="$(mktemp "${scratch_root}/${schema_id}.canonical_import.XXXXXX")"
+  emit_canonical_import "${candidate}"
+  publish_immutable "${candidate}" "${canonical_import_receipt}"
+  verify_canonical_import
+}
+
+emit_endpoint_import_status() {
+  local destination="$1"
+  {
+    echo "schema_id=${schema_id}.retry2_endpoint_import.v1"
+    echo "status=complete"
+    echo "arm=endpoint_scale"
+    emit_ablation_runner_bindings
+    echo "source_completed_prefix_bundle_path=${retry2_completed_prefix_bundle_receipt}"
+    echo "source_completed_prefix_bundle_sha256=${expected_retry2_completed_prefix_bundle_receipt_sha256}"
+    echo "local_source_bundle_receipt_path=${endpoint_import_source_bundle_receipt}"
+    echo "local_source_bundle_receipt_sha256=$(sha256_of "${endpoint_import_source_bundle_receipt}")"
+    echo "source_retry2_stage_02_completion_sha256=${expected_retry2_stage02_completion_sha256}"
+    echo "source_endpoint_import_status_path=${retry2_prefix_endpoint_status}"
+    echo "source_endpoint_import_status_sha256=$(sha256_of "${retry2_prefix_endpoint_status}")"
+    echo "local_source_endpoint_import_status_path=${endpoint_import_source_status}"
+    echo "local_source_endpoint_import_status_sha256=$(sha256_of "${endpoint_import_source_status}")"
+    echo "source_checkpoint_path=${retry2_prefix_endpoint_checkpoint}"
+    echo "source_checkpoint_sha256=${expected_retry1_endpoint_checkpoint_sha256}"
+    echo "imported_checkpoint_path=${endpoint_import_checkpoint}"
+    echo "imported_checkpoint_sha256=$(sha256_of "${endpoint_import_checkpoint}")"
+    echo "copy_method=cp_--reflink=never"
+    echo "byte_identical_copy_verified=true"
+    echo "distinct_bundle_copy_identity_verified=true"
+    echo "historical_source_optimizer_steps=3000"
+    echo "retry3_import_optimizer_steps=0"
+    echo "retry3_training_job_created=false"
+    echo "retry3_training_status_created=false"
+    echo "retry3_runtime_result_created=false"
+    echo "retry3_checkpoint_resume=false"
+    echo "canonical_data_raw_access=false"
+    echo "certified_input_access=false"
+    echo "final_holdout_access=false"
+    echo "policy_access=false"
+  } >"${destination}"
+}
+
+verify_endpoint_import() {
+  local candidate
+  verify_retry2_completed_prefix_bundle_authority
+  require_immutable_file "${endpoint_import_source_bundle_receipt}"
+  require_immutable_file "${endpoint_import_source_status}"
+  verify_pinned_mode_file "${endpoint_import_checkpoint}" \
+    "${expected_retry1_endpoint_checkpoint_sha256}" 444 \
+    "Retry3 endpoint checkpoint import"
+  [[ "$(sha256_of "${endpoint_import_source_bundle_receipt}")" == \
+    "${expected_retry2_completed_prefix_bundle_receipt_sha256}" ]] ||
+    fail "Retry3 endpoint local bundle receipt drifted"
+  cmp -s -- "${retry2_prefix_endpoint_status}" "${endpoint_import_source_status}" ||
+    fail "Retry3 endpoint source-status copy drifted"
+  cmp -s -- "${retry2_prefix_endpoint_checkpoint}" "${endpoint_import_checkpoint}" ||
+    fail "Retry3 endpoint checkpoint copy drifted"
+  [[ "$(stat -c '%i:%d' -- "${retry2_prefix_endpoint_checkpoint}")" != \
+    "$(stat -c '%i:%d' -- "${endpoint_import_checkpoint}")" ]] ||
+    fail "Retry3 endpoint checkpoint aliases its bundle source"
+  require_immutable_file "${endpoint_import_receipt}"
+  expect_kv "${endpoint_import_receipt}" schema_id \
+    "${schema_id}.retry2_endpoint_import.v1"
+  verify_ablation_runner_bindings "${endpoint_import_receipt}"
+  candidate="$(mktemp "${scratch_root}/${schema_id}.endpoint_import_verify.XXXXXX")"
+  emit_endpoint_import_status "${candidate}"
+  cmp -s -- "${candidate}" "${endpoint_import_receipt}" || {
+    rm -f -- "${candidate}"
+    fail "Retry3 endpoint import receipt drifted"
+  }
+  rm -f -- "${candidate}"
+  printf '%s' "${endpoint_import_checkpoint}"
+}
+
+run_endpoint_import() {
+  verify_endpoint_bundle_scientific_equivalence
+  path_is_absent "${endpoint_imports_root}" ||
+    fail "Retry3 imports parent predates endpoint stage attempt"
+  mkdir -- "${endpoint_imports_root}"
+  mkdir -- "${endpoint_import_root}"
+  copy_retry2_prefix_file_immutable "${retry2_completed_prefix_bundle_receipt}" \
+    "${endpoint_import_source_bundle_receipt}" "endpoint source bundle receipt"
+  copy_retry2_prefix_file_immutable "${retry2_prefix_endpoint_status}" \
+    "${endpoint_import_source_status}" "endpoint source import status"
+  copy_retry2_prefix_file_immutable "${retry2_prefix_endpoint_checkpoint}" \
+    "${endpoint_import_checkpoint}" "endpoint checkpoint"
+  local candidate
+  candidate="$(mktemp "${scratch_root}/${schema_id}.endpoint_import.XXXXXX")"
+  emit_endpoint_import_status "${candidate}"
+  publish_immutable "${candidate}" "${endpoint_import_receipt}"
+  verify_endpoint_import >/dev/null
+}
+
+emit_time_only_import_status() {
+  local destination="$1"
+  {
+    echo "schema_id=${schema_id}.retry2_time_only_import.v1"
+    echo "status=complete"
+    echo "arm=time_only"
+    emit_ablation_runner_bindings
+    echo "source_completed_prefix_bundle_path=${retry2_completed_prefix_bundle_receipt}"
+    echo "source_completed_prefix_bundle_sha256=${expected_retry2_completed_prefix_bundle_receipt_sha256}"
+    echo "local_source_bundle_receipt_path=${time_only_import_source_bundle_receipt}"
+    echo "local_source_bundle_receipt_sha256=$(sha256_of "${time_only_import_source_bundle_receipt}")"
+    echo "source_retry2_stage_03_completion_sha256=${expected_retry2_stage03_completion_sha256}"
+    echo "source_training_status_path=${retry2_prefix_time_only_status}"
+    echo "source_training_status_sha256=${expected_retry2_time_only_training_status_sha256}"
+    echo "local_source_training_status_path=${time_only_import_source_status}"
+    echo "local_source_training_status_sha256=$(sha256_of "${time_only_import_source_status}")"
+    echo "source_job_manifest_path=${retry2_prefix_time_only_manifest}"
+    echo "source_job_manifest_sha256=${expected_retry2_time_only_manifest_sha256}"
+    echo "source_runtime_result_path=${retry2_prefix_time_only_result}"
+    echo "source_runtime_result_sha256=${expected_retry2_time_only_result_sha256}"
+    echo "source_representation_report_path=${retry2_prefix_time_only_report}"
+    echo "source_representation_report_sha256=${expected_retry2_time_only_report_sha256}"
+    echo "source_training_log_path=${retry2_prefix_time_only_log}"
+    echo "source_training_log_sha256=${expected_retry2_time_only_log_sha256}"
+    echo "source_checkpoint_path=${retry2_prefix_time_only_checkpoint}"
+    echo "source_checkpoint_sha256=${expected_retry2_time_only_checkpoint_sha256}"
+    echo "imported_checkpoint_path=${time_only_import_checkpoint}"
+    echo "imported_checkpoint_sha256=$(sha256_of "${time_only_import_checkpoint}")"
+    echo "scientific_config_equivalence_verified=true"
+    echo "copy_method=cp_--reflink=never"
+    echo "byte_identical_copy_verified=true"
+    echo "distinct_bundle_copy_identity_verified=true"
+    echo "historical_source_optimizer_steps=3000"
+    echo "retry3_import_optimizer_steps=0"
+    echo "retry3_training_job_created=false"
+    echo "retry3_training_status_created=false"
+    echo "retry3_runtime_result_created=false"
+    echo "retry3_checkpoint_resume=false"
+    echo "canonical_data_raw_access=false"
+    echo "certified_input_access=false"
+    echo "final_holdout_access=false"
+    echo "policy_access=false"
+  } >"${destination}"
+}
+
+verify_retry2_time_only_source_semantics() {
+  verify_retry2_completed_prefix_bundle_authority
+  expect_kv "${retry2_prefix_time_only_status}" schema_id \
+    "${retry2_schema_id}.training.v1"
+  expect_kv "${retry2_prefix_time_only_status}" status complete
+  expect_kv "${retry2_prefix_time_only_status}" arm time_only
+  expect_kv "${retry2_prefix_time_only_status}" runner_sha256 \
+    "${expected_retry2_operational_runner_sha256}"
+  expect_kv "${retry2_prefix_time_only_status}" checkpoint_sha256 \
+    "${expected_retry2_time_only_checkpoint_sha256}"
+  expect_kv "${retry2_prefix_time_only_status}" optimizer_steps 3000
+  expect_kv "${retry2_prefix_time_only_result}" status completed
+  expect_kv "${retry2_prefix_time_only_result}" optimizer_steps 3000
+  expect_kv "${retry2_prefix_time_only_result}" checkpoint_written true
+  expect_kv "${retry2_prefix_time_only_result}" model_state_mutated true
+  expect_kv "${retry2_prefix_time_only_result}" finite_parameter_check true
+  expect_kv "${retry2_prefix_time_only_report}" optimizer_steps 3000
+  expect_kv "${retry2_prefix_time_only_report}" seed 17
+  expect_kv "${retry2_prefix_time_only_report}" use_frequency_tokens false
+  expect_kv "${retry2_prefix_time_only_report}" lambda_tf_align 0.1
+  expect_kv "${retry2_prefix_time_only_manifest}" input_representation_checkpoint_path ''
+  expect_kv "${retry2_prefix_time_only_manifest}" input_mdn_checkpoint_path ''
+}
+
+verify_time_only_import() {
+  local candidate
+  verify_retry2_time_only_source_semantics
+  verify_retry2_prefix_arm_scientific_equivalence time_only
+  require_immutable_file "${time_only_import_source_bundle_receipt}"
+  require_immutable_file "${time_only_import_source_status}"
+  verify_pinned_mode_file "${time_only_import_checkpoint}" \
+    "${expected_retry2_time_only_checkpoint_sha256}" 444 \
+    "Retry3 time-only checkpoint import"
+  [[ "$(sha256_of "${time_only_import_source_bundle_receipt}")" == \
+    "${expected_retry2_completed_prefix_bundle_receipt_sha256}" ]] ||
+    fail "Retry3 time-only local bundle receipt drifted"
+  [[ "$(sha256_of "${time_only_import_source_status}")" == \
+    "${expected_retry2_time_only_training_status_sha256}" ]] ||
+    fail "Retry3 time-only source-status copy drifted"
+  cmp -s -- "${retry2_prefix_time_only_checkpoint}" "${time_only_import_checkpoint}" ||
+    fail "Retry3 time-only checkpoint copy drifted"
+  [[ "$(stat -c '%i:%d' -- "${retry2_prefix_time_only_checkpoint}")" != \
+    "$(stat -c '%i:%d' -- "${time_only_import_checkpoint}")" ]] ||
+    fail "Retry3 time-only checkpoint aliases its bundle source"
+  path_is_absent "$(arm_root time_only)/training" &&
+    path_is_absent "$(arm_root time_only)/training.log" &&
+    path_is_absent "$(arm_training_status time_only)" ||
+    fail "Retry3 fabricated a time-only training history instead of importing"
+  require_immutable_file "${time_only_import_receipt}"
+  expect_kv "${time_only_import_receipt}" schema_id \
+    "${schema_id}.retry2_time_only_import.v1"
+  verify_ablation_runner_bindings "${time_only_import_receipt}"
+  candidate="$(mktemp "${scratch_root}/${schema_id}.time_only_import_verify.XXXXXX")"
+  emit_time_only_import_status "${candidate}"
+  cmp -s -- "${candidate}" "${time_only_import_receipt}" || {
+    rm -f -- "${candidate}"
+    fail "Retry3 time-only import receipt drifted"
+  }
+  rm -f -- "${candidate}"
+  printf '%s' "${time_only_import_checkpoint}"
+}
+
+run_time_only_import() {
+  verify_retry2_time_only_source_semantics
+  verify_retry2_prefix_arm_scientific_equivalence time_only
+  require_dir "${endpoint_imports_root}"
+  path_is_absent "${time_only_import_root}" ||
+    fail "Retry3 time-only import root predates its stage attempt"
+  mkdir -- "${time_only_import_root}"
+  copy_retry2_prefix_file_immutable "${retry2_completed_prefix_bundle_receipt}" \
+    "${time_only_import_source_bundle_receipt}" "time-only source bundle receipt"
+  copy_retry2_prefix_file_immutable "${retry2_prefix_time_only_status}" \
+    "${time_only_import_source_status}" "time-only source training status"
+  copy_retry2_prefix_file_immutable "${retry2_prefix_time_only_checkpoint}" \
+    "${time_only_import_checkpoint}" "time-only checkpoint"
+  local candidate
+  candidate="$(mktemp "${scratch_root}/${schema_id}.time_only_import.XXXXXX")"
+  emit_time_only_import_status "${candidate}"
+  publish_immutable "${candidate}" "${time_only_import_receipt}"
+  verify_time_only_import >/dev/null
 }
 
 assert_operational_runner_identity

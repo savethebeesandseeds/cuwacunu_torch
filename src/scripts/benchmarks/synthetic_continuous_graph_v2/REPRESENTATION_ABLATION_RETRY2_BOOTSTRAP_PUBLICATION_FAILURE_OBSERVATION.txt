@@ -1,0 +1,11 @@
+observation_schema=synthetic_v2_representation_ablation_isolated_v2_retry2_bootstrap_publication_failure_observation_v1
+observation_kind=controller_terminal_capture
+sealed_runner_source_command=mv -T -n -- "${candidate_root}" "${runtime_root}"
+expanded_observed_command=mv -T -n -- "/cuwacunu/.runtime/benchmarks/synthetic_continuous_graph_v2/.synthetic_v2_representation_ablation_isolated_v2_retry2.preflight_scratch/synthetic_v2_representation_ablation_isolated_v2_retry2.runtime_root.candidate" "/cuwacunu/.runtime/benchmarks/synthetic_continuous_graph_v2/synthetic_v2_representation_ablation_isolated_v2_retry2"
+observed_outcome=mv: cannot move '/cuwacunu/.runtime/benchmarks/synthetic_continuous_graph_v2/.synthetic_v2_representation_ablation_isolated_v2_retry2.preflight_scratch/synthetic_v2_representation_ablation_isolated_v2_retry2.runtime_root.candidate' to '/cuwacunu/.runtime/benchmarks/synthetic_continuous_graph_v2/synthetic_v2_representation_ablation_isolated_v2_retry2': Permission denied
+observed_exit_code=1
+controller_reported_wall_time_seconds=396.9
+stdout_redirection_observed=false
+stderr_redirection_observed=false
+stream_attribution_observed=false
+redirection_or_stream_attribution_claimed=false
