@@ -13,12 +13,16 @@
 
 namespace protocol = cuwacunu::kikijyeba::protocol;
 namespace inference_launcher = cuwacunu::jkimyei::training::inference;
+namespace inference_detail = cuwacunu::jkimyei::training::inference::
+    channel_graph_first_inference_launcher_detail;
 namespace representation_launcher = cuwacunu::jkimyei::training::representation;
 namespace runtime_report = cuwacunu::hero::lattice::runtime_report;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
 namespace mdn_stream =
     cuwacunu::wikimyei::inference::expected_value::mdn::stream;
+namespace mtf =
+    cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg;
 namespace vicreg_stream =
     cuwacunu::wikimyei::representation::encoding::vicreg::stream;
 
@@ -667,9 +671,9 @@ void configure_channel_mdn_one_step_direct_readout_warmup(
   auto text = read_text(fixture.channel_mdn_jkimyei);
   replace_once(text, "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_STEPS = 0;\n",
                "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_STEPS = 1;\n");
-  replace_once(
-      text, "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT = 1.0;\n",
-      "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT = 0.0;\n");
+  replace_once(text,
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT = 1.0;\n",
+               "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_NLL_WEIGHT = 0.0;\n");
   replace_once(
       text,
       "  MDN_DIRECT_EDGE_RETURN_READOUT_WARMUP_DIRECT_HEAD_ONLY = false;\n",
@@ -1436,6 +1440,7 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
   inference_launcher::channel_graph_first_inference_training_report_t report{};
   report.component_assembly_id = "mdn_v1";
   report.input_representation_assembly_id = "vicreg_v1";
+  report.input_representation_serving_pool_policy = "structured_cdsb_v1";
   report.context_contract = "graph_order.channel_node_representation.v1";
   report.output_contract = "graph_order.channel_node_future_distribution.v1";
   report.context_mode = "channel_context_strict";
@@ -1467,6 +1472,17 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
   inference_launcher::channel_graph_first_inference_launcher_detail::
       save_channel_mdn_checkpoint_file(checkpoint_path, report, model);
 
+  torch::serialize::InputArchive structured_checkpoint_input;
+  structured_checkpoint_input.load_from(checkpoint_path.string(),
+                                        torch::Device(torch::kCPU));
+  const auto structured_policy =
+      inference_launcher::channel_graph_first_inference_launcher_detail::
+          read_channel_mdn_input_representation_serving_pool_policy(
+              structured_checkpoint_input, nullptr);
+  check(inference_launcher::channel_graph_first_inference_launcher_detail::
+            metadata_string_matches(structured_policy, "structured_cdsb_v1"),
+        "structured_cdsb_v1 checkpoint metadata round-trips exactly");
+
   auto restore = mdn::ChannelContextMdn(
       /*context_dim=*/4, /*target_dim=*/2, /*channel_count=*/1,
       /*horizon_count=*/1, /*mixture_count=*/2, /*hidden_width=*/8,
@@ -1474,13 +1490,59 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
   auto expected =
       inference_launcher::channel_graph_first_inference_launcher_detail::
           checkpoint_identity_from_report(report);
+  check(expected.input_representation_serving_pool_policy ==
+            "structured_cdsb_v1",
+        "checkpoint identity retains structured_cdsb_v1 serving policy");
   int64_t restored_optimizer_step_index = -1;
   inference_launcher::channel_graph_first_inference_launcher_detail::
-      load_channel_mdn_checkpoint_file(
-          checkpoint_path, restore, nullptr, &expected,
-          &restored_optimizer_step_index);
+      load_channel_mdn_checkpoint_file(checkpoint_path, restore, nullptr,
+                                       &expected,
+                                       &restored_optimizer_step_index);
   check(restored_optimizer_step_index == 7,
         "MDN checkpoint restores the train wrapper optimizer step index");
+
+  const auto sparse_checkpoint_path = dir / "channel_mdn_sparse.pt";
+  auto sparse_report = report;
+  sparse_report.input_representation_serving_pool_policy =
+      "structured_cdsb_sparse_v1";
+  inference_launcher::channel_graph_first_inference_launcher_detail::
+      save_channel_mdn_checkpoint_file(sparse_checkpoint_path, sparse_report,
+                                       model);
+  torch::serialize::InputArchive sparse_checkpoint_input;
+  sparse_checkpoint_input.load_from(sparse_checkpoint_path.string(),
+                                    torch::Device(torch::kCPU));
+  const auto sparse_policy =
+      inference_launcher::channel_graph_first_inference_launcher_detail::
+          read_channel_mdn_input_representation_serving_pool_policy(
+              sparse_checkpoint_input, nullptr);
+  check(inference_launcher::channel_graph_first_inference_launcher_detail::
+            metadata_string_matches(sparse_policy,
+                                    "structured_cdsb_sparse_v1"),
+        "structured_cdsb_sparse_v1 checkpoint metadata round-trips exactly");
+  auto sparse_expected =
+      inference_launcher::channel_graph_first_inference_launcher_detail::
+          checkpoint_identity_from_report(sparse_report);
+  auto sparse_restore = mdn::ChannelContextMdn(
+      /*context_dim=*/4, /*target_dim=*/2, /*channel_count=*/1,
+      /*horizon_count=*/1, /*mixture_count=*/2, /*hidden_width=*/8,
+      /*residual_depth=*/1);
+  inference_launcher::channel_graph_first_inference_launcher_detail::
+      load_channel_mdn_checkpoint_file(sparse_checkpoint_path, sparse_restore,
+                                       nullptr, &sparse_expected);
+  auto sparse_as_v1 = sparse_expected;
+  sparse_as_v1.input_representation_serving_pool_policy =
+      "structured_cdsb_v1";
+  bool sparse_as_v1_threw = false;
+  try {
+    inference_launcher::channel_graph_first_inference_launcher_detail::
+        load_channel_mdn_checkpoint_file(sparse_checkpoint_path, sparse_restore,
+                                         nullptr, &sparse_as_v1);
+  } catch (const std::exception &ex) {
+    sparse_as_v1_threw =
+        std::string(ex.what()).find("serving pool policy") != std::string::npos;
+  }
+  check(sparse_as_v1_threw,
+        "sparse structured checkpoint rejects v1 checkpoint identity");
 
   const auto legacy_counter_path = dir / "legacy_optimizer_counter.pt";
   torch::serialize::OutputArchive legacy_counter_archive;
@@ -1492,15 +1554,81 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
   legacy_counter_input.load_from(legacy_counter_path.string(),
                                  torch::Device(torch::kCPU));
   check(inference_launcher::channel_graph_first_inference_launcher_detail::
-            read_channel_mdn_optimizer_step_index(legacy_counter_input) == 5,
+                read_channel_mdn_optimizer_step_index(legacy_counter_input) ==
+            5,
         "MDN checkpoint loader falls back to the legacy optimizer step total");
 
-  expected.input_representation_assembly_id = "other_channel_representation";
+  auto legacy_mtf_identity = expected;
+  legacy_mtf_identity.input_representation_serving_pool_policy =
+      "structured_cdsb_v1";
+  const auto legacy_mtf_policy =
+      inference_launcher::channel_graph_first_inference_launcher_detail::
+          read_channel_mdn_input_representation_serving_pool_policy(
+              legacy_counter_input, &legacy_mtf_identity);
+  check(inference_launcher::channel_graph_first_inference_launcher_detail::
+            metadata_string_matches(legacy_mtf_policy, "all_tokens"),
+        "legacy MTF checkpoint keeps its historical all-token serving pool");
+  check(!inference_launcher::channel_graph_first_inference_launcher_detail::
+            metadata_string_matches(legacy_mtf_policy,
+                                    "structured_cdsb_v1"),
+        "legacy MTF checkpoint does not inherit structured_cdsb_v1");
+
+  auto legacy_non_mtf_identity = expected;
+  legacy_non_mtf_identity.input_representation_serving_pool_policy =
+      "not_applicable";
+  const auto legacy_non_mtf_policy =
+      inference_launcher::channel_graph_first_inference_launcher_detail::
+          read_channel_mdn_input_representation_serving_pool_policy(
+              legacy_counter_input, &legacy_non_mtf_identity);
+  check(inference_launcher::channel_graph_first_inference_launcher_detail::
+            metadata_string_matches(legacy_non_mtf_policy, "not_applicable"),
+        "legacy non-MTF checkpoint keeps the not-applicable serving pool");
+
+  const auto malformed_policy_path = dir / "malformed_serving_pool.pt";
+  torch::serialize::OutputArchive malformed_policy_root;
+  torch::serialize::OutputArchive malformed_policy_value;
+  malformed_policy_value.write(
+      "value", torch::tensor({1}, torch::TensorOptions().dtype(torch::kInt64)));
+  malformed_policy_root.write(
+      "meta/input_representation_serving_pool_policy_bytes",
+      malformed_policy_value);
+  malformed_policy_root.save_to(malformed_policy_path.string());
+  torch::serialize::InputArchive malformed_policy_input;
+  malformed_policy_input.load_from(malformed_policy_path.string(),
+                                   torch::Device(torch::kCPU));
+  bool malformed_policy_threw = false;
+  try {
+    (void)inference_launcher::channel_graph_first_inference_launcher_detail::
+        read_channel_mdn_input_representation_serving_pool_policy(
+            malformed_policy_input, &expected);
+  } catch (const std::exception &) {
+    malformed_policy_threw = true;
+  }
+  check(malformed_policy_threw,
+        "present malformed serving-pool metadata is not treated as legacy");
+
+  auto mismatched_policy = expected;
+  mismatched_policy.input_representation_serving_pool_policy = "all_tokens";
+  bool policy_threw = false;
+  try {
+    inference_launcher::channel_graph_first_inference_launcher_detail::
+        load_channel_mdn_checkpoint_file(checkpoint_path, restore, nullptr,
+                                         &mismatched_policy);
+  } catch (const std::exception &ex) {
+    policy_threw =
+        std::string(ex.what()).find("serving pool policy") != std::string::npos;
+  }
+  check(policy_threw,
+        "MDN checkpoint rejects mismatched representation serving pool");
+
+  auto mismatched_representation = expected;
+  mismatched_representation.input_representation_assembly_id =
+      "other_channel_representation";
   bool threw = false;
   try {
     inference_launcher::channel_graph_first_inference_launcher_detail::
         load_channel_mdn_checkpoint_file(checkpoint_path, restore, nullptr,
-                                         &expected);
+                                         &mismatched_representation);
   } catch (const std::exception &ex) {
     threw = std::string(ex.what()).find("input_representation_assembly_id") !=
             std::string::npos;
@@ -1718,17 +1846,15 @@ void test_channel_mdn_run_mode_loads_checkpoints_without_training() {
         "MDN run records the raw evaluation NLL");
   check(!eval_report.last_direct_edge_return_readout_warmup_active,
         "MDN run restores the completed warmup step from checkpoint");
-  check_close(
-      eval_report.last_direct_edge_return_readout_scheduled_nll_weight, 0.25,
-      1e-12, "MDN run uses the restored post-warmup NLL weight");
+  check_close(eval_report.last_direct_edge_return_readout_scheduled_nll_weight,
+              0.25, 1e-12, "MDN run uses the restored post-warmup NLL weight");
   check(std::isfinite(eval_report.last_edge_return_auxiliary_loss) &&
             std::isfinite(eval_report.last_direct_edge_return_readout_loss),
         "MDN run records both auxiliary objective terms");
   check_close(
       eval_report.last_loss,
       eval_report.last_nll_loss *
-              eval_report
-                  .last_direct_edge_return_readout_scheduled_nll_weight +
+              eval_report.last_direct_edge_return_readout_scheduled_nll_weight +
           eval_report.last_edge_return_auxiliary_loss +
           eval_report.last_direct_edge_return_readout_loss,
       1e-5,
@@ -1798,6 +1924,124 @@ void test_channel_mdn_zero_valid_targets_skip() {
   check(report.report_written, "zero-target report written");
 }
 
+void test_mtf_structured_readout_adapter_seam() {
+  mtf::mtf_jepa_mae_vicreg_config_t config{};
+  config.channel_count = 3;
+  config.history_length = 30;
+  config.input_width = 9;
+  config.d_model = 32;
+  config.latent_dim = 32;
+  config.use_frequency_tokens = true;
+  config.time_scales = {8, 16, 32, 64};
+  config.scale_strides = {4, 8, 16, 32};
+  config.serving_pool_policy = mtf::mtf_serving_pool_policy_t::all_tokens;
+  config.dtype = torch::kFloat32;
+  config.device = torch::cuda::is_available()
+                      ? torch::Device(torch::kCUDA, 0)
+                      : torch::Device(torch::kCPU);
+
+  torch::manual_seed(91173);
+  auto model = mtf::MtfJepaMaeVicreg(config);
+  model->train();
+  std::vector<torch::Tensor> parameters_before;
+  for (const auto &parameter : model->parameters()) {
+    parameters_before.push_back(parameter.detach().clone());
+  }
+  const auto options =
+      torch::TensorOptions().dtype(torch::kFloat32).device(config.device);
+  const auto data =
+      (torch::arange(2 * 3 * 30 * 9, options).reshape({2, 3, 30, 9}) /
+       1000.0)
+          .contiguous();
+  const auto mask = torch::ones(
+      data.sizes(),
+      torch::TensorOptions().dtype(torch::kBool).device(config.device));
+
+  const bool original_mode = model->is_training();
+  model->eval();
+  const auto encoded = model->encode(data, mask);
+  const auto expected = mtf::select_mtf_serving_pool(
+      encoded, mtf::mtf_serving_pool_policy_t::structured_cdsb_v1,
+      model->config());
+  model->train(original_mode);
+
+  inference_detail::mtf_representation_encoder_adapter_t adapter(
+      model, mtf::mtf_serving_pool_policy_t::structured_cdsb_v1);
+  const auto resident = adapter.encode(data, mask, /*detach_to_cpu=*/false);
+  check(model->is_training() == original_mode,
+        "structured MTF adapter did not restore model mode");
+  check(torch::equal(resident.reduced, expected.values) &&
+            torch::equal(resident.reduced_mask, expected.valid_mask),
+        "structured MTF adapter did not reach the production selector");
+  check(torch::equal(resident.sequence, expected.values.unsqueeze(2)) &&
+            torch::equal(resident.sequence_mask,
+                         expected.valid_mask.unsqueeze(2)) &&
+            resident.reduced.sizes() == torch::IntArrayRef({2, 3, 32}) &&
+            resident.sequence.sizes() ==
+                torch::IntArrayRef({2, 3, 1, 32}),
+        "structured MTF adapter changed the serving output contract");
+  check(resident.reduced.device() == config.device &&
+            resident.reduced_mask.device() == config.device,
+        "resident structured MTF adapter output changed device");
+
+  const auto detached = adapter.encode(data, mask, /*detach_to_cpu=*/true);
+  check(model->is_training() == original_mode,
+        "detaching structured MTF adapter did not restore model mode");
+  check(detached.reduced.device().is_cpu() &&
+            detached.reduced_mask.device().is_cpu() &&
+            torch::equal(detached.reduced, expected.values.to(torch::kCPU)) &&
+            torch::equal(detached.reduced_mask,
+                         expected.valid_mask.to(torch::kCPU)),
+        "detached structured MTF adapter changed values or masks");
+
+  auto sparse_mask = mask.clone();
+  sparse_mask.index_put_({torch::indexing::Slice(), 0,
+                          torch::indexing::Slice(0, 26),
+                          torch::indexing::Slice()},
+                         false);
+  sparse_mask.index_put_({torch::indexing::Slice(), 1,
+                          torch::indexing::Slice(0, 20),
+                          torch::indexing::Slice()},
+                         false);
+  model->eval();
+  const auto sparse_encoded = model->encode(data, sparse_mask);
+  const auto sparse_expected = mtf::select_mtf_serving_pool(
+      sparse_encoded,
+      mtf::mtf_serving_pool_policy_t::structured_cdsb_sparse_v1,
+      model->config());
+  const auto sparse_v1 = mtf::select_mtf_serving_pool(
+      sparse_encoded, mtf::mtf_serving_pool_policy_t::structured_cdsb_v1,
+      model->config());
+  model->train(original_mode);
+  check(sparse_expected.valid_mask.all().item<bool>() &&
+            !sparse_v1.valid_mask.select(1, 0).any().item<bool>() &&
+            !sparse_v1.valid_mask.select(1, 1).any().item<bool>() &&
+            sparse_v1.valid_mask.select(1, 2).all().item<bool>(),
+        "sparse 4/10/30 mask contract did not repair all three channels");
+  inference_detail::mtf_representation_encoder_adapter_t sparse_adapter(
+      model, mtf::mtf_serving_pool_policy_t::structured_cdsb_sparse_v1);
+  const auto sparse_resident =
+      sparse_adapter.encode(data, sparse_mask, /*detach_to_cpu=*/false);
+  check(model->is_training() == original_mode &&
+            torch::equal(sparse_resident.reduced, sparse_expected.values) &&
+            torch::equal(sparse_resident.reduced_mask,
+                         sparse_expected.valid_mask) &&
+            sparse_resident.reduced.sizes() ==
+                torch::IntArrayRef({2, 3, 32}) &&
+            sparse_resident.sequence.sizes() ==
+                torch::IntArrayRef({2, 3, 1, 32}) &&
+            sparse_resident.reduced_mask.all().item<bool>(),
+        "sparse structured MTF adapter changed values, masks, or shape");
+  const auto parameters_after = model->parameters();
+  check(parameters_after.size() == parameters_before.size(),
+        "structured MTF adapter changed parameter count");
+  for (std::size_t index = 0; index < parameters_before.size(); ++index) {
+    check(torch::equal(parameters_before[index],
+                       parameters_after[index].detach()),
+          "structured MTF adapter mutated model parameters");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -1819,6 +2063,7 @@ int main() {
     test_channel_mdn_checkpoint_identity_rejects_nll_mismatch();
     test_channel_mdn_run_mode_loads_checkpoints_without_training();
     test_channel_mdn_zero_valid_targets_skip();
+    test_mtf_structured_readout_adapter_seam();
     std::cout
         << "[Jkimyei ChannelGraphFirstLaunchers test] all checks passed\n";
     return 0;

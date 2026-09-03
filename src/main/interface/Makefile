@@ -10,7 +10,7 @@ CUWACUNU_CMD_LDLIBS := $(LDLIBS_ncurses) -L/usr/lib/x86_64-linux-gnu -l:libz.so.
 CUWACUNU_CMD_ALIASES := cuwacunu.cmd iinuji_cmd
 IINUJI_HTML_ALIASES := cuwacunu_html
 IINUJI_HTML_BIND ?= 127.0.0.1
-IINUJI_HTML_PORT ?= 8765
+IINUJI_HTML_PORT ?= 4872
 
 $(eval $(call BIN_ONEFILE,cuwacunu_cmd,cuwacunu_cmd.cpp,$(CUWACUNU_CMD_LDLIBS)))
 $(eval $(call BIN_ONEFILE,iinuji_html,iinuji_html.cpp,))

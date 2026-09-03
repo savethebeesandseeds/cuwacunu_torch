@@ -3,6 +3,18 @@ include $(ROOT_PATH)/Makefile.config
 
 HERE_PATH := $(ROOT_PATH)/main/exec
 BIN_OUT := $(BUILD_ROOT)/exec
+override EXEC_BIN_OUT_GUARD_STATUS := $(strip $(shell \
+	$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $(BIN_OUT)/cuwacunu_exec)" \
+		"$(abspath $(BIN_OUT)/cuwacunu_mtf_serving_pool_capture)" \
+		"$(abspath $(BIN_OUT)/cuwacunu_srr3_dual_readout_capture)" \
+		"$(abspath $(BIN_OUT)/cuwacunu_srr3r_sparse_activation_capture)" \
+		"$(abspath $(BIN_OUT)/cuwacunu_srr4_sparse_readout_capture)" \
+		>/dev/null 2>&1; \
+	printf '%s' "$$?"))
+ifneq ($(EXEC_BIN_OUT_GUARD_STATUS),0)
+  $(error refusing BIN_OUT outside or redirected from BUILD_ROOT=$(BUILD_ROOT): $(BIN_OUT))
+endif
 
 CUWACUNU_EXEC_OBJS := \
   $(OUTPUT_PATH)/common/core/utils.o \
@@ -55,6 +67,8 @@ $(OBJTMP)/cuwacunu_exec.o: \
 	$(HERE_PATH)/cuwacunu_exec.cpp \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" "$(abspath $(DEPDIR)/cuwacunu_exec.d)"
 	$(Q)mkdir -p $(@D) $(DEPDIR)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -64,11 +78,79 @@ $(OBJTMP)/cuwacunu_exec.o: \
 	      -c $(abspath $<) -o $@
 	$(Q)$(LOG_END)
 
+$(OBJTMP)/cuwacunu_mtf_serving_pool_capture.o: \
+	$(HERE_PATH)/cuwacunu_mtf_serving_pool_capture.cpp \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" \
+		"$(abspath $(DEPDIR)/cuwacunu_mtf_serving_pool_capture.d)"
+	$(Q)mkdir -p $(@D) $(DEPDIR)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_COMPILE) $(CXXFLAGS) \
+	      -MMD -MP -MF $(DEPDIR)/cuwacunu_mtf_serving_pool_capture.d -MT $@ \
+	      $(USUAL_INCLUDE_PATHS) $(TORCH_INCLUDE_PATHS) \
+	      -c $(abspath $<) -o $@
+	$(Q)$(LOG_END)
+
+$(OBJTMP)/cuwacunu_srr3_dual_readout_capture.o: \
+	$(HERE_PATH)/cuwacunu_srr3_dual_readout_capture.cpp \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" \
+		"$(abspath $(DEPDIR)/cuwacunu_srr3_dual_readout_capture.d)"
+	$(Q)mkdir -p $(@D) $(DEPDIR)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_COMPILE) $(CXXFLAGS) \
+	      -MMD -MP \
+	      -MF $(DEPDIR)/cuwacunu_srr3_dual_readout_capture.d -MT $@ \
+	      $(USUAL_INCLUDE_PATHS) $(TORCH_INCLUDE_PATHS) \
+	      -c $(abspath $<) -o $@
+	$(Q)$(LOG_END)
+
+$(OBJTMP)/cuwacunu_srr3r_sparse_activation_capture.o: \
+	$(HERE_PATH)/cuwacunu_srr3r_sparse_activation_capture.cpp \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" \
+		"$(abspath $(DEPDIR)/cuwacunu_srr3r_sparse_activation_capture.d)"
+	$(Q)mkdir -p $(@D) $(DEPDIR)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_COMPILE) $(CXXFLAGS) \
+	      -MMD -MP \
+	      -MF $(DEPDIR)/cuwacunu_srr3r_sparse_activation_capture.d -MT $@ \
+	      $(USUAL_INCLUDE_PATHS) $(TORCH_INCLUDE_PATHS) \
+	      -c $(abspath $<) -o $@
+	$(Q)$(LOG_END)
+
+$(OBJTMP)/cuwacunu_srr4_sparse_readout_capture.o: \
+	$(HERE_PATH)/cuwacunu_srr4_sparse_readout_capture.cpp \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" \
+		"$(abspath $(DEPDIR)/cuwacunu_srr4_sparse_readout_capture.d)"
+	$(Q)mkdir -p $(@D) $(DEPDIR)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_COMPILE) $(CXXFLAGS) \
+	      -MMD -MP \
+	      -MF $(DEPDIR)/cuwacunu_srr4_sparse_readout_capture.d -MT $@ \
+	      $(USUAL_INCLUDE_PATHS) $(TORCH_INCLUDE_PATHS) \
+	      -c $(abspath $<) -o $@
+	$(Q)$(LOG_END)
+
 $(BIN_OUT)/cuwacunu_exec: \
 	$(OBJTMP)/cuwacunu_exec.o \
 	$(CUWACUNU_EXEC_OBJS) \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config | cuwacunu-exec-objects
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
 	$(Q)mkdir -p $(@D)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -79,9 +161,93 @@ $(BIN_OUT)/cuwacunu_exec: \
 	      -o $@
 	$(Q)$(LOG_END)
 
-.PHONY: all build-cuwacunu-exec run-cuwacunu-exec install-cuwacunu-exec clean
+$(BIN_OUT)/cuwacunu_mtf_serving_pool_capture: \
+	$(OBJTMP)/cuwacunu_mtf_serving_pool_capture.o \
+	$(CUWACUNU_EXEC_OBJS) \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config | cuwacunu-exec-objects
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
+	$(Q)mkdir -p $(@D)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_LINK) $(LDFLAGS_E) \
+	      $(OBJTMP)/cuwacunu_mtf_serving_pool_capture.o \
+	      $(CUWACUNU_EXEC_OBJS) \
+	      $(LDLIBS_torch) $(LDLIBS_common) \
+	      -o $@
+	$(Q)$(LOG_END)
+
+$(BIN_OUT)/cuwacunu_srr3_dual_readout_capture: \
+	$(OBJTMP)/cuwacunu_srr3_dual_readout_capture.o \
+	$(CUWACUNU_EXEC_OBJS) \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config | cuwacunu-exec-objects
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
+	$(Q)mkdir -p $(@D)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_LINK) $(LDFLAGS_E) \
+	      $(OBJTMP)/cuwacunu_srr3_dual_readout_capture.o \
+	      $(CUWACUNU_EXEC_OBJS) \
+	      $(LDLIBS_torch) $(LDLIBS_common) \
+	      -o $@
+	$(Q)$(LOG_END)
+
+$(BIN_OUT)/cuwacunu_srr3r_sparse_activation_capture: \
+	$(OBJTMP)/cuwacunu_srr3r_sparse_activation_capture.o \
+	$(CUWACUNU_EXEC_OBJS) \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config | cuwacunu-exec-objects
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
+	$(Q)mkdir -p $(@D)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_LINK) $(LDFLAGS_E) \
+	      $(OBJTMP)/cuwacunu_srr3r_sparse_activation_capture.o \
+	      $(CUWACUNU_EXEC_OBJS) \
+	      $(LDLIBS_torch) $(LDLIBS_common) \
+	      -o $@
+	$(Q)$(LOG_END)
+
+$(BIN_OUT)/cuwacunu_srr4_sparse_readout_capture: \
+	$(OBJTMP)/cuwacunu_srr4_sparse_readout_capture.o \
+	$(CUWACUNU_EXEC_OBJS) \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config | cuwacunu-exec-objects
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
+	$(Q)mkdir -p $(@D)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_LINK) $(LDFLAGS_E) \
+	      $(OBJTMP)/cuwacunu_srr4_sparse_readout_capture.o \
+	      $(CUWACUNU_EXEC_OBJS) \
+	      $(LDLIBS_torch) $(LDLIBS_common) \
+	      -o $@
+	$(Q)$(LOG_END)
+
+.PHONY: all build-cuwacunu-exec build-cuwacunu-mtf-serving-pool-capture \
+	build-cuwacunu-srr3-dual-readout-capture \
+	build-cuwacunu-srr3r-sparse-activation-capture \
+	build-cuwacunu-srr4-sparse-readout-capture \
+	run-cuwacunu-exec install-cuwacunu-exec clean
 
 all build-cuwacunu-exec: $(BIN_OUT)/cuwacunu_exec
+	@$(LOG_SUCCESS)
+
+build-cuwacunu-mtf-serving-pool-capture: \
+	$(BIN_OUT)/cuwacunu_mtf_serving_pool_capture
+	@$(LOG_SUCCESS)
+
+build-cuwacunu-srr3-dual-readout-capture: \
+	$(BIN_OUT)/cuwacunu_srr3_dual_readout_capture
+	@$(LOG_SUCCESS)
+
+build-cuwacunu-srr3r-sparse-activation-capture: \
+	$(BIN_OUT)/cuwacunu_srr3r_sparse_activation_capture
+	@$(LOG_SUCCESS)
+
+build-cuwacunu-srr4-sparse-readout-capture: \
+	$(BIN_OUT)/cuwacunu_srr4_sparse_readout_capture
 	@$(LOG_SUCCESS)
 
 run-cuwacunu-exec: $(BIN_OUT)/cuwacunu_exec
@@ -95,4 +261,13 @@ install-cuwacunu-exec: $(BIN_OUT)/cuwacunu_exec
 	fi
 
 clean:
-	$(Q)$(CLEAN_RM_CMD) $(BIN_OUT)/cuwacunu_exec $(OBJTMP)/cuwacunu_exec.o
+	$(Q)$(CLEAN_RM_CMD) $(BIN_OUT)/cuwacunu_exec \
+		$(BIN_OUT)/cuwacunu_mtf_serving_pool_capture \
+		$(BIN_OUT)/cuwacunu_srr3_dual_readout_capture \
+		$(BIN_OUT)/cuwacunu_srr3r_sparse_activation_capture \
+		$(BIN_OUT)/cuwacunu_srr4_sparse_readout_capture \
+		$(OBJTMP)/cuwacunu_exec.o \
+		$(OBJTMP)/cuwacunu_mtf_serving_pool_capture.o \
+		$(OBJTMP)/cuwacunu_srr3_dual_readout_capture.o \
+		$(OBJTMP)/cuwacunu_srr3r_sparse_activation_capture.o \
+		$(OBJTMP)/cuwacunu_srr4_sparse_readout_capture.o

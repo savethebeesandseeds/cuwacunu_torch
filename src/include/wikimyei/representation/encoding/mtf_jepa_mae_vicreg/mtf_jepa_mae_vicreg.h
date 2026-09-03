@@ -2,6 +2,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -9,10 +10,16 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
+#include <ATen/Config.h>
 #include <torch/torch.h>
+
+#if AT_MKL_ENABLED()
+extern "C" int MKL_Set_Num_Threads_Local(int nth);
+#endif
 
 namespace cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg {
 
@@ -24,6 +31,73 @@ namespace cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg {
  * on the production VICReg representation implementation.
  * Downstream forecasting and MDN heads are intentionally out of scope here.
  */
+
+enum class mtf_serving_pool_policy_t {
+  all_tokens,
+  time_only,
+  frequency_only,
+  domain_balanced,
+  structured_cdsb_v1,
+  structured_cdsb_sparse_v1,
+};
+
+enum class mtf_jepa_mask_policy_t {
+  legacy_soft_overlap,
+  paired_target_legacy_context_v1,
+  support_separated_pair_v1,
+};
+
+enum class mtf_vicreg_view_pairing_policy_t {
+  independent_weak,
+  tied_weak,
+  clean_identical,
+};
+
+[[nodiscard]] inline const char *
+mtf_vicreg_view_pairing_policy_name(mtf_vicreg_view_pairing_policy_t policy) {
+  switch (policy) {
+  case mtf_vicreg_view_pairing_policy_t::independent_weak:
+    return "independent_weak";
+  case mtf_vicreg_view_pairing_policy_t::tied_weak:
+    return "tied_weak";
+  case mtf_vicreg_view_pairing_policy_t::clean_identical:
+    return "clean_identical";
+  }
+  throw std::runtime_error(
+      "[mtf_jepa_mae_vicreg] unknown VICReg view pairing policy");
+}
+
+[[nodiscard]] inline const char *
+mtf_jepa_mask_policy_name(mtf_jepa_mask_policy_t policy) {
+  switch (policy) {
+  case mtf_jepa_mask_policy_t::legacy_soft_overlap:
+    return "legacy_soft_overlap";
+  case mtf_jepa_mask_policy_t::paired_target_legacy_context_v1:
+    return "paired_target_legacy_context_v1";
+  case mtf_jepa_mask_policy_t::support_separated_pair_v1:
+    return "support_separated_pair_v1";
+  }
+  throw std::runtime_error("[mtf_jepa_mae_vicreg] unknown JEPA mask policy");
+}
+
+[[nodiscard]] inline const char *
+mtf_serving_pool_policy_name(mtf_serving_pool_policy_t policy) {
+  switch (policy) {
+  case mtf_serving_pool_policy_t::all_tokens:
+    return "all_tokens";
+  case mtf_serving_pool_policy_t::time_only:
+    return "time_only";
+  case mtf_serving_pool_policy_t::frequency_only:
+    return "frequency_only";
+  case mtf_serving_pool_policy_t::domain_balanced:
+    return "domain_balanced";
+  case mtf_serving_pool_policy_t::structured_cdsb_v1:
+    return "structured_cdsb_v1";
+  case mtf_serving_pool_policy_t::structured_cdsb_sparse_v1:
+    return "structured_cdsb_sparse_v1";
+  }
+  throw std::runtime_error("[mtf_jepa_mae_vicreg] unknown serving pool policy");
+}
 
 struct mtf_jepa_mae_vicreg_config_t {
   int64_t channel_count{1};
@@ -45,11 +119,15 @@ struct mtf_jepa_mae_vicreg_config_t {
   bool use_frequency_tokens{true};
   int64_t frequency_num_bins{16};
   bool frequency_log_magnitude{true};
+  mtf_serving_pool_policy_t serving_pool_policy{
+      mtf_serving_pool_policy_t::all_tokens};
 
   double mask_ratio_time{0.50};
   double mask_ratio_frequency{0.30};
   double mask_ratio_channel{0.10};
   double min_context_ratio{0.25};
+  mtf_jepa_mask_policy_t jepa_mask_policy{
+      mtf_jepa_mask_policy_t::legacy_soft_overlap};
 
   double lambda_jepa{1.0};
   double lambda_mae{0.25};
@@ -66,6 +144,7 @@ struct mtf_jepa_mae_vicreg_config_t {
   bool use_target_ema{true};
   bool stop_gradient_target{true};
   bool return_diagnostics{true};
+  bool return_vicreg_debug_tensors{false};
 
   bool use_mae_decoder{true};
   bool use_jepa_loss{true};
@@ -73,6 +152,7 @@ struct mtf_jepa_mae_vicreg_config_t {
   bool use_vicreg_loss{true};
   bool use_global_vicreg{true};
   bool use_channel_vicreg{false};
+  bool stratify_channel_vicreg_by_channel{false};
   double lambda_global_vicreg{1.0};
   double lambda_channel_vicreg{1.0};
   bool use_raw_reconstruction_targets{true};
@@ -84,6 +164,8 @@ struct mtf_jepa_mae_vicreg_config_t {
 
   double vicreg_view_gaussian_jitter_std{0.005};
   double vicreg_view_time_dropout_scale{0.10};
+  mtf_vicreg_view_pairing_policy_t vicreg_view_pairing_policy{
+      mtf_vicreg_view_pairing_policy_t::independent_weak};
 
   std::string augmentation_profile{"unset"};
   double gaussian_jitter_std{0.0};
@@ -146,6 +228,9 @@ struct jepa_context_target_mask_t {
   int64_t reduced_targets_for_context_count{0};
   int64_t context_starved_sample_count{0};
   int64_t min_context_satisfied_count{0};
+  int64_t support_separated_sample_count{0};
+  int64_t retained_legacy_context_count{0};
+  int64_t replaced_context_count{0};
 };
 
 struct mtf_jepa_mae_vicreg_encode_output_t {
@@ -175,6 +260,30 @@ struct mtf_jepa_mae_vicreg_output_t {
   torch::Tensor loss_vicreg{};
   torch::Tensor loss_vicreg_global{};
   torch::Tensor loss_vicreg_channel{};
+  torch::Tensor jepa_target_mask{};
+  torch::Tensor jepa_context_mask{};
+  torch::Tensor vicreg_drawn_a_data{};
+  torch::Tensor vicreg_drawn_a_feature_mask{};
+  torch::Tensor vicreg_drawn_b_data{};
+  torch::Tensor vicreg_drawn_b_feature_mask{};
+  torch::Tensor vicreg_view_a_data{};
+  torch::Tensor vicreg_view_a_feature_mask{};
+  torch::Tensor vicreg_view_b_data{};
+  torch::Tensor vicreg_view_b_feature_mask{};
+  torch::Tensor vicreg_view_a_token_mask{};
+  torch::Tensor vicreg_view_b_token_mask{};
+  torch::Tensor vicreg_view_a_sample_valid_mask{};
+  torch::Tensor vicreg_view_b_sample_valid_mask{};
+  torch::Tensor vicreg_view_a_pooled_by_channel{};
+  torch::Tensor vicreg_view_b_pooled_by_channel{};
+  torch::Tensor vicreg_view_a_pooled_global{};
+  torch::Tensor vicreg_view_b_pooled_global{};
+  torch::Tensor vicreg_view_a_projected_global{};
+  torch::Tensor vicreg_view_b_projected_global{};
+  torch::Tensor vicreg_global_joint_mask{};
+  torch::Tensor vicreg_channel_joint_mask{};
+  int64_t vicreg_encoder_call_count{0};
+  int64_t vicreg_projector_call_count{0};
   torch::Tensor sample_valid_mask{};
   torch::Tensor channel_valid_mask{};
   std::map<std::string, torch::Tensor> diagnostics{};
@@ -200,6 +309,7 @@ struct vicreg_stability_loss_result_t {
   torch::Tensor variance_loss{};
   torch::Tensor covariance_loss{};
   int64_t valid_rows{0};
+  int64_t active_groups{0};
 };
 
 struct tf_alignment_result_t {
@@ -215,8 +325,37 @@ struct vicreg_branch_loss_result_t {
   torch::Tensor invariance_loss{};
   torch::Tensor variance_loss{};
   torch::Tensor covariance_loss{};
+  torch::Tensor global_invariance_loss{};
+  torch::Tensor global_variance_loss{};
+  torch::Tensor global_covariance_loss{};
+  torch::Tensor channel_invariance_loss{};
+  torch::Tensor channel_variance_loss{};
+  torch::Tensor channel_covariance_loss{};
+  torch::Tensor drawn_a_data{};
+  torch::Tensor drawn_a_feature_mask{};
+  torch::Tensor drawn_b_data{};
+  torch::Tensor drawn_b_feature_mask{};
+  torch::Tensor view_a_data{};
+  torch::Tensor view_a_feature_mask{};
+  torch::Tensor view_b_data{};
+  torch::Tensor view_b_feature_mask{};
+  torch::Tensor view_a_token_mask{};
+  torch::Tensor view_b_token_mask{};
+  torch::Tensor view_a_sample_valid_mask{};
+  torch::Tensor view_b_sample_valid_mask{};
+  torch::Tensor view_a_pooled_by_channel{};
+  torch::Tensor view_b_pooled_by_channel{};
+  torch::Tensor view_a_pooled_global{};
+  torch::Tensor view_b_pooled_global{};
+  torch::Tensor view_a_projected_global{};
+  torch::Tensor view_b_projected_global{};
+  torch::Tensor global_joint_mask{};
+  torch::Tensor channel_joint_mask{};
+  int64_t encoder_call_count{0};
+  int64_t projector_call_count{0};
   int64_t global_valid_rows{0};
   int64_t channel_valid_rows{0};
+  int64_t channel_active_groups{0};
   int64_t valid_rows{0};
 };
 
@@ -274,6 +413,7 @@ compute_vicreg_stability_loss(
 
   vicreg_stability_loss_result_t out{};
   out.valid_rows = std::min(rows1.size(0), rows2.size(0));
+  out.active_groups = out.valid_rows > 0 ? 1 : 0;
   if (out.valid_rows <= 0) {
     out.loss = torch::zeros({}, z1.options());
     out.invariance_loss = torch::zeros({}, z1.options());
@@ -301,7 +441,123 @@ compute_vicreg_stability_loss(
   return out;
 }
 
+[[nodiscard]] inline vicreg_stability_loss_result_t
+compute_channel_stratified_vicreg_stability_loss(
+    const torch::Tensor &z1, const torch::Tensor &mask1,
+    const torch::Tensor &z2, const torch::Tensor &mask2,
+    const vicreg_stability_loss_options_t &options = {}) {
+  TORCH_CHECK(z1.sizes() == z2.sizes(),
+              "[mtf_jepa_mae_vicreg] stratified z1/z2 shape mismatch");
+  TORCH_CHECK(mask1.sizes() == mask2.sizes(),
+              "[mtf_jepa_mae_vicreg] stratified mask1/mask2 shape mismatch");
+  TORCH_CHECK(z1.dim() == 3 && mask1.dim() == 2,
+              "[mtf_jepa_mae_vicreg] stratified inputs must be [B,C,D] and "
+              "[B,C]");
+  TORCH_CHECK(z1.size(0) == mask1.size(0) && z1.size(1) == mask1.size(1),
+              "[mtf_jepa_mae_vicreg] stratified z/mask shape mismatch");
+  TORCH_CHECK(z1.size(1) > 0,
+              "[mtf_jepa_mae_vicreg] stratified inputs need a channel");
+
+  vicreg_stability_loss_result_t out{};
+  out.loss = torch::zeros({}, z1.options());
+  out.invariance_loss = torch::zeros({}, z1.options());
+  out.variance_loss = torch::zeros({}, z1.options());
+  out.covariance_loss = torch::zeros({}, z1.options());
+  for (int64_t channel = 0; channel < z1.size(1); ++channel) {
+    const auto channel_result = compute_vicreg_stability_loss(
+        z1.narrow(/*dim=*/1, channel, /*length=*/1),
+        mask1.narrow(/*dim=*/1, channel, /*length=*/1),
+        z2.narrow(/*dim=*/1, channel, /*length=*/1),
+        mask2.narrow(/*dim=*/1, channel, /*length=*/1), options);
+    out.valid_rows += channel_result.valid_rows;
+    TORCH_CHECK(channel_result.valid_rows >= 2,
+                "[mtf_jepa_mae_vicreg] stratified channel ", channel,
+                " needs at least two jointly valid rows; got ",
+                channel_result.valid_rows);
+    out.loss = out.loss + channel_result.loss;
+    out.invariance_loss = out.invariance_loss + channel_result.invariance_loss;
+    out.variance_loss = out.variance_loss + channel_result.variance_loss;
+    out.covariance_loss = out.covariance_loss + channel_result.covariance_loss;
+    ++out.active_groups;
+  }
+  const auto divisor = static_cast<double>(z1.size(1));
+  out.loss = out.loss / divisor;
+  out.invariance_loss = out.invariance_loss / divisor;
+  out.variance_loss = out.variance_loss / divisor;
+  out.covariance_loss = out.covariance_loss / divisor;
+  return out;
+}
+
 namespace detail {
+
+// structured_cdsb_v1 is the exact, frozen production form of the CDSB
+// readout established by PSM-1 and reproduced by SRR-1.  It is deliberately
+// limited to that proven representation surface.
+inline constexpr int64_t kStructuredCdsbChannelCount = 3;
+inline constexpr int64_t kStructuredCdsbHistoryLength = 30;
+inline constexpr int64_t kStructuredCdsbInputWidth = 9;
+inline constexpr int64_t kStructuredCdsbDomainCount = 2;
+inline constexpr int64_t kStructuredCdsbScaleCount = 4;
+inline constexpr int64_t kStructuredCdsbTokensPerChannel = 24;
+inline constexpr int64_t kStructuredCdsbTokenCount = 72;
+inline constexpr int64_t kStructuredCdsbLatentDim = 32;
+inline constexpr int64_t kStructuredCdsbCellCount = 16;
+inline constexpr int64_t kStructuredCdsbProjectionInputWidth = 768;
+inline constexpr int64_t kStructuredCdsbProjectionOutputWidth = 32;
+
+inline constexpr std::array<int64_t, kStructuredCdsbScaleCount>
+    kStructuredCdsbTokensPerScale{7, 3, 1, 1};
+inline constexpr std::array<int64_t, kStructuredCdsbScaleCount>
+    kStructuredCdsbTimeScales{8, 16, 32, 64};
+inline constexpr std::array<int64_t, kStructuredCdsbScaleCount>
+    kStructuredCdsbScaleStrides{4, 8, 16, 32};
+inline constexpr std::array<int64_t, kStructuredCdsbScaleCount>
+    kStructuredCdsbScaleCellOffsets{0, 3, 6, 7};
+inline constexpr std::array<int64_t, kStructuredCdsbTokensPerChannel>
+    kStructuredCdsbFrozenCellIds{
+        0,  0,  1,  1,  1,  2,  2,  3,  4,  5,  6,  7,
+        8,  8,  9,  9,  9,  10, 10, 11, 12, 13, 14, 15};
+inline constexpr std::array<int64_t, kStructuredCdsbCellCount>
+    kStructuredCdsbFrozenCellCounts{2, 3, 2, 1, 1, 1, 1, 1,
+                                    2, 3, 2, 1, 1, 1, 1, 1};
+inline constexpr int64_t kStructuredCdsbDomainScaleGroupCount = 8;
+inline constexpr std::array<int64_t, kStructuredCdsbTokensPerChannel>
+    kStructuredCdsbFrozenDomainScaleGroupIds{
+        0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 3,
+        4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 6, 7};
+inline constexpr std::array<int64_t, kStructuredCdsbTokensPerChannel>
+    kStructuredCdsbFrozenStarts{
+        0, 4, 8, 12, 16, 20, 22, 0, 8, 14, 0, 0,
+        0, 4, 8, 12, 16, 20, 22, 0, 8, 14, 0, 0};
+inline constexpr std::array<int64_t, kStructuredCdsbTokensPerChannel>
+    kStructuredCdsbFrozenWidths{
+        8, 8, 8, 8, 8, 8, 8, 16, 16, 16, 30, 30,
+        8, 8, 8, 8, 8, 8, 8, 16, 16, 16, 30, 30};
+
+inline void validate_structured_cdsb_v1_config(
+    const mtf_jepa_mae_vicreg_config_t &config) {
+  TORCH_CHECK(config.channel_count == kStructuredCdsbChannelCount,
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 requires exactly "
+              "3 channels");
+  TORCH_CHECK(config.history_length == kStructuredCdsbHistoryLength &&
+                  config.input_width == kStructuredCdsbInputWidth &&
+                  config.d_model == kStructuredCdsbLatentDim &&
+                  config.latent_dim == kStructuredCdsbLatentDim,
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 requires the frozen "
+              "H=30,F=9,d_model=32,latent_dim=32 configuration");
+  TORCH_CHECK(config.use_frequency_tokens,
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 requires time and "
+              "frequency tokens");
+  TORCH_CHECK(
+      config.time_scales ==
+              std::vector<int64_t>(kStructuredCdsbTimeScales.begin(),
+                                   kStructuredCdsbTimeScales.end()) &&
+          config.scale_strides ==
+              std::vector<int64_t>(kStructuredCdsbScaleStrides.begin(),
+                                   kStructuredCdsbScaleStrides.end()),
+      "[mtf_jepa_mae_vicreg] structured_cdsb_v1 requires scales "
+      "8,16,32,64 and strides 4,8,16,32");
+}
 
 inline void validate_probability(double value, const char *name) {
   if (!std::isfinite(value) || value < 0.0 || value > 1.0) {
@@ -359,6 +615,25 @@ validate_architecture_config(const mtf_jepa_mae_vicreg_config_t &config) {
           "[mtf_jepa_mae_vicreg] time scale and stride must be positive");
     }
   }
+  if (!config.use_frequency_tokens &&
+      (config.serving_pool_policy ==
+           mtf_serving_pool_policy_t::frequency_only ||
+       config.serving_pool_policy ==
+           mtf_serving_pool_policy_t::domain_balanced ||
+       config.serving_pool_policy ==
+           mtf_serving_pool_policy_t::structured_cdsb_v1 ||
+       config.serving_pool_policy ==
+           mtf_serving_pool_policy_t::structured_cdsb_sparse_v1)) {
+    throw std::runtime_error(
+        "[mtf_jepa_mae_vicreg] serving pool policy requires frequency "
+        "tokens");
+  }
+  if (config.serving_pool_policy ==
+          mtf_serving_pool_policy_t::structured_cdsb_v1 ||
+      config.serving_pool_policy ==
+          mtf_serving_pool_policy_t::structured_cdsb_sparse_v1) {
+    validate_structured_cdsb_v1_config(config);
+  }
 }
 
 inline void
@@ -373,6 +648,12 @@ validate_training_config(const mtf_jepa_mae_vicreg_config_t &config) {
   validate_probability(config.min_context_ratio, "min_context_ratio");
   validate_probability(config.max_context_target_time_overlap,
                        "max_context_target_time_overlap");
+  if (config.jepa_mask_policy != mtf_jepa_mask_policy_t::legacy_soft_overlap &&
+      !config.use_frequency_tokens) {
+    throw std::runtime_error(
+        "[mtf_jepa_mae_vicreg] paired-target JEPA masks require "
+        "frequency tokens");
+  }
   if (!std::isfinite(config.vicreg_view_gaussian_jitter_std) ||
       config.vicreg_view_gaussian_jitter_std < 0.0) {
     throw std::runtime_error(
@@ -380,6 +661,8 @@ validate_training_config(const mtf_jepa_mae_vicreg_config_t &config) {
   }
   validate_probability(config.vicreg_view_time_dropout_scale,
                        "vicreg_view_time_dropout_scale");
+  (void)mtf_vicreg_view_pairing_policy_name(
+      config.vicreg_view_pairing_policy);
   if (config.lambda_jepa < 0.0 || config.lambda_mae < 0.0 ||
       config.lambda_tf_align < 0.0 || config.lambda_vicreg < 0.0 ||
       config.lambda_global_vicreg < 0.0 || config.lambda_channel_vicreg < 0.0 ||
@@ -471,10 +754,9 @@ canonicalize_input(const torch::Tensor &x, const torch::Tensor &feature_mask,
 
 inline double resolved_vicreg_view_time_dropout_prob(
     const mtf_jepa_mae_vicreg_config_t &config) {
-  return std::min(
-      0.10,
-      std::max(0.0,
-               config.mask_ratio_time * config.vicreg_view_time_dropout_scale));
+  return std::min(0.10,
+                  std::max(0.0, config.mask_ratio_time *
+                                    config.vicreg_view_time_dropout_scale));
 }
 
 inline mtf_input_t apply_vicreg_weak_view_augmentation(
@@ -501,11 +783,10 @@ inline mtf_input_t apply_vicreg_weak_view_augmentation(
     mask = mask.logical_and(keep);
   }
   auto data = torch::where(mask, input.data, torch::zeros_like(input.data));
-  data = data + torch::where(
-                    mask,
-                    torch::randn_like(data) *
-                        config.vicreg_view_gaussian_jitter_std,
-                    torch::zeros_like(data));
+  data = data + torch::where(mask,
+                             torch::randn_like(data) *
+                                 config.vicreg_view_gaussian_jitter_std,
+                             torch::zeros_like(data));
   data = torch::where(mask, data, torch::zeros_like(data));
   return {data, mask};
 }
@@ -637,6 +918,15 @@ inline torch::Tensor channel_mask(const mtf_token_metadata_t &metadata,
   return token_mask.logical_and(channel_ids.eq(channel).unsqueeze(0));
 }
 
+inline torch::Tensor channel_domain_mask(const mtf_token_metadata_t &metadata,
+                                         const torch::Tensor &token_mask,
+                                         int64_t channel, int64_t domain) {
+  auto channel_ids = metadata.channel_id.to(token_mask.device());
+  auto domain_ids = metadata.domain_id.to(token_mask.device());
+  return token_mask.logical_and(channel_ids.eq(channel).unsqueeze(0))
+      .logical_and(domain_ids.eq(domain).unsqueeze(0));
+}
+
 inline torch::Tensor
 channel_valid_mask(const mtf_token_metadata_t &metadata,
                    const torch::Tensor &token_mask,
@@ -659,6 +949,772 @@ pooled_by_channel(const torch::Tensor &embeddings, const torch::Tensor &mask,
     pooled.push_back(masked_mean(embeddings, channel_mask(metadata, mask, c)));
   }
   return torch::stack(pooled, /*dim=*/1);
+}
+
+struct channel_pool_t {
+  torch::Tensor values{};     // [B,C,D]
+  torch::Tensor valid_mask{}; // [B,C], bool
+};
+
+struct structured_cdsb_v1_metadata_record_t {
+  int64_t source_index{0};
+  int64_t domain{0};
+  int64_t scale{0};
+  int64_t start{0};
+  int64_t width{0};
+};
+
+struct structured_cdsb_v1_plan_t {
+  std::array<std::array<int64_t, kStructuredCdsbTokensPerChannel>,
+             kStructuredCdsbChannelCount>
+      ordered_token_indices{};
+  std::array<std::array<int64_t, kStructuredCdsbTokensPerChannel>,
+             kStructuredCdsbChannelCount>
+      ordered_cell_ids{};
+  std::array<std::array<int64_t, kStructuredCdsbCellCount>,
+             kStructuredCdsbChannelCount>
+      cell_counts{};
+};
+
+struct structured_cdsb_v1_lifted_t {
+  torch::Tensor values{};     // [B,3,768], input dtype/device
+  torch::Tensor valid_mask{}; // [B,3], bool, input device
+};
+
+struct structured_cdsb_sparse_v1_lifted_t {
+  torch::Tensor values{}; // [B,3,768], domain-scale-neutral completion
+  torch::Tensor valid_mask{};                  // [B,3], computable
+  torch::Tensor complete_mask{};               // [B,3], all 24 tokens
+  torch::Tensor grouped_token_mask{};          // [B,3,24], source support
+  torch::Tensor cell_support_mask{};           // [B,3,16], any token
+  torch::Tensor cell_source_token_count{};      // [B,3,16], int64
+  torch::Tensor cell_expected_token_count{};    // [16], int64
+  torch::Tensor domain_scale_support_mask{};    // [B,3,8], bool
+  torch::Tensor repeated_support_position_count{}; // [B,3], int64
+};
+
+[[nodiscard]] inline uint64_t structured_cdsb_v1_splitmix64(uint64_t value) {
+  value += 0x9e3779b97f4a7c15ULL;
+  value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+  value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+  return value ^ (value >> 31U);
+}
+
+[[nodiscard]] inline double structured_cdsb_v1_uniform01(uint64_t value) {
+  return static_cast<double>(structured_cdsb_v1_splitmix64(value) >> 11U) *
+         (1.0 / 9007199254740992.0);
+}
+
+[[nodiscard]] inline double structured_cdsb_v1_signed_uniform(
+    uint64_t value) {
+  return 2.0 * structured_cdsb_v1_uniform01(value) - 1.0;
+}
+
+inline void structured_cdsb_v1_mix_hash_value(uint64_t &hash,
+                                               uint64_t value) {
+  hash ^= value;
+  hash *= 0x100000001b3ULL;
+}
+
+[[nodiscard]] inline uint64_t
+structured_cdsb_v1_stable_tensor_hash(const torch::Tensor &input) {
+  TORCH_CHECK(input.defined(),
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 cannot hash an "
+              "undefined tensor");
+  const auto contiguous = input.detach().to(torch::kCPU).contiguous();
+  uint64_t hash = 0xcbf29ce484222325ULL;
+  structured_cdsb_v1_mix_hash_value(
+      hash, static_cast<uint64_t>(contiguous.scalar_type()));
+  structured_cdsb_v1_mix_hash_value(hash,
+                                     static_cast<uint64_t>(contiguous.dim()));
+  for (const int64_t size : contiguous.sizes()) {
+    structured_cdsb_v1_mix_hash_value(hash, static_cast<uint64_t>(size));
+  }
+  const auto byte_count = static_cast<std::size_t>(contiguous.numel()) *
+                          static_cast<std::size_t>(contiguous.element_size());
+  const auto *bytes = static_cast<const uint8_t *>(contiguous.data_ptr());
+  for (std::size_t index = 0; index < byte_count; ++index) {
+    structured_cdsb_v1_mix_hash_value(hash,
+                                       static_cast<uint64_t>(bytes[index]));
+  }
+  return hash;
+}
+
+[[nodiscard]] inline torch::Tensor structured_cdsb_v1_make_q0_cpu64() {
+  constexpr uint64_t kProjectionTag = 0x7273736d5f74655fULL;
+  torch::NoGradGuard no_grad;
+  auto dense = torch::empty(
+      {kStructuredCdsbProjectionInputWidth,
+       kStructuredCdsbProjectionOutputWidth},
+      torch::kFloat64);
+  auto values = dense.accessor<double, 2>();
+  for (int64_t row = 0; row < dense.size(0); ++row) {
+    for (int64_t column = 0; column < dense.size(1); ++column) {
+      const uint64_t projection_key = structured_cdsb_v1_splitmix64(
+          kProjectionTag ^
+          structured_cdsb_v1_splitmix64(static_cast<uint64_t>(row)) ^
+          structured_cdsb_v1_splitmix64(static_cast<uint64_t>(column) <<
+                                         32U));
+      values[row][column] =
+          structured_cdsb_v1_signed_uniform(projection_key);
+    }
+  }
+  auto [projection, upper] = at::linalg_qr(dense, "reduced");
+  const auto diagonal = upper.diagonal();
+  const auto signs = torch::where(diagonal.lt(0.0),
+                                  -torch::ones_like(diagonal),
+                                  torch::ones_like(diagonal));
+  return (projection * signs.unsqueeze(0)).contiguous();
+}
+
+[[nodiscard]] inline torch::Tensor structured_cdsb_v1_mean_basis_cpu64() {
+  auto basis = torch::zeros(
+      {kStructuredCdsbProjectionInputWidth,
+       kStructuredCdsbProjectionOutputWidth},
+      torch::kFloat64);
+  auto values = basis.accessor<double, 2>();
+  const double scale = 1.0 / std::sqrt(kStructuredCdsbTokensPerChannel);
+  for (int64_t token = 0; token < kStructuredCdsbTokensPerChannel; ++token) {
+    for (int64_t feature = 0; feature < kStructuredCdsbLatentDim; ++feature) {
+      values[token * kStructuredCdsbLatentDim + feature][feature] = scale;
+    }
+  }
+  return basis;
+}
+
+[[nodiscard]] inline torch::Tensor structured_cdsb_v1_make_qpsm_cpu64(
+    const torch::Tensor &q0) {
+  torch::NoGradGuard no_grad;
+  const auto basis = structured_cdsb_v1_mean_basis_cpu64();
+  const auto contrast_seed =
+      q0 - basis.matmul(basis.transpose(0, 1).matmul(q0));
+  auto [contrast, upper] = at::linalg_qr(contrast_seed, "reduced");
+  const auto diagonal = upper.diagonal();
+  const auto signs = torch::where(diagonal.lt(0.0),
+                                  -torch::ones_like(diagonal),
+                                  torch::ones_like(diagonal));
+  contrast = contrast * signs.unsqueeze(0);
+  return (basis / std::sqrt(kStructuredCdsbTokensPerChannel) +
+          std::sqrt(static_cast<double>(kStructuredCdsbTokensPerChannel - 1) /
+                    static_cast<double>(kStructuredCdsbTokensPerChannel)) *
+              contrast)
+      .contiguous();
+}
+
+class structured_cdsb_v1_projection_thread_guard_t final {
+public:
+  structured_cdsb_v1_projection_thread_guard_t() {
+#if AT_MKL_ENABLED()
+    previous_mkl_threads_ = ::MKL_Set_Num_Threads_Local(1);
+#else
+    TORCH_CHECK(
+        at::get_num_threads() == 1,
+        "[mtf_jepa_mae_vicreg] structured_cdsb_v1 projection construction "
+        "requires one CPU thread on non-MKL builds");
+#endif
+  }
+
+  ~structured_cdsb_v1_projection_thread_guard_t() {
+#if AT_MKL_ENABLED()
+    (void)::MKL_Set_Num_Threads_Local(previous_mkl_threads_);
+#endif
+  }
+
+  structured_cdsb_v1_projection_thread_guard_t(
+      const structured_cdsb_v1_projection_thread_guard_t &) = delete;
+  structured_cdsb_v1_projection_thread_guard_t &operator=(
+      const structured_cdsb_v1_projection_thread_guard_t &) = delete;
+
+private:
+#if AT_MKL_ENABLED()
+  int previous_mkl_threads_{0};
+#endif
+};
+
+[[nodiscard]] inline torch::Tensor structured_cdsb_v1_projection_for(
+    const torch::TensorOptions &options) {
+  static const torch::Tensor projection = [] {
+    torch::NoGradGuard no_grad;
+    structured_cdsb_v1_projection_thread_guard_t thread_guard;
+    const auto q0 = structured_cdsb_v1_make_q0_cpu64();
+    TORCH_CHECK(
+        q0.sizes() ==
+                torch::IntArrayRef({kStructuredCdsbProjectionInputWidth,
+                                    kStructuredCdsbProjectionOutputWidth}) &&
+            q0.scalar_type() == torch::kFloat64 && q0.device().is_cpu() &&
+            q0.is_contiguous() && !q0.requires_grad() &&
+            torch::isfinite(q0).all().item<bool>(),
+        "[mtf_jepa_mae_vicreg] structured_cdsb_v1 Q_0 tensor contract "
+        "failed");
+    TORCH_CHECK(structured_cdsb_v1_stable_tensor_hash(q0) ==
+                    0xf8c9f35282de2ee0ULL,
+                "[mtf_jepa_mae_vicreg] structured_cdsb_v1 Q_0 hash "
+                "mismatch");
+
+    const auto qpsm = structured_cdsb_v1_make_qpsm_cpu64(q0);
+    TORCH_CHECK(
+        qpsm.sizes() ==
+                torch::IntArrayRef({kStructuredCdsbProjectionInputWidth,
+                                    kStructuredCdsbProjectionOutputWidth}) &&
+            qpsm.scalar_type() == torch::kFloat64 &&
+            qpsm.device().is_cpu() && qpsm.is_contiguous() &&
+            !qpsm.requires_grad() &&
+            torch::isfinite(qpsm).all().item<bool>(),
+        "[mtf_jepa_mae_vicreg] structured_cdsb_v1 Q_psm tensor contract "
+        "failed");
+    TORCH_CHECK(structured_cdsb_v1_stable_tensor_hash(qpsm) ==
+                    0xac8a43fd65b2c8a8ULL,
+                "[mtf_jepa_mae_vicreg] structured_cdsb_v1 Q_psm hash "
+                "mismatch");
+
+    const auto identity =
+        torch::eye(kStructuredCdsbProjectionOutputWidth, torch::kFloat64);
+    const auto basis = structured_cdsb_v1_mean_basis_cpu64();
+    const auto contrast =
+        (qpsm - basis / std::sqrt(kStructuredCdsbTokensPerChannel)) /
+        std::sqrt(
+            static_cast<double>(kStructuredCdsbTokensPerChannel - 1) /
+            static_cast<double>(kStructuredCdsbTokensPerChannel));
+    const double orthogonality_error =
+        (qpsm.transpose(0, 1).matmul(qpsm) - identity)
+            .abs()
+            .max()
+            .item<double>();
+    const double contrast_mean_error =
+        basis.transpose(0, 1).matmul(contrast).abs().max().item<double>();
+    const double block_sum_error =
+        (qpsm.reshape({kStructuredCdsbTokensPerChannel,
+                       kStructuredCdsbLatentDim,
+                       kStructuredCdsbProjectionOutputWidth})
+             .sum(0) -
+         identity)
+            .abs()
+            .max()
+            .item<double>();
+    TORCH_CHECK(orthogonality_error <= 1.0e-10,
+                "[mtf_jepa_mae_vicreg] structured_cdsb_v1 Q_psm "
+                "orthogonality contract failed");
+    TORCH_CHECK(contrast_mean_error <= 1.0e-10,
+                "[mtf_jepa_mae_vicreg] structured_cdsb_v1 Q_psm mean "
+                "contrast contract failed");
+    TORCH_CHECK(block_sum_error <= 1.0e-10,
+                "[mtf_jepa_mae_vicreg] structured_cdsb_v1 Q_psm block-sum "
+                "contract failed");
+    return qpsm;
+  }();
+  // Always return fresh storage. A torch::Tensor handle is mutable even when
+  // obtained from a const reference, so exposing the cached handle would let
+  // an unrelated detail caller corrupt the versioned projection globally.
+  // This remains the single options translation performed by each readout.
+  return projection.to(options, /*non_blocking=*/false, /*copy=*/true)
+      .contiguous();
+}
+
+[[nodiscard]] inline torch::Tensor structured_cdsb_v1_metadata_vector_cpu(
+    const torch::Tensor &value, const char *name) {
+  TORCH_CHECK(value.defined(),
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 missing metadata "
+              "field ",
+              name);
+  TORCH_CHECK(value.dim() == 1 &&
+                  value.numel() == kStructuredCdsbTokenCount,
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 metadata field ",
+              name, " must be [72]");
+  TORCH_CHECK(value.scalar_type() == torch::kInt64,
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 metadata field ",
+              name, " must be int64");
+  return value.to(torch::kCPU, torch::kInt64).contiguous();
+}
+
+[[nodiscard]] inline int64_t structured_cdsb_v1_compact_cell_id(
+    int64_t domain, int64_t scale, int64_t rank, int64_t group_size) {
+  const int64_t bin = std::min<int64_t>(
+      2, (3 * (2 * rank + 1)) / (2 * group_size));
+  const int64_t within_domain =
+      scale < 2
+          ? kStructuredCdsbScaleCellOffsets[static_cast<std::size_t>(scale)] +
+                bin
+          : kStructuredCdsbScaleCellOffsets[static_cast<std::size_t>(scale)];
+  return domain * 8 + within_domain;
+}
+
+inline void structured_cdsb_v1_validate_encoded(
+    const mtf_jepa_mae_vicreg_encode_output_t &encoded,
+    const mtf_jepa_mae_vicreg_config_t &config) {
+  validate_structured_cdsb_v1_config(config);
+  TORCH_CHECK(encoded.embeddings.defined() &&
+                  encoded.embeddings.dim() == 3 &&
+                  encoded.embeddings.size(1) == kStructuredCdsbTokenCount &&
+                  encoded.embeddings.size(2) == kStructuredCdsbLatentDim,
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 embeddings must be "
+              "[B,72,32]");
+  TORCH_CHECK(encoded.embeddings.is_floating_point(),
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 embeddings must be "
+              "floating point");
+  TORCH_CHECK(torch::isfinite(encoded.embeddings).all().item<bool>(),
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 embeddings must be "
+              "finite");
+  TORCH_CHECK(encoded.token_mask.defined() &&
+                  encoded.token_mask.dim() == 2 &&
+                  encoded.token_mask.size(0) == encoded.embeddings.size(0) &&
+                  encoded.token_mask.size(1) == kStructuredCdsbTokenCount &&
+                  encoded.token_mask.scalar_type() == torch::kBool,
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 token_mask must be "
+              "bool [B,72]");
+  TORCH_CHECK(encoded.token_mask.device() == encoded.embeddings.device(),
+              "[mtf_jepa_mae_vicreg] structured_cdsb_v1 token_mask and "
+              "embeddings must share a device");
+  TORCH_CHECK(
+      encoded.sample_valid_mask.defined() &&
+          encoded.sample_valid_mask.dim() == 1 &&
+          encoded.sample_valid_mask.size(0) == encoded.embeddings.size(0) &&
+          encoded.sample_valid_mask.scalar_type() == torch::kBool &&
+          encoded.sample_valid_mask.device() == encoded.embeddings.device(),
+      "[mtf_jepa_mae_vicreg] structured_cdsb_v1 sample_valid_mask must be "
+      "bool [B] on the input device");
+  TORCH_CHECK(
+      encoded.channel_valid_mask.defined() &&
+          encoded.channel_valid_mask.dim() == 2 &&
+          encoded.channel_valid_mask.size(0) == encoded.embeddings.size(0) &&
+          encoded.channel_valid_mask.size(1) ==
+              kStructuredCdsbChannelCount &&
+          encoded.channel_valid_mask.scalar_type() == torch::kBool &&
+          encoded.channel_valid_mask.device() == encoded.embeddings.device(),
+      "[mtf_jepa_mae_vicreg] structured_cdsb_v1 channel_valid_mask must be "
+      "bool [B,3] on the input device");
+}
+
+[[nodiscard]] inline structured_cdsb_v1_plan_t
+structured_cdsb_v1_build_plan(const mtf_token_metadata_t &metadata) {
+  const auto channels = structured_cdsb_v1_metadata_vector_cpu(
+      metadata.channel_id, "channel_id");
+  const auto domains = structured_cdsb_v1_metadata_vector_cpu(
+      metadata.domain_id, "domain_id");
+  const auto scales = structured_cdsb_v1_metadata_vector_cpu(
+      metadata.scale_id, "scale_id");
+  const auto starts = structured_cdsb_v1_metadata_vector_cpu(
+      metadata.start_index, "start_index");
+  const auto widths =
+      structured_cdsb_v1_metadata_vector_cpu(metadata.width, "width");
+  const auto channel = channels.accessor<int64_t, 1>();
+  const auto domain = domains.accessor<int64_t, 1>();
+  const auto scale = scales.accessor<int64_t, 1>();
+  const auto start = starts.accessor<int64_t, 1>();
+  const auto width = widths.accessor<int64_t, 1>();
+
+  std::array<std::vector<structured_cdsb_v1_metadata_record_t>,
+             kStructuredCdsbChannelCount>
+      records{};
+  for (int64_t token = 0; token < kStructuredCdsbTokenCount; ++token) {
+    TORCH_CHECK(channel[token] >= 0 &&
+                    channel[token] < kStructuredCdsbChannelCount,
+                "[mtf_jepa_mae_vicreg] structured_cdsb_v1 channel_id is "
+                "outside [0,2]");
+    TORCH_CHECK(domain[token] >= 0 &&
+                    domain[token] < kStructuredCdsbDomainCount,
+                "[mtf_jepa_mae_vicreg] structured_cdsb_v1 domain_id is "
+                "outside [0,1]");
+    TORCH_CHECK(scale[token] >= 0 &&
+                    scale[token] < kStructuredCdsbScaleCount,
+                "[mtf_jepa_mae_vicreg] structured_cdsb_v1 scale_id is "
+                "outside [0,3]");
+    TORCH_CHECK(start[token] >= 0 && width[token] > 0,
+                "[mtf_jepa_mae_vicreg] structured_cdsb_v1 token start/width "
+                "metadata is invalid");
+    records[static_cast<std::size_t>(channel[token])].push_back(
+        {.source_index = token,
+         .domain = domain[token],
+         .scale = scale[token],
+         .start = start[token],
+         .width = width[token]});
+  }
+
+  structured_cdsb_v1_plan_t plan{};
+  std::array<std::array<int64_t, 4>, kStructuredCdsbTokensPerChannel>
+      reference_layout{};
+  for (int64_t channel_id = 0; channel_id < kStructuredCdsbChannelCount;
+       ++channel_id) {
+    auto &channel_records = records[static_cast<std::size_t>(channel_id)];
+    TORCH_CHECK(
+        channel_records.size() ==
+            static_cast<std::size_t>(kStructuredCdsbTokensPerChannel),
+        "[mtf_jepa_mae_vicreg] structured_cdsb_v1 each channel must contain "
+        "exactly 24 tokens");
+    std::sort(channel_records.begin(), channel_records.end(),
+              [](const auto &left, const auto &right) {
+                return std::tuple{left.domain, left.scale, left.start,
+                                  left.width, left.source_index} <
+                       std::tuple{right.domain, right.scale, right.start,
+                                  right.width, right.source_index};
+              });
+
+    std::array<std::array<int64_t, kStructuredCdsbScaleCount>,
+               kStructuredCdsbDomainCount>
+        counts{};
+    for (std::size_t position = 0; position < channel_records.size();
+         ++position) {
+      const auto &record = channel_records[position];
+      if (position > 0) {
+        const auto &previous = channel_records[position - 1];
+        const bool unique_key =
+            std::tuple{record.domain, record.scale, record.start,
+                       record.width} !=
+            std::tuple{previous.domain, previous.scale, previous.start,
+                       previous.width};
+        TORCH_CHECK(
+            unique_key,
+            "[mtf_jepa_mae_vicreg] structured_cdsb_v1 duplicate metadata "
+            "makes rank bins ambiguous");
+      }
+      const std::array<int64_t, 4> layout_key{
+          record.domain, record.scale, record.start, record.width};
+      TORCH_CHECK(
+          record.start == kStructuredCdsbFrozenStarts[position] &&
+              record.width == kStructuredCdsbFrozenWidths[position],
+          "[mtf_jepa_mae_vicreg] structured_cdsb_v1 start/width layout does "
+          "not match the frozen H=30 plan");
+      if (channel_id == 0) {
+        reference_layout[position] = layout_key;
+      } else {
+        TORCH_CHECK(
+            layout_key == reference_layout[position],
+            "[mtf_jepa_mae_vicreg] structured_cdsb_v1 channels must share "
+            "one metadata layout");
+      }
+      ++counts[static_cast<std::size_t>(record.domain)]
+              [static_cast<std::size_t>(record.scale)];
+    }
+    for (int64_t domain_id = 0; domain_id < kStructuredCdsbDomainCount;
+         ++domain_id) {
+      for (int64_t scale_id = 0; scale_id < kStructuredCdsbScaleCount;
+           ++scale_id) {
+        TORCH_CHECK(
+            counts[static_cast<std::size_t>(domain_id)]
+                  [static_cast<std::size_t>(scale_id)] ==
+                kStructuredCdsbTokensPerScale[
+                    static_cast<std::size_t>(scale_id)],
+            "[mtf_jepa_mae_vicreg] structured_cdsb_v1 each domain must have "
+            "per-scale counts 7,3,1,1");
+      }
+    }
+
+    std::array<int64_t, kStructuredCdsbCellCount> cell_counts{};
+    for (int64_t position = 0; position < kStructuredCdsbTokensPerChannel;
+         ++position) {
+      const auto &record = channel_records[static_cast<std::size_t>(position)];
+      int64_t group_begin = position;
+      while (group_begin > 0) {
+        const auto &candidate =
+            channel_records[static_cast<std::size_t>(group_begin - 1)];
+        if (candidate.domain != record.domain ||
+            candidate.scale != record.scale) {
+          break;
+        }
+        --group_begin;
+      }
+      const int64_t rank = position - group_begin;
+      const int64_t group_size =
+          counts[static_cast<std::size_t>(record.domain)]
+                [static_cast<std::size_t>(record.scale)];
+      const int64_t cell = structured_cdsb_v1_compact_cell_id(
+          record.domain, record.scale, rank, group_size);
+      TORCH_CHECK(
+          cell ==
+              kStructuredCdsbFrozenCellIds[static_cast<std::size_t>(position)],
+          "[mtf_jepa_mae_vicreg] structured_cdsb_v1 metadata-derived cells "
+          "do not match the frozen CDSB plan");
+      plan.ordered_token_indices[static_cast<std::size_t>(channel_id)]
+                                [static_cast<std::size_t>(position)] =
+          record.source_index;
+      plan.ordered_cell_ids[static_cast<std::size_t>(channel_id)]
+                           [static_cast<std::size_t>(position)] = cell;
+      ++cell_counts[static_cast<std::size_t>(cell)];
+    }
+    TORCH_CHECK(
+        cell_counts == kStructuredCdsbFrozenCellCounts,
+        "[mtf_jepa_mae_vicreg] structured_cdsb_v1 compact cells have "
+        "unexpected cardinalities");
+    plan.cell_counts[static_cast<std::size_t>(channel_id)] = cell_counts;
+  }
+  return plan;
+}
+
+[[nodiscard]] inline structured_cdsb_v1_lifted_t
+structured_cdsb_v1_lift(const mtf_jepa_mae_vicreg_encode_output_t &encoded,
+                        const mtf_jepa_mae_vicreg_config_t &config) {
+  structured_cdsb_v1_validate_encoded(encoded, config);
+  const auto plan = structured_cdsb_v1_build_plan(encoded.metadata);
+  const auto device = encoded.embeddings.device();
+  std::vector<torch::Tensor> grouped_channels;
+  std::vector<torch::Tensor> grouped_masks;
+  grouped_channels.reserve(kStructuredCdsbChannelCount);
+  grouped_masks.reserve(kStructuredCdsbChannelCount);
+  for (int64_t channel = 0; channel < kStructuredCdsbChannelCount; ++channel) {
+    const auto &source =
+        plan.ordered_token_indices[static_cast<std::size_t>(channel)];
+    const std::vector<int64_t> indices(source.begin(), source.end());
+    const auto index = torch::tensor(
+        indices, torch::TensorOptions().dtype(torch::kInt64).device(device));
+    grouped_channels.push_back(encoded.embeddings.index_select(1, index));
+    grouped_masks.push_back(encoded.token_mask.index_select(1, index));
+  }
+  const auto grouped = torch::stack(grouped_channels, 1); // [B,3,24,32]
+  const auto grouped_mask = torch::stack(grouped_masks, 1); // [B,3,24]
+
+  std::vector<torch::Tensor> cell_means;
+  cell_means.reserve(kStructuredCdsbCellCount);
+  for (int64_t cell = 0; cell < kStructuredCdsbCellCount; ++cell) {
+    std::vector<int64_t> positions;
+    for (int64_t position = 0; position < kStructuredCdsbTokensPerChannel;
+         ++position) {
+      if (kStructuredCdsbFrozenCellIds[static_cast<std::size_t>(position)] ==
+          cell) {
+        positions.push_back(position);
+      }
+    }
+    const auto index = torch::tensor(
+        positions, torch::TensorOptions().dtype(torch::kInt64).device(device));
+    const auto selected = grouped.index_select(2, index);
+    const auto selected_mask = grouped_mask.index_select(2, index);
+    const auto all_valid = selected_mask.all(2);
+    const auto raw_mean = selected.mean(2);
+    const auto weight = selected_mask.to(selected.scalar_type()).unsqueeze(-1);
+    const auto masked_mean =
+        (selected * weight).sum(2) / weight.sum(2).clamp_min(1.0);
+    cell_means.push_back(
+        torch::where(all_valid.unsqueeze(-1), raw_mean, masked_mean));
+  }
+
+  // The frozen scientific contract covers complete channel blocks only.
+  // Partial blocks fail closed and are exactly zeroed per channel.
+  auto valid_mask = grouped_mask.all(2);
+  valid_mask = valid_mask.logical_and(encoded.sample_valid_mask.unsqueeze(1));
+  valid_mask = valid_mask.logical_and(encoded.channel_valid_mask);
+  std::vector<torch::Tensor> lifted_positions;
+  lifted_positions.reserve(kStructuredCdsbTokensPerChannel);
+  for (const int64_t cell : kStructuredCdsbFrozenCellIds) {
+    lifted_positions.push_back(cell_means[static_cast<std::size_t>(cell)]);
+  }
+  auto values =
+      torch::stack(lifted_positions, 2)
+          .reshape({encoded.embeddings.size(0), kStructuredCdsbChannelCount,
+                    kStructuredCdsbProjectionInputWidth})
+          .contiguous();
+  values = torch::where(valid_mask.unsqueeze(-1), values,
+                        torch::zeros_like(values));
+  return {.values = std::move(values),
+          .valid_mask = std::move(valid_mask)};
+}
+
+[[nodiscard]] inline channel_pool_t structured_cdsb_v1_readout(
+    const mtf_jepa_mae_vicreg_encode_output_t &encoded,
+    const mtf_jepa_mae_vicreg_config_t &config) {
+  auto lifted = structured_cdsb_v1_lift(encoded, config);
+  const auto fixed_projection =
+      structured_cdsb_v1_projection_for(encoded.embeddings.options());
+  auto values = lifted.values.matmul(fixed_projection).contiguous();
+  values = torch::where(lifted.valid_mask.unsqueeze(-1), values,
+                        torch::zeros_like(values));
+  return {.values = std::move(values),
+          .valid_mask = std::move(lifted.valid_mask)};
+}
+
+// Sparse-mask repair of the frozen CDSB contract.  V1 remains the authority
+// for complete blocks.  Sparse cells are estimated only from tokenizer-valid
+// source tokens; missing positions receive the neutral mean of their own
+// (domain, scale) group before the unchanged Q_psm projection is applied.
+[[nodiscard]] inline structured_cdsb_sparse_v1_lifted_t
+structured_cdsb_sparse_v1_lift(
+    const mtf_jepa_mae_vicreg_encode_output_t &encoded,
+    const mtf_jepa_mae_vicreg_config_t &config) {
+  structured_cdsb_v1_validate_encoded(encoded, config);
+  const auto plan = structured_cdsb_v1_build_plan(encoded.metadata);
+  const auto device = encoded.embeddings.device();
+  const auto index_options =
+      torch::TensorOptions().dtype(torch::kInt64).device(device);
+
+  std::vector<torch::Tensor> grouped_channels;
+  std::vector<torch::Tensor> grouped_masks;
+  grouped_channels.reserve(kStructuredCdsbChannelCount);
+  grouped_masks.reserve(kStructuredCdsbChannelCount);
+  for (int64_t channel = 0; channel < kStructuredCdsbChannelCount; ++channel) {
+    const auto &source =
+        plan.ordered_token_indices[static_cast<std::size_t>(channel)];
+    const std::vector<int64_t> indices(source.begin(), source.end());
+    const auto index = torch::tensor(indices, index_options);
+    grouped_channels.push_back(encoded.embeddings.index_select(1, index));
+    grouped_masks.push_back(encoded.token_mask.index_select(1, index));
+  }
+  const auto grouped = torch::stack(grouped_channels, 1); // [B,3,24,32]
+  const auto grouped_mask =
+      torch::stack(grouped_masks, 1).contiguous(); // [B,3,24]
+
+  std::vector<torch::Tensor> cell_means;
+  std::vector<torch::Tensor> cell_support;
+  std::vector<torch::Tensor> cell_source_counts;
+  cell_means.reserve(kStructuredCdsbCellCount);
+  cell_support.reserve(kStructuredCdsbCellCount);
+  cell_source_counts.reserve(kStructuredCdsbCellCount);
+  for (int64_t cell = 0; cell < kStructuredCdsbCellCount; ++cell) {
+    std::vector<int64_t> positions;
+    for (int64_t position = 0; position < kStructuredCdsbTokensPerChannel;
+         ++position) {
+      if (kStructuredCdsbFrozenCellIds[static_cast<std::size_t>(position)] ==
+          cell) {
+        positions.push_back(position);
+      }
+    }
+    const auto index = torch::tensor(positions, index_options);
+    const auto selected = grouped.index_select(2, index);
+    const auto selected_mask = grouped_mask.index_select(2, index);
+    const auto source_count = selected_mask.sum(2);
+    const auto any_valid = source_count.gt(0);
+    const auto all_valid =
+        source_count.eq(static_cast<int64_t>(positions.size()));
+    const auto raw_mean = selected.mean(2);
+    const auto weight = selected_mask.to(selected.scalar_type()).unsqueeze(-1);
+    const auto masked_mean =
+        (selected * weight).sum(2) / weight.sum(2).clamp_min(1.0);
+    auto mean =
+        torch::where(all_valid.unsqueeze(-1), raw_mean, masked_mean);
+    mean = torch::where(any_valid.unsqueeze(-1), mean,
+                        torch::zeros_like(mean));
+    cell_means.push_back(std::move(mean));
+    cell_support.push_back(any_valid);
+    cell_source_counts.push_back(source_count);
+  }
+  const auto cell_mean = torch::stack(cell_means, 2); // [B,3,16,32]
+  const auto cell_support_mask =
+      torch::stack(cell_support, 2).contiguous(); // [B,3,16]
+  const auto cell_source_token_count =
+      torch::stack(cell_source_counts, 2).contiguous(); // [B,3,16]
+
+  std::vector<torch::Tensor> lifted_positions;
+  std::vector<torch::Tensor> lifted_support;
+  lifted_positions.reserve(kStructuredCdsbTokensPerChannel);
+  lifted_support.reserve(kStructuredCdsbTokensPerChannel);
+  for (const int64_t cell : kStructuredCdsbFrozenCellIds) {
+    lifted_positions.push_back(cell_mean.select(2, cell));
+    lifted_support.push_back(cell_support_mask.select(2, cell));
+  }
+  const auto position_values =
+      torch::stack(lifted_positions, 2); // [B,3,24,32]
+  const auto position_support =
+      torch::stack(lifted_support, 2).contiguous(); // [B,3,24]
+
+  std::vector<torch::Tensor> group_means;
+  std::vector<torch::Tensor> group_support;
+  group_means.reserve(kStructuredCdsbDomainScaleGroupCount);
+  group_support.reserve(kStructuredCdsbDomainScaleGroupCount);
+  for (int64_t group = 0; group < kStructuredCdsbDomainScaleGroupCount;
+       ++group) {
+    std::vector<int64_t> positions;
+    for (int64_t position = 0; position < kStructuredCdsbTokensPerChannel;
+         ++position) {
+      if (kStructuredCdsbFrozenDomainScaleGroupIds[
+              static_cast<std::size_t>(position)] == group) {
+        positions.push_back(position);
+      }
+    }
+    const auto index = torch::tensor(positions, index_options);
+    const auto selected = position_values.index_select(2, index);
+    const auto selected_support = position_support.index_select(2, index);
+    const auto weight =
+        selected_support.to(selected.scalar_type()).unsqueeze(-1);
+    const auto support_count = selected_support.sum(2);
+    const auto supported = support_count.gt(0);
+    auto mean =
+        (selected * weight).sum(2) / weight.sum(2).clamp_min(1.0);
+    mean = torch::where(supported.unsqueeze(-1), mean,
+                        torch::zeros_like(mean));
+    group_means.push_back(std::move(mean));
+    group_support.push_back(supported);
+  }
+  const auto domain_scale_support_mask =
+      torch::stack(group_support, 2).contiguous(); // [B,3,8]
+
+  std::vector<torch::Tensor> completed_positions;
+  completed_positions.reserve(kStructuredCdsbTokensPerChannel);
+  for (int64_t position = 0; position < kStructuredCdsbTokensPerChannel;
+       ++position) {
+    const int64_t group = kStructuredCdsbFrozenDomainScaleGroupIds[
+        static_cast<std::size_t>(position)];
+    completed_positions.push_back(torch::where(
+        position_support.select(2, position).unsqueeze(-1),
+        position_values.select(2, position),
+        group_means[static_cast<std::size_t>(group)]));
+  }
+
+  auto valid_mask = domain_scale_support_mask.all(2);
+  valid_mask = valid_mask.logical_and(encoded.sample_valid_mask.unsqueeze(1));
+  valid_mask = valid_mask.logical_and(encoded.channel_valid_mask).contiguous();
+  auto complete_mask = grouped_mask.all(2);
+  complete_mask =
+      complete_mask.logical_and(encoded.sample_valid_mask.unsqueeze(1));
+  complete_mask =
+      complete_mask.logical_and(encoded.channel_valid_mask).contiguous();
+  auto values =
+      torch::stack(completed_positions, 2)
+          .reshape({encoded.embeddings.size(0), kStructuredCdsbChannelCount,
+                    kStructuredCdsbProjectionInputWidth})
+          .contiguous();
+  values = torch::where(valid_mask.unsqueeze(-1), values,
+                        torch::zeros_like(values));
+  const std::vector<int64_t> expected_counts(
+      kStructuredCdsbFrozenCellCounts.begin(),
+      kStructuredCdsbFrozenCellCounts.end());
+  auto cell_expected_token_count =
+      torch::tensor(expected_counts, index_options).contiguous();
+  auto repeated_support_position_count =
+      position_support.sum(2).contiguous();
+  return {
+      .values = std::move(values),
+      .valid_mask = std::move(valid_mask),
+      .complete_mask = std::move(complete_mask),
+      .grouped_token_mask = grouped_mask,
+      .cell_support_mask = cell_support_mask,
+      .cell_source_token_count = cell_source_token_count,
+      .cell_expected_token_count = std::move(cell_expected_token_count),
+      .domain_scale_support_mask = domain_scale_support_mask,
+      .repeated_support_position_count =
+          std::move(repeated_support_position_count),
+  };
+}
+
+[[nodiscard]] inline channel_pool_t structured_cdsb_sparse_v1_readout(
+    const mtf_jepa_mae_vicreg_encode_output_t &encoded,
+    const mtf_jepa_mae_vicreg_config_t &config) {
+  auto lifted = structured_cdsb_sparse_v1_lift(encoded, config);
+  const auto fixed_projection =
+      structured_cdsb_v1_projection_for(encoded.embeddings.options());
+  auto values = lifted.values.matmul(fixed_projection).contiguous();
+
+  // The complete-row branch is deliberately the literal frozen v1 readout,
+  // so mixed complete/sparse batches preserve v1 bytes, not merely algebra.
+  const auto complete = structured_cdsb_v1_readout(encoded, config);
+  values = torch::where(lifted.complete_mask.unsqueeze(-1), complete.values,
+                        values);
+  values = torch::where(lifted.valid_mask.unsqueeze(-1), values,
+                        torch::zeros_like(values));
+  return {.values = std::move(values),
+          .valid_mask = std::move(lifted.valid_mask)};
+}
+
+inline channel_pool_t pooled_by_channel_domain(
+    const torch::Tensor &embeddings, const torch::Tensor &mask,
+    const mtf_token_metadata_t &metadata,
+    const mtf_jepa_mae_vicreg_config_t &config, int64_t domain) {
+  std::vector<torch::Tensor> pooled;
+  std::vector<torch::Tensor> valid;
+  pooled.reserve(static_cast<std::size_t>(config.channel_count));
+  valid.reserve(static_cast<std::size_t>(config.channel_count));
+  for (int64_t c = 0; c < config.channel_count; ++c) {
+    auto selected = channel_domain_mask(metadata, mask, c, domain);
+    pooled.push_back(masked_mean(embeddings, selected));
+    valid.push_back(selected.any(/*dim=*/1));
+  }
+  return {.values = torch::stack(pooled, /*dim=*/1),
+          .valid_mask = torch::stack(valid, /*dim=*/1)};
 }
 
 inline torch::Tensor valid_token_rows(const torch::Tensor &latents,
@@ -715,6 +1771,57 @@ inline torch::Tensor multi_head_context_attention(
 }
 
 } // namespace detail
+
+using mtf_serving_pool_output_t = detail::channel_pool_t;
+
+[[nodiscard]] inline mtf_serving_pool_output_t
+select_mtf_serving_pool(const mtf_jepa_mae_vicreg_encode_output_t &encoded,
+                        mtf_serving_pool_policy_t policy,
+                        const mtf_jepa_mae_vicreg_config_t &config) {
+  TORCH_CHECK(encoded.embeddings.defined() && encoded.token_mask.defined(),
+              "[mtf_jepa_mae_vicreg] serving pool requires encoded tokens");
+  switch (policy) {
+  case mtf_serving_pool_policy_t::all_tokens:
+    return {.values = encoded.pooled_by_channel,
+            .valid_mask = encoded.channel_valid_mask};
+  case mtf_serving_pool_policy_t::time_only:
+    return detail::pooled_by_channel_domain(
+        encoded.embeddings, encoded.token_mask, encoded.metadata, config,
+        /*domain=*/0);
+  case mtf_serving_pool_policy_t::frequency_only:
+    TORCH_CHECK(config.use_frequency_tokens,
+                "[mtf_jepa_mae_vicreg] frequency-only serving requires "
+                "frequency tokens");
+    return detail::pooled_by_channel_domain(
+        encoded.embeddings, encoded.token_mask, encoded.metadata, config,
+        /*domain=*/1);
+  case mtf_serving_pool_policy_t::domain_balanced: {
+    TORCH_CHECK(config.use_frequency_tokens,
+                "[mtf_jepa_mae_vicreg] domain-balanced serving requires "
+                "frequency tokens");
+    auto time = detail::pooled_by_channel_domain(
+        encoded.embeddings, encoded.token_mask, encoded.metadata, config,
+        /*domain=*/0);
+    auto frequency = detail::pooled_by_channel_domain(
+        encoded.embeddings, encoded.token_mask, encoded.metadata, config,
+        /*domain=*/1);
+    auto time_weight = time.valid_mask.to(time.values.dtype()).unsqueeze(-1);
+    auto frequency_weight =
+        frequency.valid_mask.to(frequency.values.dtype()).unsqueeze(-1);
+    auto domain_count = time_weight + frequency_weight;
+    auto values =
+        (time.values * time_weight + frequency.values * frequency_weight) /
+        domain_count.clamp_min(1.0);
+    return {.values = std::move(values),
+            .valid_mask = time.valid_mask.logical_or(frequency.valid_mask)};
+  }
+  case mtf_serving_pool_policy_t::structured_cdsb_v1:
+    return detail::structured_cdsb_v1_readout(encoded, config);
+  case mtf_serving_pool_policy_t::structured_cdsb_sparse_v1:
+    return detail::structured_cdsb_sparse_v1_readout(encoded, config);
+  }
+  throw std::runtime_error("[mtf_jepa_mae_vicreg] unknown serving pool policy");
+}
 
 class MultiScalePatchTokenizerImpl : public torch::nn::Module {
 public:
@@ -1143,23 +2250,36 @@ public:
 
   [[nodiscard]] jepa_context_target_mask_t
   create_masks(const mtf_token_batch_t &batch) const {
+    auto legacy = create_legacy_masks(batch);
+    if (config_.jepa_mask_policy ==
+        mtf_jepa_mask_policy_t::legacy_soft_overlap) {
+      return legacy;
+    }
+    return create_paired_target_masks(
+        batch, legacy,
+        config_.jepa_mask_policy ==
+            mtf_jepa_mask_policy_t::support_separated_pair_v1);
+  }
+
+private:
+  [[nodiscard]] jepa_context_target_mask_t
+  create_legacy_masks(const mtf_token_batch_t &batch) const {
     TORCH_CHECK(batch.token_mask.defined() && batch.token_mask.dim() == 2,
                 "[mtf_jepa_mae_vicreg] token_mask must be [B,N]");
     const int64_t B = batch.token_mask.size(0);
     const int64_t N = batch.token_mask.size(1);
-    auto target_mask =
-        torch::zeros({B, N}, torch::TensorOptions()
-                                 .dtype(torch::kBool)
-                                 .device(batch.token_mask.device()));
-    auto context_mask = torch::zeros_like(target_mask);
-
     auto valid_cpu = batch.token_mask.to(torch::kCPU).contiguous();
+    auto target_mask_cpu = torch::zeros(
+        {B, N}, torch::TensorOptions().dtype(torch::kBool).device(torch::kCPU));
+    auto context_mask_cpu = torch::zeros_like(target_mask_cpu);
     auto domain_cpu = batch.metadata.domain_id.to(torch::kCPU).contiguous();
     auto channel_cpu = batch.metadata.channel_id.to(torch::kCPU).contiguous();
     auto scale_cpu = batch.metadata.scale_id.to(torch::kCPU).contiguous();
     auto start_cpu = batch.metadata.start_index.to(torch::kCPU).contiguous();
     auto width_cpu = batch.metadata.width.to(torch::kCPU).contiguous();
     auto valid_acc = valid_cpu.accessor<bool, 2>();
+    auto target_acc = target_mask_cpu.accessor<bool, 2>();
+    auto context_acc = context_mask_cpu.accessor<bool, 2>();
     auto domain_acc = domain_cpu.accessor<int64_t, 1>();
     auto channel_acc = channel_cpu.accessor<int64_t, 1>();
     auto scale_acc = scale_cpu.accessor<int64_t, 1>();
@@ -1391,14 +2511,14 @@ public:
       }
 
       for (const auto idx : target_set) {
-        target_mask.index_put_({b, idx}, true);
+        target_acc[b][idx] = true;
       }
       for (const auto idx : valid_indices) {
         const bool is_target = target_set.find(idx) != target_set.end();
         const bool is_forbidden =
             hard_forbidden_context.find(idx) != hard_forbidden_context.end() ||
             soft_forbidden_context.find(idx) != soft_forbidden_context.end();
-        context_mask.index_put_({b, idx}, !is_target && !is_forbidden);
+        context_acc[b][idx] = !is_target && !is_forbidden;
       }
       total_target += static_cast<int64_t>(target_set.size());
       total_context += context_count_after_forbid();
@@ -1414,8 +2534,8 @@ public:
     }
 
     jepa_context_target_mask_t out{};
-    out.context_mask = context_mask;
-    out.target_mask = target_mask;
+    out.context_mask = context_mask_cpu.to(batch.token_mask.device());
+    out.target_mask = target_mask_cpu.to(batch.token_mask.device());
     out.valid_mask = batch.token_mask;
     const double actual = total_valid > 0 ? static_cast<double>(total_target) /
                                                 static_cast<double>(total_valid)
@@ -1436,6 +2556,259 @@ public:
   }
 
 private:
+  struct PairedTargetCandidate {
+    int64_t time_index{0};
+    int64_t frequency_index{0};
+    int64_t channel{0};
+    int64_t scale{0};
+    int64_t start{0};
+    int64_t width{0};
+  };
+
+  [[nodiscard]] jepa_context_target_mask_t create_paired_target_masks(
+      const mtf_token_batch_t &batch,
+      const jepa_context_target_mask_t &legacy,
+      bool support_separated) const {
+    const int64_t B = batch.token_mask.size(0);
+    const int64_t N = batch.token_mask.size(1);
+    auto valid_cpu =
+        batch.token_mask.to(torch::kCPU, torch::kBool).contiguous();
+    auto legacy_target_cpu =
+        legacy.target_mask.to(torch::kCPU, torch::kBool).contiguous();
+    auto legacy_context_cpu =
+        legacy.context_mask.to(torch::kCPU, torch::kBool).contiguous();
+    auto domain_cpu =
+        batch.metadata.domain_id.to(torch::kCPU, torch::kInt64).contiguous();
+    auto channel_cpu =
+        batch.metadata.channel_id.to(torch::kCPU, torch::kInt64).contiguous();
+    auto scale_cpu =
+        batch.metadata.scale_id.to(torch::kCPU, torch::kInt64).contiguous();
+    auto start_cpu =
+        batch.metadata.start_index.to(torch::kCPU, torch::kInt64).contiguous();
+    auto width_cpu =
+        batch.metadata.width.to(torch::kCPU, torch::kInt64).contiguous();
+    auto target_cpu = torch::zeros_like(valid_cpu);
+    auto context_cpu = torch::zeros_like(valid_cpu);
+
+    auto valid = valid_cpu.accessor<bool, 2>();
+    auto legacy_target = legacy_target_cpu.accessor<bool, 2>();
+    auto legacy_context = legacy_context_cpu.accessor<bool, 2>();
+    auto target = target_cpu.accessor<bool, 2>();
+    auto context = context_cpu.accessor<bool, 2>();
+    auto domain = domain_cpu.accessor<int64_t, 1>();
+    auto channel = channel_cpu.accessor<int64_t, 1>();
+    auto scale = scale_cpu.accessor<int64_t, 1>();
+    auto start = start_cpu.accessor<int64_t, 1>();
+    auto width = width_cpu.accessor<int64_t, 1>();
+
+    int64_t total_valid = 0;
+    int64_t total_targets = 0;
+    int64_t total_contexts = 0;
+    int64_t total_hard_forbidden = 0;
+    int64_t paired_target_samples = 0;
+    int64_t support_separated_samples = 0;
+    int64_t retained_legacy_contexts = 0;
+    int64_t replaced_contexts = 0;
+
+    for (int64_t b = 0; b < B; ++b) {
+      int64_t valid_count = 0;
+      for (int64_t n = 0; n < N; ++n) {
+        valid_count += valid[b][n] ? 1 : 0;
+      }
+      total_valid += valid_count;
+      if (valid_count == 0) {
+        continue;
+      }
+
+      std::vector<PairedTargetCandidate> candidates;
+      int64_t minimum_width = std::numeric_limits<int64_t>::max();
+      for (int64_t time_index = 0; time_index < N; ++time_index) {
+        if (!valid[b][time_index] || domain[time_index] != 0) {
+          continue;
+        }
+        for (int64_t frequency_index = 0; frequency_index < N;
+             ++frequency_index) {
+          if (!valid[b][frequency_index] || domain[frequency_index] != 1 ||
+              channel[time_index] != channel[frequency_index] ||
+              scale[time_index] != scale[frequency_index] ||
+              start[time_index] != start[frequency_index] ||
+              width[time_index] != width[frequency_index]) {
+            continue;
+          }
+          if (width[time_index] < minimum_width) {
+            minimum_width = width[time_index];
+            candidates.clear();
+          }
+          if (width[time_index] == minimum_width) {
+            candidates.push_back({time_index, frequency_index,
+                                  channel[time_index], scale[time_index],
+                                  start[time_index], width[time_index]});
+          }
+        }
+      }
+      TORCH_CHECK(
+          !candidates.empty(),
+          "[mtf_jepa_mae_vicreg] paired-target JEPA mask has no valid "
+          "time/frequency target pair");
+
+      uint64_t salt = 0x494d41325f6d6173ULL;
+      for (int64_t n = 0; n < N; ++n) {
+        if (legacy_target[b][n]) {
+          salt = mask_mix64(salt ^
+                            (0x7461726765740000ULL + static_cast<uint64_t>(n)));
+        }
+        if (legacy_context[b][n]) {
+          salt = mask_mix64(salt ^
+                            (0x636f6e7465787400ULL + static_cast<uint64_t>(n)));
+        }
+      }
+      const auto pair_key = [&](const PairedTargetCandidate &value) {
+        return metadata_tie_key(salt, value.channel, value.scale, value.start,
+                                value.width, 2);
+      };
+      const auto pair_less = [&](const PairedTargetCandidate &left,
+                                 const PairedTargetCandidate &right) {
+        const uint64_t left_key = pair_key(left);
+        const uint64_t right_key = pair_key(right);
+        if (left_key != right_key) {
+          return left_key < right_key;
+        }
+        return std::tie(left.channel, left.scale, left.start, left.width) <
+               std::tie(right.channel, right.scale, right.start, right.width);
+      };
+      const auto selected_pair =
+          *std::min_element(candidates.begin(), candidates.end(), pair_less);
+      target[b][selected_pair.time_index] = true;
+      target[b][selected_pair.frequency_index] = true;
+
+      const int64_t desired_context =
+          std::max<int64_t>(1, static_cast<int64_t>(std::ceil(
+                                   config_.min_context_ratio * valid_count)));
+      std::vector<int64_t> eligible;
+      eligible.reserve(static_cast<std::size_t>(valid_count));
+      for (int64_t n = 0; n < N; ++n) {
+        if (!valid[b][n] || n == selected_pair.time_index ||
+            n == selected_pair.frequency_index) {
+          continue;
+        }
+        const bool same_channel = channel[n] == selected_pair.channel;
+        const bool overlaps =
+            std::max(start[n], selected_pair.start) <
+            std::min(start[n] + width[n],
+                     selected_pair.start + selected_pair.width);
+        if (support_separated && same_channel && overlaps) {
+          ++total_hard_forbidden;
+          continue;
+        }
+        eligible.push_back(n);
+      }
+      TORCH_CHECK(static_cast<int64_t>(eligible.size()) >= desired_context,
+                  "[mtf_jepa_mae_vicreg] paired-target JEPA context is "
+                  "geometrically infeasible for this sample");
+
+      const auto context_key = [&](int64_t index) {
+        return metadata_tie_key(salt, channel[index], scale[index],
+                                start[index], width[index], domain[index]);
+      };
+      const auto context_less = [&](int64_t left, int64_t right) {
+        const uint64_t left_key = context_key(left);
+        const uint64_t right_key = context_key(right);
+        if (left_key != right_key) {
+          return left_key < right_key;
+        }
+        return std::tie(channel[left], domain[left], scale[left], start[left],
+                        width[left]) < std::tie(channel[right], domain[right],
+                                                scale[right], start[right],
+                                                width[right]);
+      };
+
+      std::vector<int64_t> selected_context;
+      selected_context.reserve(static_cast<std::size_t>(desired_context));
+      for (const int64_t index : eligible) {
+        if (legacy_context[b][index]) {
+          selected_context.push_back(index);
+        }
+      }
+      std::sort(selected_context.begin(), selected_context.end(), context_less);
+      if (static_cast<int64_t>(selected_context.size()) > desired_context) {
+        selected_context.resize(static_cast<std::size_t>(desired_context));
+      }
+      const int64_t retained = static_cast<int64_t>(selected_context.size());
+      std::set<int64_t> selected_set(selected_context.begin(),
+                                     selected_context.end());
+      std::vector<int64_t> replacements;
+      for (const int64_t index : eligible) {
+        if (selected_set.find(index) == selected_set.end()) {
+          replacements.push_back(index);
+        }
+      }
+      std::sort(replacements.begin(), replacements.end(), context_less);
+      for (const int64_t index : replacements) {
+        if (static_cast<int64_t>(selected_context.size()) == desired_context) {
+          break;
+        }
+        selected_context.push_back(index);
+      }
+      TORCH_CHECK(
+          static_cast<int64_t>(selected_context.size()) == desired_context,
+          "[mtf_jepa_mae_vicreg] paired-target JEPA context selection "
+          "did not reach its exact count");
+      for (const int64_t index : selected_context) {
+        context[b][index] = true;
+      }
+
+      total_targets += 2;
+      total_contexts += desired_context;
+      ++paired_target_samples;
+      support_separated_samples += support_separated ? 1 : 0;
+      retained_legacy_contexts += retained;
+      replaced_contexts += desired_context - retained;
+    }
+
+    jepa_context_target_mask_t out{};
+    out.context_mask = context_cpu.to(batch.token_mask.device());
+    out.target_mask = target_cpu.to(batch.token_mask.device());
+    out.valid_mask = batch.token_mask;
+    const double actual = total_valid > 0 ? static_cast<double>(total_targets) /
+                                                static_cast<double>(total_valid)
+                                          : 0.0;
+    out.mask_ratio_actual =
+        torch::tensor(actual, torch::TensorOptions()
+                                  .dtype(torch::kFloat64)
+                                  .device(batch.token_mask.device()));
+    out.num_context_tokens = total_contexts;
+    out.num_target_tokens = total_targets;
+    out.hard_forbidden_count = total_hard_forbidden;
+    out.soft_forbidden_count = 0;
+    out.relaxed_soft_forbidden_count = 0;
+    out.reduced_targets_for_context_count = 0;
+    out.context_starved_sample_count = 0;
+    out.min_context_satisfied_count = paired_target_samples;
+    out.support_separated_sample_count = support_separated_samples;
+    out.retained_legacy_context_count = retained_legacy_contexts;
+    out.replaced_context_count = replaced_contexts;
+    return out;
+  }
+
+  [[nodiscard]] static uint64_t mask_mix64(uint64_t value) {
+    value += 0x9e3779b97f4a7c15ULL;
+    value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+    value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+    return value ^ (value >> 31U);
+  }
+
+  [[nodiscard]] static uint64_t metadata_tie_key(uint64_t salt, int64_t channel,
+                                                 int64_t scale, int64_t start,
+                                                 int64_t width,
+                                                 int64_t domain) {
+    uint64_t value = salt;
+    value = mask_mix64(value ^ static_cast<uint64_t>(channel + 1));
+    value = mask_mix64(value ^ (static_cast<uint64_t>(scale + 1) << 8U));
+    value = mask_mix64(value ^ (static_cast<uint64_t>(start + 1) << 16U));
+    value = mask_mix64(value ^ (static_cast<uint64_t>(width + 1) << 32U));
+    return mask_mix64(value ^ (static_cast<uint64_t>(domain + 1) << 56U));
+  }
+
   static void add_random_subset(const std::vector<int64_t> &indices,
                                 int64_t desired,
                                 std::set<int64_t> &target_set) {
@@ -1735,6 +3108,23 @@ public:
     return config_;
   }
 
+  [[nodiscard]] torch::Tensor
+  project_vicreg(const torch::Tensor &pooled_latents) {
+    TORCH_CHECK(pooled_latents.defined() &&
+                    (pooled_latents.dim() == 2 || pooled_latents.dim() == 3),
+                "[mtf_jepa_mae_vicreg] VICReg projection input must be [B,D] "
+                "or [B,C,D]");
+    if (pooled_latents.dim() == 2) {
+      return vicreg_stability_head_->forward(pooled_latents).squeeze(1);
+    }
+    const int64_t batch_size = pooled_latents.size(0);
+    const int64_t channel_count = pooled_latents.size(1);
+    auto flattened = pooled_latents.reshape(
+        {batch_size * channel_count, pooled_latents.size(2)});
+    return vicreg_stability_head_->forward(flattened).squeeze(1).view(
+        {batch_size, channel_count, config_.projector_dim});
+  }
+
   [[nodiscard]] mtf_token_batch_t
   tokenize(const torch::Tensor &x,
            const torch::Tensor &feature_mask = torch::Tensor()) {
@@ -1800,14 +3190,16 @@ public:
     }
 
     const auto zero = torch::zeros({}, batch.tokens.options());
+    const auto check_or_sanitize_loss = [&](const torch::Tensor &value) {
+      return config_.strict_finite_loss ? value : detail::finite_or_zero(value);
+    };
     auto pred_latents = predictor_->forward(context_latents, masks.context_mask,
                                             batch.metadata);
     auto loss_jepa = config_.use_jepa_loss
                          ? detail::masked_mse(pred_latents, target_latents,
                                               masks.target_mask)
                          : zero;
-    loss_jepa = detail::checked_loss(loss_jepa, "loss_jepa",
-                                     config_.strict_finite_loss);
+    loss_jepa = check_or_sanitize_loss(loss_jepa);
 
     auto decoded = mae_decoder_->forward(context_latents, masks.context_mask,
                                          batch.metadata);
@@ -1852,12 +3244,9 @@ public:
                                       masks.target_mask);
       }
     }
-    loss_mae_time = detail::checked_loss(loss_mae_time, "loss_mae_time",
-                                         config_.strict_finite_loss);
-    loss_mae_frequency = detail::checked_loss(
-        loss_mae_frequency, "loss_mae_frequency", config_.strict_finite_loss);
-    loss_mae =
-        detail::checked_loss(loss_mae, "loss_mae", config_.strict_finite_loss);
+    loss_mae_time = check_or_sanitize_loss(loss_mae_time);
+    loss_mae_frequency = check_or_sanitize_loss(loss_mae_frequency);
+    loss_mae = check_or_sanitize_loss(loss_mae);
 
     tf_alignment_result_t tf_alignment{};
     tf_alignment.loss = zero;
@@ -1866,8 +3255,7 @@ public:
           compute_pairwise_time_frequency_alignment(full_latents, batch);
     }
     auto loss_tf_align = tf_alignment.loss;
-    loss_tf_align = detail::checked_loss(loss_tf_align, "loss_tf_align",
-                                         config_.strict_finite_loss);
+    loss_tf_align = check_or_sanitize_loss(loss_tf_align);
 
     torch::Tensor loss_vicreg = zero;
     torch::Tensor vicreg_sim = zero;
@@ -1875,9 +3263,38 @@ public:
     torch::Tensor vicreg_cov = zero;
     torch::Tensor loss_vicreg_global = zero;
     torch::Tensor loss_vicreg_channel = zero;
+    torch::Tensor vicreg_global_sim = zero;
+    torch::Tensor vicreg_global_var = zero;
+    torch::Tensor vicreg_global_cov = zero;
+    torch::Tensor vicreg_channel_sim = zero;
+    torch::Tensor vicreg_channel_var = zero;
+    torch::Tensor vicreg_channel_cov = zero;
+    torch::Tensor vicreg_drawn_a_data{};
+    torch::Tensor vicreg_drawn_a_feature_mask{};
+    torch::Tensor vicreg_drawn_b_data{};
+    torch::Tensor vicreg_drawn_b_feature_mask{};
+    torch::Tensor vicreg_view_a_data{};
+    torch::Tensor vicreg_view_a_feature_mask{};
+    torch::Tensor vicreg_view_b_data{};
+    torch::Tensor vicreg_view_b_feature_mask{};
+    torch::Tensor vicreg_view_a_token_mask{};
+    torch::Tensor vicreg_view_b_token_mask{};
+    torch::Tensor vicreg_view_a_sample_valid_mask{};
+    torch::Tensor vicreg_view_b_sample_valid_mask{};
+    torch::Tensor vicreg_view_a_pooled_by_channel{};
+    torch::Tensor vicreg_view_b_pooled_by_channel{};
+    torch::Tensor vicreg_view_a_pooled_global{};
+    torch::Tensor vicreg_view_b_pooled_global{};
+    torch::Tensor vicreg_view_a_projected_global{};
+    torch::Tensor vicreg_view_b_projected_global{};
+    torch::Tensor vicreg_global_joint_mask{};
+    torch::Tensor vicreg_channel_joint_mask{};
+    int64_t vicreg_encoder_call_count = 0;
+    int64_t vicreg_projector_call_count = 0;
     int64_t vicreg_valid_rows = 0;
     int64_t vicreg_global_valid_rows = 0;
     int64_t vicreg_channel_valid_rows = 0;
+    int64_t vicreg_channel_active_groups = 0;
     int64_t vicreg_mode = (config_.use_global_vicreg ? 1 : 0) +
                           (config_.use_channel_vicreg ? 2 : 0);
     if (config_.use_vicreg_loss) {
@@ -1888,19 +3305,63 @@ public:
       vicreg_sim = vicreg_result.invariance_loss;
       vicreg_var = vicreg_result.variance_loss;
       vicreg_cov = vicreg_result.covariance_loss;
+      vicreg_global_sim = vicreg_result.global_invariance_loss;
+      vicreg_global_var = vicreg_result.global_variance_loss;
+      vicreg_global_cov = vicreg_result.global_covariance_loss;
+      vicreg_channel_sim = vicreg_result.channel_invariance_loss;
+      vicreg_channel_var = vicreg_result.channel_variance_loss;
+      vicreg_channel_cov = vicreg_result.channel_covariance_loss;
+      vicreg_drawn_a_data = vicreg_result.drawn_a_data;
+      vicreg_drawn_a_feature_mask = vicreg_result.drawn_a_feature_mask;
+      vicreg_drawn_b_data = vicreg_result.drawn_b_data;
+      vicreg_drawn_b_feature_mask = vicreg_result.drawn_b_feature_mask;
+      vicreg_view_a_data = vicreg_result.view_a_data;
+      vicreg_view_a_feature_mask = vicreg_result.view_a_feature_mask;
+      vicreg_view_b_data = vicreg_result.view_b_data;
+      vicreg_view_b_feature_mask = vicreg_result.view_b_feature_mask;
+      vicreg_view_a_token_mask = vicreg_result.view_a_token_mask;
+      vicreg_view_b_token_mask = vicreg_result.view_b_token_mask;
+      vicreg_view_a_sample_valid_mask =
+          vicreg_result.view_a_sample_valid_mask;
+      vicreg_view_b_sample_valid_mask =
+          vicreg_result.view_b_sample_valid_mask;
+      vicreg_view_a_pooled_by_channel = vicreg_result.view_a_pooled_by_channel;
+      vicreg_view_b_pooled_by_channel = vicreg_result.view_b_pooled_by_channel;
+      vicreg_view_a_pooled_global = vicreg_result.view_a_pooled_global;
+      vicreg_view_b_pooled_global = vicreg_result.view_b_pooled_global;
+      vicreg_view_a_projected_global =
+          vicreg_result.view_a_projected_global;
+      vicreg_view_b_projected_global =
+          vicreg_result.view_b_projected_global;
+      vicreg_global_joint_mask = vicreg_result.global_joint_mask;
+      vicreg_channel_joint_mask = vicreg_result.channel_joint_mask;
+      if (config_.return_vicreg_debug_tensors) {
+        vicreg_encoder_call_count = vicreg_result.encoder_call_count;
+        vicreg_projector_call_count = vicreg_result.projector_call_count;
+      }
       vicreg_valid_rows = vicreg_result.valid_rows;
       vicreg_global_valid_rows = vicreg_result.global_valid_rows;
       vicreg_channel_valid_rows = vicreg_result.channel_valid_rows;
+      vicreg_channel_active_groups = vicreg_result.channel_active_groups;
     }
-    loss_vicreg = detail::checked_loss(loss_vicreg, "loss_vicreg",
-                                       config_.strict_finite_loss);
+    loss_vicreg = check_or_sanitize_loss(loss_vicreg);
 
     auto total_loss = config_.lambda_jepa * loss_jepa +
                       config_.lambda_mae * loss_mae +
                       config_.lambda_tf_align * loss_tf_align +
                       config_.lambda_vicreg * loss_vicreg;
-    total_loss = detail::checked_loss(total_loss, "total_loss",
-                                      config_.strict_finite_loss);
+    if (config_.strict_finite_loss) {
+      const auto all_losses_finite =
+          torch::stack({loss_jepa, loss_mae_time, loss_mae_frequency, loss_mae,
+                        loss_tf_align, loss_vicreg, total_loss})
+              .isfinite()
+              .all()
+              .template item<bool>();
+      TORCH_CHECK(all_losses_finite,
+                  "[mtf_jepa_mae_vicreg] non-finite loss");
+    } else {
+      total_loss = detail::finite_or_zero(total_loss);
+    }
 
     mtf_jepa_mae_vicreg_output_t out{};
     out.embeddings = full_latents;
@@ -1920,6 +3381,32 @@ public:
     out.loss_vicreg = detail::finite_or_zero(loss_vicreg);
     out.loss_vicreg_global = detail::finite_or_zero(loss_vicreg_global);
     out.loss_vicreg_channel = detail::finite_or_zero(loss_vicreg_channel);
+    if (config_.return_vicreg_debug_tensors) {
+      out.jepa_target_mask = masks.target_mask.detach();
+      out.jepa_context_mask = masks.context_mask.detach();
+    }
+    out.vicreg_drawn_a_data = vicreg_drawn_a_data;
+    out.vicreg_drawn_a_feature_mask = vicreg_drawn_a_feature_mask;
+    out.vicreg_drawn_b_data = vicreg_drawn_b_data;
+    out.vicreg_drawn_b_feature_mask = vicreg_drawn_b_feature_mask;
+    out.vicreg_view_a_data = vicreg_view_a_data;
+    out.vicreg_view_a_feature_mask = vicreg_view_a_feature_mask;
+    out.vicreg_view_b_data = vicreg_view_b_data;
+    out.vicreg_view_b_feature_mask = vicreg_view_b_feature_mask;
+    out.vicreg_view_a_token_mask = vicreg_view_a_token_mask;
+    out.vicreg_view_b_token_mask = vicreg_view_b_token_mask;
+    out.vicreg_view_a_sample_valid_mask = vicreg_view_a_sample_valid_mask;
+    out.vicreg_view_b_sample_valid_mask = vicreg_view_b_sample_valid_mask;
+    out.vicreg_view_a_pooled_by_channel = vicreg_view_a_pooled_by_channel;
+    out.vicreg_view_b_pooled_by_channel = vicreg_view_b_pooled_by_channel;
+    out.vicreg_view_a_pooled_global = vicreg_view_a_pooled_global;
+    out.vicreg_view_b_pooled_global = vicreg_view_b_pooled_global;
+    out.vicreg_view_a_projected_global = vicreg_view_a_projected_global;
+    out.vicreg_view_b_projected_global = vicreg_view_b_projected_global;
+    out.vicreg_global_joint_mask = vicreg_global_joint_mask;
+    out.vicreg_channel_joint_mask = vicreg_channel_joint_mask;
+    out.vicreg_encoder_call_count = vicreg_encoder_call_count;
+    out.vicreg_projector_call_count = vicreg_projector_call_count;
     out.sample_valid_mask = batch.token_mask.any(/*dim=*/1);
     out.channel_valid_mask =
         detail::channel_valid_mask(batch.metadata, batch.token_mask, config_);
@@ -1988,8 +3475,23 @@ public:
       out.diagnostics["vicreg_sim_term"] = detail::finite_or_zero(vicreg_sim);
       out.diagnostics["vicreg_var_term"] = detail::finite_or_zero(vicreg_var);
       out.diagnostics["vicreg_cov_term"] = detail::finite_or_zero(vicreg_cov);
+      out.diagnostics["vicreg_global_sim_term"] =
+          detail::finite_or_zero(vicreg_global_sim);
+      out.diagnostics["vicreg_global_var_term"] =
+          detail::finite_or_zero(vicreg_global_var);
+      out.diagnostics["vicreg_global_cov_term"] =
+          detail::finite_or_zero(vicreg_global_cov);
+      out.diagnostics["vicreg_channel_sim_term"] =
+          detail::finite_or_zero(vicreg_channel_sim);
+      out.diagnostics["vicreg_channel_var_term"] =
+          detail::finite_or_zero(vicreg_channel_var);
+      out.diagnostics["vicreg_channel_cov_term"] =
+          detail::finite_or_zero(vicreg_channel_cov);
       out.diagnostics["vicreg_mode"] = torch::tensor(
           static_cast<double>(vicreg_mode), batch.tokens.options());
+      out.diagnostics["vicreg_channel_stratified"] =
+          torch::tensor(config_.stratify_channel_vicreg_by_channel ? 1.0 : 0.0,
+                        batch.tokens.options());
       out.diagnostics["vicreg_valid_rows"] = torch::tensor(
           static_cast<double>(vicreg_valid_rows), batch.tokens.options());
       out.diagnostics["vicreg_global_valid_rows"] =
@@ -1998,12 +3500,13 @@ public:
       out.diagnostics["vicreg_channel_valid_rows"] =
           torch::tensor(static_cast<double>(vicreg_channel_valid_rows),
                         batch.tokens.options());
-      out.diagnostics["sample_valid_count"] = torch::tensor(
-          static_cast<double>(out.sample_valid_mask.sum().item<int64_t>()),
-          batch.tokens.options());
-      out.diagnostics["channel_valid_count"] = torch::tensor(
-          static_cast<double>(out.channel_valid_mask.sum().item<int64_t>()),
-          batch.tokens.options());
+      out.diagnostics["vicreg_channel_active_groups"] =
+          torch::tensor(static_cast<double>(vicreg_channel_active_groups),
+                        batch.tokens.options());
+      out.diagnostics["sample_valid_count"] =
+          out.sample_valid_mask.sum().to(batch.tokens.scalar_type());
+      out.diagnostics["channel_valid_count"] =
+          out.channel_valid_mask.sum().to(batch.tokens.scalar_type());
       out.diagnostics["target_ema_distance"] = target_ema_distance();
     }
     return out;
@@ -2073,17 +3576,23 @@ private:
                 "[mtf_jepa_mae_vicreg] target tokenizer token shape mismatch");
     TORCH_CHECK(online.token_mask.sizes() == target.token_mask.sizes(),
                 "[mtf_jepa_mae_vicreg] target tokenizer mask shape mismatch");
-    TORCH_CHECK(torch::equal(online.token_mask, target.token_mask),
-                "[mtf_jepa_mae_vicreg] target tokenizer mask mismatch");
-    TORCH_CHECK(
-        torch::equal(online.metadata.start_index,
-                     target.metadata.start_index) &&
-            torch::equal(online.metadata.width, target.metadata.width) &&
-            torch::equal(online.metadata.scale_id, target.metadata.scale_id) &&
-            torch::equal(online.metadata.channel_id,
-                         target.metadata.channel_id) &&
-            torch::equal(online.metadata.domain_id, target.metadata.domain_id),
-        "[mtf_jepa_mae_vicreg] target tokenizer metadata mismatch");
+    const auto layout_exact =
+        torch::stack({
+            torch::eq(online.token_mask, target.token_mask).all(),
+            torch::eq(online.metadata.start_index,
+                      target.metadata.start_index)
+                .all(),
+            torch::eq(online.metadata.width, target.metadata.width).all(),
+            torch::eq(online.metadata.scale_id, target.metadata.scale_id).all(),
+            torch::eq(online.metadata.channel_id,
+                      target.metadata.channel_id)
+                .all(),
+            torch::eq(online.metadata.domain_id, target.metadata.domain_id)
+                .all()})
+            .all()
+            .template item<bool>();
+    TORCH_CHECK(layout_exact,
+                "[mtf_jepa_mae_vicreg] target tokenizer layout mismatch");
   }
 
   [[nodiscard]] torch::Tensor
@@ -2176,19 +3685,74 @@ private:
   [[nodiscard]] vicreg_branch_loss_result_t
   compute_vicreg_branch(const torch::Tensor &x,
                         const torch::Tensor &feature_mask) {
-    const auto view_a = weak_augment(x, feature_mask);
-    const auto view_b = weak_augment(x, feature_mask);
+    // Every policy consumes the two production weak-view draws first.  The
+    // experiment-only pairing policy substitutes the used views only after
+    // those draws, preserving the default RNG schedule and forward topology.
+    const auto drawn_a = weak_augment(x, feature_mask);
+    const auto drawn_b = weak_augment(x, feature_mask);
+    const auto clean = detail::canonicalize_input(x, feature_mask, config_);
+    mtf_input_t view_a{};
+    mtf_input_t view_b{};
+    switch (config_.vicreg_view_pairing_policy) {
+    case mtf_vicreg_view_pairing_policy_t::independent_weak:
+      view_a = drawn_a;
+      view_b = drawn_b;
+      break;
+    case mtf_vicreg_view_pairing_policy_t::tied_weak:
+      view_a = drawn_a;
+      view_b = {drawn_a.data.clone(), drawn_a.feature_mask.clone()};
+      break;
+    case mtf_vicreg_view_pairing_policy_t::clean_identical:
+      view_a = clean;
+      view_b = {clean.data.clone(), clean.feature_mask.clone()};
+      break;
+    }
     auto encoded_a = encode(view_a.data, view_a.feature_mask);
     auto encoded_b = encode(view_b.data, view_b.feature_mask);
     auto zero = torch::zeros(
         {}, torch::TensorOptions().dtype(config_.dtype).device(config_.device));
     vicreg_branch_loss_result_t out{};
+    out.encoder_call_count = 2;
     out.loss = zero;
     out.global_loss = zero;
     out.channel_loss = zero;
     out.invariance_loss = zero;
     out.variance_loss = zero;
     out.covariance_loss = zero;
+    out.global_invariance_loss = zero;
+    out.global_variance_loss = zero;
+    out.global_covariance_loss = zero;
+    out.channel_invariance_loss = zero;
+    out.channel_variance_loss = zero;
+    out.channel_covariance_loss = zero;
+    torch::Tensor channel_joint_mask{};
+    if (config_.use_channel_vicreg || config_.return_vicreg_debug_tensors) {
+      channel_joint_mask =
+          detail::channel_valid_mask(encoded_a.metadata, encoded_a.token_mask,
+                                     config_)
+              .logical_and(detail::channel_valid_mask(
+                  encoded_b.metadata, encoded_b.token_mask, config_))
+              .to(torch::TensorOptions()
+                      .dtype(torch::kBool)
+                      .device(config_.device));
+    }
+    if (config_.return_vicreg_debug_tensors) {
+      out.drawn_a_data = drawn_a.data.detach();
+      out.drawn_a_feature_mask = drawn_a.feature_mask.detach();
+      out.drawn_b_data = drawn_b.data.detach();
+      out.drawn_b_feature_mask = drawn_b.feature_mask.detach();
+      out.view_a_data = view_a.data.detach();
+      out.view_a_feature_mask = view_a.feature_mask.detach();
+      out.view_b_data = view_b.data.detach();
+      out.view_b_feature_mask = view_b.feature_mask.detach();
+      out.view_a_token_mask = encoded_a.token_mask.detach();
+      out.view_b_token_mask = encoded_b.token_mask.detach();
+      out.view_a_sample_valid_mask = encoded_a.sample_valid_mask.detach();
+      out.view_b_sample_valid_mask = encoded_b.sample_valid_mask.detach();
+      out.view_a_pooled_by_channel = encoded_a.pooled_by_channel;
+      out.view_b_pooled_by_channel = encoded_b.pooled_by_channel;
+      out.channel_joint_mask = channel_joint_mask.detach();
+    }
     vicreg_stability_loss_options_t opts{};
     opts.invariance_weight = config_.vicreg_sim_weight;
     opts.variance_weight = config_.vicreg_var_weight;
@@ -2197,9 +3761,10 @@ private:
     opts.eps = config_.vicreg_variance_epsilon;
     if (config_.use_global_vicreg) {
       auto projected_a =
-          vicreg_stability_head_->forward(encoded_a.pooled_embedding);
+          project_vicreg(encoded_a.pooled_embedding).unsqueeze(1);
       auto projected_b =
-          vicreg_stability_head_->forward(encoded_b.pooled_embedding);
+          project_vicreg(encoded_b.pooled_embedding).unsqueeze(1);
+      out.projector_call_count += 2;
       auto mask = encoded_a.token_mask.any(/*dim=*/1)
                       .logical_and(encoded_b.token_mask.any(/*dim=*/1))
                       .unsqueeze(1)
@@ -2208,7 +3773,17 @@ private:
                               .device(config_.device));
       const auto global_result = compute_vicreg_stability_loss(
           projected_a, mask, projected_b, mask, opts);
+      if (config_.return_vicreg_debug_tensors) {
+        out.view_a_pooled_global = encoded_a.pooled_embedding;
+        out.view_b_pooled_global = encoded_b.pooled_embedding;
+        out.view_a_projected_global = projected_a;
+        out.view_b_projected_global = projected_b;
+        out.global_joint_mask = mask.detach();
+      }
       out.global_loss = global_result.loss;
+      out.global_invariance_loss = global_result.invariance_loss;
+      out.global_variance_loss = global_result.variance_loss;
+      out.global_covariance_loss = global_result.covariance_loss;
       out.loss = out.loss + config_.lambda_global_vicreg * global_result.loss;
       out.invariance_loss =
           out.invariance_loss +
@@ -2222,28 +3797,21 @@ private:
       out.valid_rows += global_result.valid_rows;
     }
     if (config_.use_channel_vicreg) {
-      const int64_t B = encoded_a.pooled_by_channel.size(0);
-      const int64_t C = encoded_a.pooled_by_channel.size(1);
-      auto flat_a = encoded_a.pooled_by_channel.reshape(
-          {B * C, encoded_a.pooled_by_channel.size(2)});
-      auto flat_b = encoded_b.pooled_by_channel.reshape(
-          {B * C, encoded_b.pooled_by_channel.size(2)});
-      auto projected_a =
-          vicreg_stability_head_->forward(flat_a).squeeze(1).view(
-              {B, C, config_.projector_dim});
-      auto projected_b =
-          vicreg_stability_head_->forward(flat_b).squeeze(1).view(
-              {B, C, config_.projector_dim});
-      auto mask = detail::channel_valid_mask(encoded_a.metadata,
-                                             encoded_a.token_mask, config_)
-                      .logical_and(detail::channel_valid_mask(
-                          encoded_b.metadata, encoded_b.token_mask, config_))
-                      .to(torch::TensorOptions()
-                              .dtype(torch::kBool)
-                              .device(config_.device));
-      const auto channel_result = compute_vicreg_stability_loss(
-          projected_a, mask, projected_b, mask, opts);
+      auto projected_a = project_vicreg(encoded_a.pooled_by_channel);
+      auto projected_b = project_vicreg(encoded_b.pooled_by_channel);
+      out.projector_call_count += 2;
+      const auto channel_result =
+          config_.stratify_channel_vicreg_by_channel
+              ? compute_channel_stratified_vicreg_stability_loss(
+                    projected_a, channel_joint_mask, projected_b,
+                    channel_joint_mask, opts)
+              : compute_vicreg_stability_loss(projected_a, channel_joint_mask,
+                                              projected_b, channel_joint_mask,
+                                              opts);
       out.channel_loss = channel_result.loss;
+      out.channel_invariance_loss = channel_result.invariance_loss;
+      out.channel_variance_loss = channel_result.variance_loss;
+      out.channel_covariance_loss = channel_result.covariance_loss;
       out.loss = out.loss + config_.lambda_channel_vicreg * channel_result.loss;
       out.invariance_loss =
           out.invariance_loss +
@@ -2254,6 +3822,7 @@ private:
           out.covariance_loss +
           config_.lambda_channel_vicreg * channel_result.covariance_loss;
       out.channel_valid_rows = channel_result.valid_rows;
+      out.channel_active_groups = channel_result.active_groups;
       out.valid_rows += channel_result.valid_rows;
     }
     return out;

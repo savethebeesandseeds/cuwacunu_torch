@@ -44,20 +44,26 @@ Fresh Wikimyei C++ namespaces mirror the room path:
 - `cuwacunu::wikimyei::policy::portfolio`
 - `cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility`
 
-The active VICReg surface is the strict channel-preserving representation path:
+The legacy `cwu_01v` VICReg surface is the strict channel-preserving path:
 feature-level NodeLift masks enter the channel node adapter, the encoder keeps
 `C` through `[M,C,Hx,De]`, temporal reduction is mask-aware inside the
 representation boundary, and graph export emits `[B,N,C,De]`. Legacy fused/node
 VICReg headers have been removed from the active source tree. Historical lattice
 receipts that mention the old node representation job remain audit data only.
-The legacy node MDN path has been removed; the active MDN surface is the
+The legacy node MDN path has been removed; both graph-first protocols use the
 channel-context MDN.
 
-`representation/encoding/mtf_jepa_mae_vicreg/` is a separate experimental
-representation family for multi-scale time/frequency JEPA-MAE pretraining with
-VICReg-style stabilization. It does not replace the active VICReg production
-path, and it keeps its stability head/loss local rather than including the
-production VICReg implementation.
+The active `cwu_02v` protocol selects
+`representation/encoding/mtf_jepa_mae_vicreg/`: multi-scale time/frequency
+JEPA-MAE pretraining with VICReg-style stabilization. It keeps its stability
+head/loss local rather than including the legacy VICReg implementation, and its
+component DSL names the per-channel serving-pool policy exposed to the MDN. Its
+versioned `structured_cdsb_v1` policy is an opt-in fixed-width readout for the
+complete frozen MTF layout. `structured_cdsb_sparse_v1` is the distinct
+partial-mask contract: it preserves the same cell/domain/scale organization
+using domain-scale-neutral completion and is exactly v1 on complete blocks.
+The checked-in active policy remains `all_tokens`, and every policy choice
+participates in downstream checkpoint identity.
 `representation/time_mae/` remains reserved for a standalone TimeMAE family.
 
 The matching implementation subtree lives under `src/impl/wikimyei` and keeps

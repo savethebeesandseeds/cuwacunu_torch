@@ -24,6 +24,35 @@ training/inference pipelines, and DSL-driven system configuration.
   meaningful phase of work, not a tiny edit or one file read.
 - Keep plan updates sparse and useful: update plans when a milestone starts,
   completes, or materially changes. Avoid token-heavy micro-planning.
+- Treat Codex token consumption as a finite project budget. Do not let one goal
+  consume most of the available context through repeated narration, speculative
+  analysis, or redundant review passes.
+- **Token efficiency is a mandatory project constraint, not a preference. Every
+  session and every agent working in this repository MUST minimize token use.**
+  A technically careful approach is unacceptable if its context cost is
+  disproportionate to the concrete code or decision it delivers.
+- Default to one agent and the shortest direct implementation path. Do not spawn
+  subagents, parallel reviews, adversarial audits, or long protocol-design chains
+  unless the user explicitly requests them or a specific high-risk correctness
+  issue cannot be resolved with one focused pass.
+- Do not repeatedly restate history, hashes, plans, evidence, status, or completed
+  checks. Refer to the existing artifact or give only the delta. Avoid exhaustive
+  preregistration, forensic bookkeeping, and lifecycle scaffolding unless they are
+  essential to the requested deliverable.
+- Before any token-heavy investigation, estimate whether it is necessary for the
+  bounded goal. If cost begins to grow disproportionately, immediately reduce
+  scope, preserve a concise handoff, and stop for user direction. Never continue
+  an open-ended pursuit merely because more checks or experiments are possible.
+- Optimize for useful output per token: prioritize the requested code change,
+  smallest relevant verification, and concise handoff. Cosmetic work, whitespace
+  review, duplicated validation, speculative branches, and optional hardening are
+  out of scope unless explicitly requested or required for correctness.
+- Prefer one consolidated correctness audit per milestone. Repeat a check only
+  when a concrete failure or code change invalidates the earlier result; skip
+  cosmetic checks (including whitespace-only review) unless required by CI or
+  the requested deliverable.
+- Keep progress updates concise and send them only when state materially changes,
+  the user needs to make a decision, or work is blocked.
 - For long-running goals, favor the smallest path that achieves the stated
   objective. Defer optional refactors, extra validation, and exploratory work
   unless they are required for correctness.

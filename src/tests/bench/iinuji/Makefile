@@ -1,6 +1,22 @@
 ROOT_PATH := ../../..
 include $(ROOT_PATH)/Makefile.config
 
+override IINUJI_OUTPUT_GUARD_STATUS := $(strip $(shell \
+	$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $(BIN_OUT)/test_iinuji_toolkit_compile)" \
+		"$(abspath $(BIN_OUT)/test_iinuji_image_box_render)" \
+		"$(abspath $(BIN_OUT)/test_iinuji_cmd_nav_rail)" \
+		"$(abspath $(BIN_OUT)/test_iinuji_html_server)" \
+		"$(abspath $(TEST_OUT)/test_iinuji_toolkit_compile)" \
+		"$(abspath $(TEST_OUT)/test_iinuji_image_box_render)" \
+		"$(abspath $(TEST_OUT)/test_iinuji_cmd_nav_rail)" \
+		"$(abspath $(TEST_OUT)/test_iinuji_html_server)" \
+		>/dev/null 2>&1; \
+	printf '%s' "$$?"))
+ifneq ($(IINUJI_OUTPUT_GUARD_STATUS),0)
+  $(error refusing BIN_OUT/TEST_OUT outside or redirected from BUILD_ROOT=$(BUILD_ROOT): BIN_OUT=$(BIN_OUT) TEST_OUT=$(TEST_OUT))
+endif
+
 HERE_PATH := $(TESTS_PATH)/bench/iinuji
 REL_MODULE := $(patsubst $(TESTS_PATH)/%,%,$(HERE_PATH))
 
@@ -66,18 +82,22 @@ IINUJI_PURE_HEADER_SMOKE := \
 
 .PHONY: header-smoke
 header-smoke:
-	@mkdir -p $(OBJTMP)
 	@for header in $(IINUJI_HEADER_SMOKE); do \
 		obj="$(OBJTMP)/iinuji_header_$$(printf '%s' "$$header" | tr '/.' '__').o"; \
+		$(CLEAN_ASSERT_OUTPUT_CMD) "$$obj" || exit "$$?"; \
+		mkdir -p "$(OBJTMP)" || exit "$$?"; \
+		$(CLEAN_RM_CMD) "$$obj" || exit "$$?"; \
 		$(CXX_COMPILE) $(CXXFLAGS) $(USUAL_INCLUDE_PATHS) $(NCURSES_INCLUDE_PATHS) \
 			-x c++ -include "$(SRC_ROOT)/include/$$header" -c /dev/null -o "$$obj"; \
 	done
 
 .PHONY: pure-header-smoke
 pure-header-smoke:
-	@mkdir -p $(OBJTMP)
 	@for header in $(IINUJI_PURE_HEADER_SMOKE); do \
 		obj="$(OBJTMP)/iinuji_pure_header_$$(printf '%s' "$$header" | tr '/.' '__').o"; \
+		$(CLEAN_ASSERT_OUTPUT_CMD) "$$obj" || exit "$$?"; \
+		mkdir -p "$(OBJTMP)" || exit "$$?"; \
+		$(CLEAN_RM_CMD) "$$obj" || exit "$$?"; \
 		$(CXX_COMPILE) $(CXXFLAGS) $(USUAL_INCLUDE_PATHS) \
 			-x c++ -include "$(SRC_ROOT)/include/$$header" -c /dev/null -o "$$obj"; \
 	done
@@ -91,4 +111,8 @@ run: run-test_iinuji_toolkit_compile
 
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/test_iinuji_toolkit_compile $(TEST_OUT)/test_iinuji_image_box_render $(TEST_OUT)/test_iinuji_cmd_nav_rail $(TEST_OUT)/test_iinuji_html_server
+	@$(CLEAN_RM_CMD) \
+		"$(TEST_OUT)/test_iinuji_toolkit_compile" \
+		"$(TEST_OUT)/test_iinuji_image_box_render" \
+		"$(TEST_OUT)/test_iinuji_cmd_nav_rail" \
+		"$(TEST_OUT)/test_iinuji_html_server"

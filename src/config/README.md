@@ -390,14 +390,26 @@ surface.
 `wikimyei.representation.mtf_jepa_mae_vicreg.dsl`,
 `wikimyei.representation.mtf_jepa_mae_vicreg.net`, and
 `wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei` define the separate
-experimental MTF-JEPA-MAE-VICReg representation family. These files register
+MTF-JEPA-MAE-VICReg representation family selected by active protocol `cwu_02v`.
+These files register
 `wikimyei.representation.encoding.mtf_jepa_mae_vicreg` as its own component
 identity and training surface. For this family, `.net` is the architecture and
 tokenization surface only; MTF objective weights, masking policy, EMA behavior,
 and training augmentations are explicit `.jkimyei` settings and are folded into
-the protocol contract after the training spec is decoded. They do not replace
-the production VICReg/MDN defaults and they do not make downstream forecast or
-MDN claims.
+the protocol contract after the training spec is decoded. The component DSL
+also owns `SERVING_POOL_POLICY`: `all_tokens`, `time_only`, `frequency_only`,
+`domain_balanced`, `structured_cdsb_v1`, or the separately versioned
+`structured_cdsb_sparse_v1` readout. Both structured policies are deliberately
+opt-in and accept only the frozen
+3-channel/72-token/32-wide MTF layout; they preserve channel, domain, scale, and
+coarse within-scale position before returning the same `[B,C,D]` shape. This
+The sparse policy uses valid-token compact-cell means and neutral completion
+within each domain/scale group; its mask means computable rather than fully
+observed, and complete rows are exactly v1. A policy changes only the
+per-channel reduction exposed to inference,
+participates in protocol identity, and is bound into newly written MDN
+checkpoints. The checked-in active value and legacy fallback remain
+`all_tokens`. A policy choice does not itself make a downstream forecast claim.
 
 MTF train-time augmentation is intentionally conservative: temporal dilation and
 warp use non-wrapping interpolation over the history axis, frequency mask/jitter

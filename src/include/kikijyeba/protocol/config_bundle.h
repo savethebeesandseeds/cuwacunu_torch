@@ -678,10 +678,8 @@ inline void apply_mtf_jepa_mae_vicreg_training_options(
   config.mask_same_window_across_domains = mtf.mask_same_window_across_domains;
   config.mask_same_channel_block = mtf.mask_same_channel_block;
   config.max_context_target_time_overlap = mtf.max_context_target_time_overlap;
-  config.vicreg_view_gaussian_jitter_std =
-      mtf.vicreg_view_gaussian_jitter_std;
-  config.vicreg_view_time_dropout_scale =
-      mtf.vicreg_view_time_dropout_scale;
+  config.vicreg_view_gaussian_jitter_std = mtf.vicreg_view_gaussian_jitter_std;
+  config.vicreg_view_time_dropout_scale = mtf.vicreg_view_time_dropout_scale;
   config.gaussian_jitter_std = mtf.gaussian_jitter_std;
   config.feature_dropout_prob = mtf.feature_dropout_prob;
   config.history_dropout_prob = mtf.history_dropout_prob;
@@ -914,6 +912,10 @@ canonical_channel_graph_first_protocol_contract_text(
   config_bundle_detail::append_i64_list(out, mtf_cfg.scale_strides);
   out << "\n";
   out << "mtf_jepa_mae_vicreg_frequency_num_bins=" << mtf_cfg.frequency_num_bins
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_serving_pool_policy="
+      << cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
+             mtf_serving_pool_policy_name(mtf_cfg.serving_pool_policy)
       << "\n";
   out << "mtf_jepa_mae_vicreg_mask_ratio_time=" << mtf_cfg.mask_ratio_time
       << "\n";

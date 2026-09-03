@@ -3,6 +3,18 @@ include $(ROOT_PATH)/Makefile.config
 
 HERE_PATH := $(ROOT_PATH)/main/hero
 BIN_OUT := $(HERO_OUT)
+override HERO_BIN_OUT_GUARD_STATUS := $(strip $(shell \
+	$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $(BIN_OUT)/hero_config.mcp)" \
+		"$(abspath $(BIN_OUT)/hero_runtime.mcp)" \
+		"$(abspath $(BIN_OUT)/hero_environment.mcp)" \
+		"$(abspath $(BIN_OUT)/hero_lattice.mcp)" \
+		"$(abspath $(BIN_OUT)/hero_marshal.mcp)" \
+		>/dev/null 2>&1; \
+	printf '%s' "$$?"))
+ifneq ($(HERO_BIN_OUT_GUARD_STATUS),0)
+  $(error refusing BIN_OUT outside or redirected from BUILD_ROOT=$(BUILD_ROOT): $(BIN_OUT))
+endif
 
 HERO_CONFIG_OBJS := \
   $(OUTPUT_PATH)/common/hero_config_store.o \
@@ -157,6 +169,8 @@ $(OBJTMP)/hero_config_mcp.o: \
 	$(HERE_PATH)/hero_config_mcp.cpp \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" "$(abspath $(DEPDIR)/hero_config_mcp.d)"
 	$(Q)mkdir -p $(@D) $(DEPDIR)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -170,6 +184,8 @@ $(OBJTMP)/hero_runtime_mcp.o: \
 	$(HERE_PATH)/hero_runtime_mcp.cpp \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" "$(abspath $(DEPDIR)/hero_runtime_mcp.d)"
 	$(Q)mkdir -p $(@D) $(DEPDIR)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -183,6 +199,8 @@ $(OBJTMP)/hero_environment_mcp.o: \
 	$(HERE_PATH)/hero_environment_mcp.cpp \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" "$(abspath $(DEPDIR)/hero_environment_mcp.d)"
 	$(Q)mkdir -p $(@D) $(DEPDIR)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -196,6 +214,8 @@ $(OBJTMP)/hero_lattice_mcp.o: \
 	$(HERE_PATH)/hero_lattice_mcp.cpp \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" "$(abspath $(DEPDIR)/hero_lattice_mcp.d)"
 	$(Q)mkdir -p $(@D) $(DEPDIR)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -209,6 +229,8 @@ $(OBJTMP)/hero_marshal_mcp.o: \
 	$(HERE_PATH)/hero_marshal_mcp.cpp \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) \
+		"$(abspath $@)" "$(abspath $(DEPDIR)/hero_marshal_mcp.d)"
 	$(Q)mkdir -p $(@D) $(DEPDIR)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -223,6 +245,7 @@ $(BIN_OUT)/hero_config.mcp: \
 	$(HERO_CONFIG_OBJS) \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
 	$(Q)mkdir -p $(@D)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -238,6 +261,7 @@ $(BIN_OUT)/hero_runtime.mcp: \
 	$(HERO_RUNTIME_OBJS) \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
 	$(Q)mkdir -p $(@D)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -253,6 +277,7 @@ $(BIN_OUT)/hero_environment.mcp: \
 	$(HERO_ENVIRONMENT_OBJS) \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
 	$(Q)mkdir -p $(@D)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -268,6 +293,7 @@ $(BIN_OUT)/hero_lattice.mcp: \
 	$(HERO_LATTICE_OBJS) \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
 	$(Q)mkdir -p $(@D)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)
@@ -283,6 +309,7 @@ $(BIN_OUT)/hero_marshal.mcp: \
 	$(HERO_MARSHAL_OBJS) \
 	$(HERE_PATH)/Makefile \
 	$(SRC_ROOT)/Makefile.config
+	$(Q)$(CLEAN_ASSERT_OUTPUT_CMD) "$(abspath $@)"
 	$(Q)mkdir -p $(@D)
 	$(Q)$(LOG_START)
 	$(Q)$(LOCAL_CLEAN)

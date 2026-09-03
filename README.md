@@ -48,6 +48,7 @@ The current build is wired for the upgraded LibTorch bundle:
 ```bash
 docker pull debian:12
 docker run --name unnamed_taoist --gpus all -it --shm-size=1g \
+  -p 127.0.0.1:4872:4872 \
   -e TERM=xterm-256color \
   -e LANG=C.UTF-8 \
   -e LC_ALL=C.UTF-8 \
@@ -55,6 +56,11 @@ docker run --name unnamed_taoist --gpus all -it --shm-size=1g \
   -e FORCE_COLOR=1 \
   -v "$PWD":/cuwacunu -w /cuwacunu debian:12 /bin/bash
 ```
+
+Port `4872` is the canonical Iinuji HTTP port. The host side is bound to
+`127.0.0.1` so it is available only from the local machine. Docker port
+publishing is fixed when a container is created, so keep this mapping in every
+recreation of `unnamed_taoist`.
 
 ### 4. Run setup inside the container
 ```bash

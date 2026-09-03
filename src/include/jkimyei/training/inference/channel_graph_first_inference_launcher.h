@@ -57,6 +57,7 @@ struct channel_graph_first_inference_training_report_t {
   std::string config_path{};
   std::string component_assembly_id{};
   std::string input_representation_assembly_id{};
+  std::string input_representation_serving_pool_policy{"all_tokens"};
   std::string context_contract{"graph_order.channel_node_representation.v1"};
   std::string context_value_shape{"[B,N,C,De]"};
   std::string output_contract{
@@ -430,6 +431,8 @@ struct channel_graph_first_inference_training_report_t {
     oss << "component_assembly_id=" << component_assembly_id << "\n";
     oss << "input_representation_assembly_id="
         << input_representation_assembly_id << "\n";
+    oss << "input_representation_serving_pool_policy="
+        << input_representation_serving_pool_policy << "\n";
     oss << "context_contract=" << context_contract << "\n";
     oss << "context_value_shape=" << context_value_shape << "\n";
     oss << "output_contract=" << output_contract << "\n";
@@ -1769,8 +1772,10 @@ class mtf_representation_encoder_adapter_t {
 public:
   explicit mtf_representation_encoder_adapter_t(
       cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
-          MtfJepaMaeVicreg &model)
-      : model_(&model) {
+          MtfJepaMaeVicreg &model,
+      cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
+          mtf_serving_pool_policy_t serving_pool_policy)
+      : model_(&model), serving_pool_policy_(serving_pool_policy) {
     TORCH_CHECK(model_ != nullptr,
                 "[channel_graph_first_inference_launcher] MTF model adapter "
                 "requires a model");
@@ -1792,11 +1797,15 @@ public:
     auto encoded = (*model_)->encode(data, mask);
     (*model_)->train(was_training);
 
+    const auto selected = cuwacunu::wikimyei::representation::encoding::
+        mtf_jepa_mae_vicreg::select_mtf_serving_pool(
+            encoded, serving_pool_policy_, (*model_)->config());
+
     vicreg::channel_preserving_encoder_output_t out{};
-    out.reduced = encoded.pooled_by_channel;
-    out.reduced_mask = encoded.channel_valid_mask;
-    out.sequence = encoded.pooled_by_channel.unsqueeze(/*dim=*/2);
-    out.sequence_mask = encoded.channel_valid_mask.unsqueeze(/*dim=*/2);
+    out.reduced = selected.values;
+    out.reduced_mask = selected.valid_mask;
+    out.sequence = selected.values.unsqueeze(/*dim=*/2);
+    out.sequence_mask = selected.valid_mask.unsqueeze(/*dim=*/2);
     if (detach_to_cpu) {
       out.sequence = out.sequence.detach().to(torch::kCPU);
       out.sequence_mask = out.sequence_mask.detach().to(torch::kCPU);
@@ -1809,6 +1818,8 @@ public:
 private:
   cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
       MtfJepaMaeVicreg *model_{nullptr};
+  cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
+      mtf_serving_pool_policy_t serving_pool_policy_{};
 };
 
 template <typename KeyT> class channel_representation_stream_iface_t {
@@ -2097,8 +2108,8 @@ inline void freeze_vicreg_encoder(EncoderT &encoder) {
   }
 }
 
-[[nodiscard]] inline int64_t read_channel_mdn_optimizer_step_index(
-    torch::serialize::InputArchive &root) {
+[[nodiscard]] inline int64_t
+read_channel_mdn_optimizer_step_index(torch::serialize::InputArchive &root) {
   torch::Tensor saved_optimizer_step_index{};
   try {
     root.read("meta/optimizer_step_index", saved_optimizer_step_index);
@@ -2169,6 +2180,9 @@ inline void save_channel_mdn_checkpoint_file(
   root.write("meta/input_representation_assembly_id_bytes",
              int64_tensor_from_vector(
                  string_to_bytes(report.input_representation_assembly_id)));
+  root.write("meta/input_representation_serving_pool_policy_bytes",
+             int64_tensor_from_vector(string_to_bytes(
+                 report.input_representation_serving_pool_policy)));
   root.write(
       "meta/context_contract_bytes",
       int64_tensor_from_vector(string_to_bytes(report.context_contract)));
@@ -2205,6 +2219,7 @@ inline void save_channel_mdn_checkpoint_file(
 struct channel_mdn_checkpoint_identity_t {
   std::string component_assembly_id{};
   std::string input_representation_assembly_id{};
+  std::string input_representation_serving_pool_policy{"all_tokens"};
   std::string context_contract{};
   std::string output_contract{};
   std::string context_mode{};
@@ -2238,6 +2253,8 @@ checkpoint_identity_from_report(
   out.component_assembly_id = report.component_assembly_id;
   out.input_representation_assembly_id =
       report.input_representation_assembly_id;
+  out.input_representation_serving_pool_policy =
+      report.input_representation_serving_pool_policy;
   out.context_contract = report.context_contract;
   out.output_contract = report.output_contract;
   out.context_mode = report.context_mode;
@@ -2267,6 +2284,30 @@ checkpoint_identity_from_report(
   out.sigma_max = report.sigma_max;
   out.eps = report.eps;
   return out;
+}
+
+[[nodiscard]] inline torch::Tensor
+read_channel_mdn_input_representation_serving_pool_policy(
+    torch::serialize::InputArchive &root,
+    const channel_mdn_checkpoint_identity_t *expected_identity) {
+  const std::string key = "meta/input_representation_serving_pool_policy_bytes";
+  const auto keys = root.keys();
+  if (std::find(keys.begin(), keys.end(), key) != keys.end()) {
+    torch::Tensor saved_policy{};
+    root.read(key, saved_policy);
+    return saved_policy;
+  }
+
+  // Checkpoints predating serving-pool identity have no such key. Preserve
+  // their historical all-token behavior without treating malformed present
+  // metadata as legacy.
+  const std::string legacy_policy =
+      expected_identity != nullptr &&
+              expected_identity->input_representation_serving_pool_policy ==
+                  "not_applicable"
+          ? "not_applicable"
+          : "all_tokens";
+  return int64_tensor_from_vector(string_to_bytes(legacy_policy));
 }
 
 inline void load_channel_mdn_checkpoint_file(
@@ -2300,6 +2341,7 @@ inline void load_channel_mdn_checkpoint_file(
   torch::Tensor saved_direct_readout_adapter_hidden_dim{};
   torch::Tensor saved_component_assembly_id{};
   torch::Tensor saved_input_representation_assembly_id{};
+  torch::Tensor saved_input_representation_serving_pool_policy{};
   torch::Tensor saved_context_contract{};
   torch::Tensor saved_output_contract{};
   torch::Tensor saved_context_mode{};
@@ -2331,6 +2373,9 @@ inline void load_channel_mdn_checkpoint_file(
   root.read("meta/component_assembly_id_bytes", saved_component_assembly_id);
   root.read("meta/input_representation_assembly_id_bytes",
             saved_input_representation_assembly_id);
+  saved_input_representation_serving_pool_policy =
+      read_channel_mdn_input_representation_serving_pool_policy(
+          root, expected_identity);
   root.read("meta/context_contract_bytes", saved_context_contract);
   root.read("meta/output_contract_bytes", saved_output_contract);
   root.read("meta/context_mode_bytes", saved_context_mode);
@@ -2420,6 +2465,12 @@ inline void load_channel_mdn_checkpoint_file(
             expected_identity->input_representation_assembly_id),
         "[channel_graph_first_inference_launcher] MDN checkpoint "
         "input_representation_assembly_id does not match current config");
+    TORCH_CHECK(
+        metadata_string_matches(
+            saved_input_representation_serving_pool_policy,
+            expected_identity->input_representation_serving_pool_policy),
+        "[channel_graph_first_inference_launcher] MDN checkpoint input "
+        "representation serving pool policy does not match current config");
     TORCH_CHECK(metadata_string_matches(saved_context_contract,
                                         expected_identity->context_contract),
                 "[channel_graph_first_inference_launcher] MDN checkpoint "
@@ -2537,6 +2588,14 @@ public:
             ? cuwacunu::kikijyeba::protocol::
                   active_representation_component_assembly_id(builder_.bundle())
             : builder_.bundle().channel_mdn.input_representation_assembly_id;
+    out.input_representation_serving_pool_policy =
+        cuwacunu::kikijyeba::protocol::active_protocol_uses_mtf_jepa_mae_vicreg(
+            builder_.bundle())
+            ? cuwacunu::wikimyei::representation::encoding::
+                  mtf_jepa_mae_vicreg::mtf_serving_pool_policy_name(
+                      builder_.bundle()
+                          .mtf_jepa_mae_vicreg.config.serving_pool_policy)
+            : "not_applicable";
     out.graph_order_fingerprint = plan.graph_order_fingerprint;
     out.node_ids = plan.node_ids;
     out.edge_ids = plan.edge_ids;
@@ -2781,7 +2840,8 @@ public:
       mtf_adapter_holder =
           std::make_unique<channel_graph_first_inference_launcher_detail::
                                mtf_representation_encoder_adapter_t>(
-              *mtf_model_holder);
+              *mtf_model_holder,
+              bundle.mtf_jepa_mae_vicreg.config.serving_pool_policy);
       auto mtf_stream = repstream::channel_representation_stream_t<
           DatatypeT, channel_graph_first_inference_launcher_detail::
                          mtf_representation_encoder_adapter_t>(
@@ -3783,10 +3843,9 @@ public:
                       out, input.future, combined_mask, eval_train_options,
                       input.target_coords);
           cuwacunu::wikimyei::inference::expected_value::mdn::
-              channel_context_mdn_train_detail::
-                  record_scheduled_objective(
-                      step, step.nll, edge_auxiliary, direct_readout,
-                      eval_train_options, model_ptr->optimizer_step_index());
+              channel_context_mdn_train_detail::record_scheduled_objective(
+                  step, step.nll, edge_auxiliary, direct_readout,
+                  eval_train_options, model_ptr->optimizer_step_index());
           step.sigma_mean =
               out.sigma.mean().to(torch::kCPU).template item<double>();
           step.sigma_min =

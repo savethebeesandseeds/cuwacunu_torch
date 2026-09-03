@@ -16,7 +16,7 @@ namespace {
 
 struct options_t {
   std::string bind_address{"127.0.0.1"};
-  std::uint16_t port{8765U};
+  std::uint16_t port{4872U};
   std::filesystem::path repo_root;
   std::size_t max_requests{0U};
   bool repo_root_set{false};
@@ -129,7 +129,7 @@ void print_usage(std::ostream &output) {
          << "\n"
          << "Options:\n"
          << "  --bind ADDRESS       Numeric bind address (default: 127.0.0.1)\n"
-         << "  --port PORT          TCP port in [1,65535] (default: 8765)\n"
+         << "  --port PORT          TCP port in [1,65535] (default: 4872)\n"
          << "  --repo-root PATH     Cuwacunu repository root (otherwise "
             "discovered)\n"
          << "  --validate-only      Validate all inputs/assets, then exit\n"

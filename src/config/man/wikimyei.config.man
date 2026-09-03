@@ -8,6 +8,28 @@ construction. Conventional grammar paths are derived from the paired data paths
 under `src/config/grammar`; author explicit `*_bnf_path` keys only for
 nonstandard grammar overrides.
 
+## MTF-JEPA-MAE-VICReg Representation
+
+- `wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path`
+  - Default grammar:
+    `grammar/wikimyei.representation.mtf_jepa_mae_vicreg.dsl.bnf`.
+  - Component contract for the representation selected by active protocol
+    `cwu_02v`.
+  - `SERVING_POOL_POLICY` is `all_tokens`, `time_only`, `frequency_only`,
+    `domain_balanced`, the complete-block `structured_cdsb_v1`, or the
+    partial-mask `structured_cdsb_sparse_v1` policy. The default, checked-in
+    active value, and legacy fallback are `all_tokens`.
+    Domain-balanced serving equally weights the valid per-channel domain means,
+    rather than weighting domains by token count. Structured CDSB preserves
+    channel/domain/scale/coarse-position structure in the frozen
+    3-channel/72-token/32-wide layout. The sparse policy completes unsupported
+    positions from the neutral mean of their own domain/scale group and is
+    exactly v1 on complete rows. Frequency-only, domain-balanced, and structured
+    serving require frequency tokens.
+  - The policy changes the downstream representation reduction, is included in
+    protocol identity, and is persisted in new MDN checkpoint identity. It does
+    not change representation weights or training objectives.
+
 ## Observer Belief
 
 - `wikimyei_observer_belief_dsl_path`

@@ -143,10 +143,10 @@ void test_vicreg_weak_view_controls_and_rng_parity() {
   check(torch::equal(current_next, neutral_next),
         "disabled VICReg weak-view effects changed the RNG schedule");
 
-  auto default_tokens = mtf::TimeFrequencyViewBuilder(config)->forward(
-      input, feature_mask);
-  auto disabled_tokens = mtf::TimeFrequencyViewBuilder(disabled)->forward(
-      input, feature_mask);
+  auto default_tokens =
+      mtf::TimeFrequencyViewBuilder(config)->forward(input, feature_mask);
+  auto disabled_tokens =
+      mtf::TimeFrequencyViewBuilder(disabled)->forward(input, feature_mask);
   torch::manual_seed(91);
   const auto default_masks =
       mtf::JEPAContextTargetMasker(config).create_masks(default_tokens);
@@ -154,8 +154,7 @@ void test_vicreg_weak_view_controls_and_rng_parity() {
   const auto disabled_masks =
       mtf::JEPAContextTargetMasker(disabled).create_masks(disabled_tokens);
   check(torch::equal(default_masks.context_mask, disabled_masks.context_mask) &&
-            torch::equal(default_masks.target_mask,
-                         disabled_masks.target_mask),
+            torch::equal(default_masks.target_mask, disabled_masks.target_mask),
         "VICReg weak-view controls changed primary JEPA masking");
 
   auto invalid_noise = config;
@@ -404,6 +403,90 @@ void test_forward_pass_and_encode() {
             torch::IntArrayRef({4, cfg.channel_count}),
         "encode returns channel validity mask");
   check(finite_tensor(enc.pooled_embedding), "encode pooled embedding finite");
+}
+
+void test_serving_pool_policies() {
+  mtf::mtf_jepa_mae_vicreg_config_t cfg{};
+  cfg.channel_count = 2;
+  cfg.use_frequency_tokens = true;
+
+  mtf::mtf_jepa_mae_vicreg_encode_output_t encoded{};
+  encoded.embeddings = torch::tensor({{{2.0, 4.0},
+                                       {4.0, 6.0},
+                                       {12.0, 20.0},
+                                       {6.0, 8.0},
+                                       {14.0, 16.0},
+                                       {18.0, 20.0}}},
+                                     torch::kFloat32);
+  encoded.token_mask = torch::ones({1, 6}, torch::kBool);
+  encoded.metadata.channel_id =
+      torch::tensor({0, 0, 0, 1, 1, 1}, torch::kInt64);
+  encoded.metadata.domain_id = torch::tensor({0, 0, 1, 0, 1, 1}, torch::kInt64);
+  encoded.pooled_by_channel = mtf::detail::pooled_by_channel(
+      encoded.embeddings, encoded.token_mask, encoded.metadata, cfg);
+  encoded.channel_valid_mask = mtf::detail::channel_valid_mask(
+      encoded.metadata, encoded.token_mask, cfg);
+
+  const auto all = mtf::select_mtf_serving_pool(
+      encoded, mtf::mtf_serving_pool_policy_t::all_tokens, cfg);
+  const auto time = mtf::select_mtf_serving_pool(
+      encoded, mtf::mtf_serving_pool_policy_t::time_only, cfg);
+  const auto frequency = mtf::select_mtf_serving_pool(
+      encoded, mtf::mtf_serving_pool_policy_t::frequency_only, cfg);
+  const auto balanced = mtf::select_mtf_serving_pool(
+      encoded, mtf::mtf_serving_pool_policy_t::domain_balanced, cfg);
+
+  check(torch::equal(all.values, encoded.pooled_by_channel),
+        "all-token serving changed the existing pooled tensor");
+  check(torch::equal(all.valid_mask, encoded.channel_valid_mask),
+        "all-token serving changed the existing validity mask");
+  check(torch::allclose(time.values, torch::tensor({{{3.0, 5.0}, {6.0, 8.0}}},
+                                                   torch::kFloat32)),
+        "time-only serving pool is incorrect");
+  check(torch::allclose(
+            frequency.values,
+            torch::tensor({{{12.0, 20.0}, {16.0, 18.0}}}, torch::kFloat32)),
+        "frequency-only serving pool is incorrect");
+  check(torch::allclose(
+            balanced.values,
+            torch::tensor({{{7.5, 12.5}, {11.0, 13.0}}}, torch::kFloat32)),
+        "domain-balanced serving does not equally weight domain means");
+  check(time.valid_mask.all().item<bool>() &&
+            frequency.valid_mask.all().item<bool>() &&
+            balanced.valid_mask.all().item<bool>(),
+        "valid serving domains were marked invalid");
+
+  auto partial = encoded;
+  partial.token_mask =
+      torch::tensor({{true, true, true, true, false, false}}, torch::kBool);
+  partial.pooled_by_channel = mtf::detail::pooled_by_channel(
+      partial.embeddings, partial.token_mask, partial.metadata, cfg);
+  partial.channel_valid_mask = mtf::detail::channel_valid_mask(
+      partial.metadata, partial.token_mask, cfg);
+  const auto partial_frequency = mtf::select_mtf_serving_pool(
+      partial, mtf::mtf_serving_pool_policy_t::frequency_only, cfg);
+  const auto partial_balanced = mtf::select_mtf_serving_pool(
+      partial, mtf::mtf_serving_pool_policy_t::domain_balanced, cfg);
+  check(!partial_frequency.valid_mask.index({0, 1}).item<bool>(),
+        "missing frequency domain was marked valid");
+  check(partial_frequency.values.index({0, 1}).eq(0).all().item<bool>(),
+        "missing frequency domain did not produce a zero value");
+  check(partial_balanced.valid_mask.index({0, 1}).item<bool>() &&
+            torch::allclose(partial_balanced.values.index({0, 1}),
+                            torch::tensor({6.0, 8.0}, torch::kFloat32)),
+        "domain-balanced serving did not fall back to its valid domain");
+
+  auto invalid = cfg;
+  invalid.use_frequency_tokens = false;
+  invalid.serving_pool_policy = mtf::mtf_serving_pool_policy_t::domain_balanced;
+  bool rejected = false;
+  try {
+    mtf::detail::validate_architecture_config(invalid);
+  } catch (const std::runtime_error &) {
+    rejected = true;
+  }
+  check(rejected,
+        "domain-balanced serving accepted a frequency-free architecture");
 }
 
 void test_backward_pass() {
@@ -826,6 +909,7 @@ int main() {
   test_frequency_tokenizer_shape();
   test_masker_correctness();
   test_forward_pass_and_encode();
+  test_serving_pool_policies();
   test_backward_pass();
   test_branch_switches();
   test_multichannel_encode();

@@ -558,7 +558,7 @@ private:
 
 struct iinuji_http_server_config_t {
   std::string bind_address{"127.0.0.1"};
-  std::uint16_t port{8765U};
+  std::uint16_t port{4872U};
   std::size_t max_requests{0U};
 };
 

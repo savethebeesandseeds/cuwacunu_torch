@@ -29,26 +29,26 @@ a listening socket.
 
 ## Run
 
-For access from the host browser, the container must have TCP port `8765`
+For access from the host browser, the container must have TCP port `4872`
 published when it is created, and the server must listen on the container's
 non-loopback interface. Check the current mapping from PowerShell:
 
 ```powershell
-docker port unnamed_taoist 8765/tcp
+docker port unnamed_taoist 4872/tcp
 ```
 
 If no mapping is printed, Docker cannot add one to the already-running
-container. Recreate `unnamed_taoist` through the project's existing launcher
-with the equivalent of `127.0.0.1:8765:8765` added to its port configuration;
-keep the host side loopback-only.
+container. Recreate `unnamed_taoist` through the root README instructions with
+`127.0.0.1:4872:4872` in its port configuration; keep the host side
+loopback-only.
 
 With the port published, run:
 
 ```powershell
-docker exec unnamed_taoist bash -lc "cd /cuwacunu && make -C src/main/interface run-iinuji-html IINUJI_HTML_BIND=0.0.0.0 IINUJI_HTML_PORT=8765"
+docker exec unnamed_taoist bash -lc "cd /cuwacunu && make -C src/main/interface run-iinuji-html IINUJI_HTML_BIND=0.0.0.0 IINUJI_HTML_PORT=4872"
 ```
 
-Then open `http://127.0.0.1:8765/`. The server stays in the foreground and can
+Then open `http://127.0.0.1:4872/`. The server stays in the foreground and can
 be stopped with `Ctrl+C`. For an in-container-only check, leave the default bind
 address (`127.0.0.1`) and request the routes from inside the container.
 

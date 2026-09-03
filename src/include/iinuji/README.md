@@ -56,6 +56,6 @@ make -C src/main/interface AUTO_PREP=0 build-iinuji-html
 make -C src/main/interface AUTO_PREP=0 validate-iinuji-html
 ```
 
-The default server binds to `127.0.0.1:8765`. The API omits the benchmark test
+The default server binds to `127.0.0.1:4872`. The API omits the benchmark test
 holdout and accepts only the known instrument and interval identifiers. See
 [`html/README.md`](./html/README.md) for routes and Docker browser access.

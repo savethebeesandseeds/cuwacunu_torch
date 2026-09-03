@@ -147,11 +147,18 @@ std::string replace_first(std::string text, const std::string &from,
 }
 
 void test_runtime_checkpoint_inputs_do_not_change_protocol_contract_identity() {
+  namespace mtf =
+      cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg;
   namespace protocol = cuwacunu::kikijyeba::protocol;
 
   const auto bundle =
       protocol::load_channel_graph_first_config_bundle_from_config(
           "/cuwacunu/src/config/.config");
+  if (bundle.mtf_jepa_mae_vicreg.config.serving_pool_policy !=
+      mtf::mtf_serving_pool_policy_t::all_tokens) {
+    throw std::runtime_error(
+        "checked-in channel protocol no longer uses all_tokens serving");
+  }
   const auto base_fingerprint =
       protocol::channel_graph_first_protocol_contract_fingerprint(bundle);
   if (base_fingerprint.empty()) {
@@ -194,6 +201,59 @@ void test_runtime_checkpoint_inputs_do_not_change_protocol_contract_identity() {
     throw std::runtime_error(
         "VICReg weak-view control did not change protocol contract "
         "fingerprint");
+  }
+
+  auto time_only_bundle = bundle;
+  time_only_bundle.mtf_jepa_mae_vicreg.config.serving_pool_policy =
+      mtf::mtf_serving_pool_policy_t::time_only;
+  const auto time_only_fingerprint =
+      protocol::channel_graph_first_protocol_contract_fingerprint(
+          time_only_bundle);
+  if (time_only_fingerprint == base_fingerprint) {
+    throw std::runtime_error(
+        "MTF serving pool policy did not change protocol contract "
+        "fingerprint");
+  }
+
+  auto structured_bundle = bundle;
+  structured_bundle.mtf_jepa_mae_vicreg.config.serving_pool_policy =
+      mtf::mtf_serving_pool_policy_t::structured_cdsb_v1;
+  protocol::validate_channel_graph_first_config_bundle(structured_bundle);
+  const auto structured_fingerprint =
+      protocol::channel_graph_first_protocol_contract_fingerprint(
+          structured_bundle);
+  if (structured_fingerprint == base_fingerprint ||
+      structured_fingerprint == time_only_fingerprint) {
+    throw std::runtime_error(
+        "structured_cdsb_v1 does not have a distinct protocol contract "
+        "fingerprint");
+  }
+  if (std::string(mtf::mtf_serving_pool_policy_name(
+          structured_bundle.mtf_jepa_mae_vicreg.config.serving_pool_policy)) !=
+      "structured_cdsb_v1") {
+    throw std::runtime_error(
+        "structured_cdsb_v1 protocol policy name is not exact");
+  }
+
+  auto sparse_bundle = bundle;
+  sparse_bundle.mtf_jepa_mae_vicreg.config.serving_pool_policy =
+      mtf::mtf_serving_pool_policy_t::structured_cdsb_sparse_v1;
+  protocol::validate_channel_graph_first_config_bundle(sparse_bundle);
+  const auto sparse_fingerprint =
+      protocol::channel_graph_first_protocol_contract_fingerprint(
+          sparse_bundle);
+  if (sparse_fingerprint == base_fingerprint ||
+      sparse_fingerprint == time_only_fingerprint ||
+      sparse_fingerprint == structured_fingerprint) {
+    throw std::runtime_error(
+        "structured_cdsb_sparse_v1 does not have a distinct protocol "
+        "contract fingerprint");
+  }
+  if (std::string(mtf::mtf_serving_pool_policy_name(
+          sparse_bundle.mtf_jepa_mae_vicreg.config.serving_pool_policy)) !=
+      "structured_cdsb_sparse_v1") {
+    throw std::runtime_error(
+        "structured_cdsb_sparse_v1 protocol policy name is not exact");
   }
 }
 
@@ -569,6 +629,56 @@ void test_channel_specs_decode_and_validate() {
       "authored no-lookahead contract digest");
   const auto mtf_spec = mtf::decode_mtf_jepa_mae_vicreg_spec_from_split_dsl(
       mtf_dsl_text, mtf_net_text);
+  if (mtf_dsl_text.find("  SERVING_POOL_POLICY = all_tokens;\n") ==
+      std::string::npos) {
+    throw std::runtime_error(
+        "checked-in active MTF DSL does not explicitly select all_tokens");
+  }
+  if (mtf_spec.config.serving_pool_policy !=
+      mtf::mtf_serving_pool_policy_t::all_tokens) {
+    throw std::runtime_error(
+        "canonical MTF serving pool policy is not all_tokens");
+  }
+  const auto legacy_mtf_spec =
+      mtf::decode_mtf_jepa_mae_vicreg_spec_from_split_dsl(
+          replace_first(mtf_dsl_text, "  SERVING_POOL_POLICY = all_tokens;\n",
+                        ""),
+          mtf_net_text);
+  if (legacy_mtf_spec.config.serving_pool_policy !=
+      mtf::mtf_serving_pool_policy_t::all_tokens) {
+    throw std::runtime_error(
+        "legacy MTF DSL did not default to all_tokens serving");
+  }
+  const std::array<std::pair<std::string, mtf::mtf_serving_pool_policy_t>, 5>
+      alternate_policies{{
+          {"time_only", mtf::mtf_serving_pool_policy_t::time_only},
+          {"frequency_only", mtf::mtf_serving_pool_policy_t::frequency_only},
+          {"domain_balanced",
+           mtf::mtf_serving_pool_policy_t::domain_balanced},
+          {"structured_cdsb_v1",
+           mtf::mtf_serving_pool_policy_t::structured_cdsb_v1},
+          {"structured_cdsb_sparse_v1",
+           mtf::mtf_serving_pool_policy_t::structured_cdsb_sparse_v1},
+      }};
+  for (const auto &[policy, expected_policy] : alternate_policies) {
+    const auto candidate = mtf::decode_mtf_jepa_mae_vicreg_spec_from_split_dsl(
+        replace_first(mtf_dsl_text, "  SERVING_POOL_POLICY = all_tokens;\n",
+                      "  SERVING_POOL_POLICY = " + policy + ";\n"),
+        mtf_net_text);
+    if (candidate.config.serving_pool_policy != expected_policy ||
+        std::string(mtf::mtf_serving_pool_policy_name(
+            candidate.config.serving_pool_policy)) != policy) {
+      throw std::runtime_error("MTF serving pool policy decoded incorrectly");
+    }
+  }
+  expect_throw(
+      [&] {
+        (void)mtf::decode_mtf_jepa_mae_vicreg_spec_from_split_dsl(
+            replace_first(mtf_dsl_text, "  SERVING_POOL_POLICY = all_tokens;\n",
+                          "  SERVING_POOL_POLICY = invalid;\n"),
+            mtf_net_text);
+      },
+      "invalid MTF serving pool policy");
   const auto mdn_spec =
       mdn::decode_channel_mdn_spec_from_split_dsl(mdn_dsl_text, mdn_net_text);
   const auto belief_spec =
@@ -690,18 +800,16 @@ void test_channel_specs_decode_and_validate() {
       training::decode_training_run_spec_from_dsl(
           replace_first(
               replace_first(mtf_training_text,
-                            "  VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.005;\n",
-                            ""),
+                            "  VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.005;\n", ""),
               "  VICREG_VIEW_TIME_DROPOUT_SCALE = 0.10;\n", ""),
           mtf_training_defaults);
   const auto mtf_training_weak_views_off =
       training::decode_training_run_spec_from_dsl(
-          replace_first(
-              replace_first(mtf_training_text,
-                            "VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.005",
-                            "VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.0"),
-              "VICREG_VIEW_TIME_DROPOUT_SCALE = 0.10",
-              "VICREG_VIEW_TIME_DROPOUT_SCALE = 0.0"),
+          replace_first(replace_first(mtf_training_text,
+                                      "VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.005",
+                                      "VICREG_VIEW_GAUSSIAN_JITTER_STD = 0.0"),
+                        "VICREG_VIEW_TIME_DROPOUT_SCALE = 0.10",
+                        "VICREG_VIEW_TIME_DROPOUT_SCALE = 0.0"),
           mtf_training_defaults);
   const auto mdn_training = training::decode_training_run_spec_from_dsl(
       read_text(paths.at("wikimyei_inference_expected_value_mdn_jkimyei_path")),
@@ -896,8 +1004,7 @@ void test_channel_specs_decode_and_validate() {
       mtf_training.freeze_representation ||
       mtf_training.mtf_jepa_mae_vicreg.vicreg_view_gaussian_jitter_std !=
           0.005 ||
-      mtf_training.mtf_jepa_mae_vicreg.vicreg_view_time_dropout_scale !=
-          0.10) {
+      mtf_training.mtf_jepa_mae_vicreg.vicreg_view_time_dropout_scale != 0.10) {
     throw std::runtime_error("MTF-JEPA-MAE-VICReg training spec mismatch");
   }
   if (mtf_training_legacy_defaults.mtf_jepa_mae_vicreg

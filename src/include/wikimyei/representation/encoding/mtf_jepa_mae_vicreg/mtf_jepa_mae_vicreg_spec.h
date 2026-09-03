@@ -42,6 +42,31 @@ parse_input_route(std::string value) {
                            value);
 }
 
+[[nodiscard]] inline mtf_serving_pool_policy_t
+parse_serving_pool_policy(std::string value) {
+  value = kv::lowercase(kv::trim(value));
+  if (value == "all_tokens") {
+    return mtf_serving_pool_policy_t::all_tokens;
+  }
+  if (value == "time_only") {
+    return mtf_serving_pool_policy_t::time_only;
+  }
+  if (value == "frequency_only") {
+    return mtf_serving_pool_policy_t::frequency_only;
+  }
+  if (value == "domain_balanced") {
+    return mtf_serving_pool_policy_t::domain_balanced;
+  }
+  if (value == "structured_cdsb_v1") {
+    return mtf_serving_pool_policy_t::structured_cdsb_v1;
+  }
+  if (value == "structured_cdsb_sparse_v1") {
+    return mtf_serving_pool_policy_t::structured_cdsb_sparse_v1;
+  }
+  throw std::runtime_error(
+      "[mtf_jepa_mae_vicreg_spec] invalid SERVING_POOL_POLICY: " + value);
+}
+
 [[nodiscard]] inline bool valid_dtype(std::string value) {
   value = kv::lowercase(kv::trim(value));
   return value == "float32" || value == "float64";
@@ -157,6 +182,8 @@ decode_mtf_jepa_mae_vicreg_spec_from_split_dsl(const std::string &dsl_text,
   spec.config.history_length =
       kv::parse_i64(kv::required(block, "HISTORY_LENGTH"));
   spec.config.input_width = kv::parse_i64(kv::required(block, "INPUT_WIDTH"));
+  spec.config.serving_pool_policy = detail::parse_serving_pool_policy(
+      kv::optional(block, "SERVING_POOL_POLICY", "all_tokens"));
   const auto dtype = kv::required(block, "DTYPE");
   const auto device = kv::required(block, "DEVICE");
   if (!detail::valid_dtype(dtype)) {

@@ -1,10 +1,10 @@
 /*
   wikimyei.representation.mtf_jepa_mae_vicreg.dsl
   =================================================
-  Separate experimental MTF-JEPA-MAE-VICReg representation component settings.
+  Active cwu_02v MTF-JEPA-MAE-VICReg representation component settings.
 
-  This path is representation-only. It does not replace the production
-  channel-preserving VICReg path and does not emit downstream forecast claims.
+  SERVING_POOL_POLICY changes only the reduction exposed to downstream
+  inference. It does not change representation weights or training objectives.
 */
 MTF_JEPA_MAE_VICREG {
   VERSION = wikimyei.representation.mtf_jepa_mae_vicreg.v1;
@@ -13,6 +13,7 @@ MTF_JEPA_MAE_VICREG {
   CHANNEL_COUNT = 3;
   HISTORY_LENGTH = 30;
   INPUT_WIDTH = 9;
+  SERVING_POOL_POLICY = all_tokens;
 
   DTYPE = float32;
   DEVICE = cuda;
