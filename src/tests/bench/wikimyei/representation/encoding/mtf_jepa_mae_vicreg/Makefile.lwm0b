@@ -1,0 +1,17 @@
+include Makefile.lwm0a
+.DEFAULT_GOAL := lwm0b
+LWM0B_NAME := quality_wikimyei_mtf_jepa_mae_vicreg_temporal_spread_floor
+LWM0B_BINARY := $(TEST_OUT)/$(LWM0B_NAME)
+LWM0B_RETAINED := $(TEST_OUT)/lwm0a/retained_lwm0a.cpp
+LWM0B_ORIGINAL := $(HERE_PATH)/quality_wikimyei_mtf_jepa_mae_vicreg_family_direction_attribution.cpp
+$(LWM0B_RETAINED): $(LWM0B_ORIGINAL) $(HERE_PATH)/Makefile.lwm0b
+	@printf '%s  %s\n' 'fa1c141c3660fe67310b7811da9fe53d7aa94b57d5082a438009293227d89dd3' '$(LWM0B_ORIGINAL)' | sha256sum -c - >/dev/null
+	@mkdir -p $(@D)
+	@sed 's/^int main() {/int lwm0a_retained_main() {/' $(LWM0B_ORIGINAL) > $@
+$(eval $(call TEST_ONEFILE,$(LWM0B_NAME),$(LWM0B_NAME).cpp,$(GPV1_LDLIBS_EXTRA)))
+$(LWM0B_BINARY): INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) -I$(HERE_PATH) -I$(TEST_OUT)/lwm0a
+$(LWM0B_BINARY): $(LWM0A_RETAINED) $(LWM0B_RETAINED) $(HERE_PATH)/lwm0b_spread_floor.h $(HERE_PATH)/Makefile.lwm0b
+.PHONY: lwm0b run-lwm0b
+lwm0b: $(LWM0B_BINARY)
+run-lwm0b: lwm0b
+	cd $(SRC_ROOT)/.. && $(LWM0B_BINARY)

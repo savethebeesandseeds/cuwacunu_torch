@@ -1,0 +1,12 @@
+# Explicit zero-encoder-update temporal compatibility audit.
+include Makefile
+.DEFAULT_GOAL := lwm0
+LWM0_NAME := quality_wikimyei_mtf_jepa_mae_vicreg_causal_online_target
+LWM0_BINARY := $(TEST_OUT)/$(LWM0_NAME)
+$(eval $(call TEST_ONEFILE,$(LWM0_NAME),$(LWM0_NAME).cpp,$(GPV1_LDLIBS_EXTRA)))
+$(LWM0_BINARY): INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(LWM0_BINARY): $(HERE_PATH)/Makefile.lwm0 $(HERE_PATH)/lwm0_sigreg.h
+.PHONY: lwm0 run-lwm0
+lwm0: $(LWM0_BINARY)
+run-lwm0: lwm0
+	cd $(SRC_ROOT)/.. && $(LWM0_BINARY)

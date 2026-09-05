@@ -1,0 +1,12 @@
+# Opt-in zero-update audit. Existing experiment targets/defaults stay intact.
+include Makefile
+.DEFAULT_GOAL := lsa0
+LSA0_NAME := quality_wikimyei_mtf_jepa_mae_vicreg_covariance_admission
+LSA0_BINARY := $(TEST_OUT)/$(LSA0_NAME)
+$(eval $(call TEST_ONEFILE,$(LSA0_NAME),$(LSA0_NAME).cpp,$(GPV1_LDLIBS_EXTRA)))
+$(LSA0_BINARY): INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+$(LSA0_BINARY): $(HERE_PATH)/Makefile.lsa0
+.PHONY: lsa0 run-lsa0
+lsa0: $(LSA0_BINARY)
+run-lsa0: lsa0
+	cd $(SRC_ROOT)/.. && $(LSA0_BINARY)

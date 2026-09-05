@@ -1,0 +1,17 @@
+include Makefile
+.DEFAULT_GOAL := lwm0a
+LWM0A_NAME := quality_wikimyei_mtf_jepa_mae_vicreg_family_direction_attribution
+LWM0A_BINARY := $(TEST_OUT)/$(LWM0A_NAME)
+LWM0A_RETAINED := $(TEST_OUT)/lwm0a/retained_lwm0.cpp
+LWM0A_ORIGINAL := $(HERE_PATH)/quality_wikimyei_mtf_jepa_mae_vicreg_causal_online_target.cpp
+$(LWM0A_RETAINED): $(LWM0A_ORIGINAL) $(HERE_PATH)/Makefile.lwm0a
+	@printf '%s  %s\n' '16ffb9acdb144f5be7e415ccb5e0ce9f78db7305acf1ab28b791d5adfe6925c1' '$(LWM0A_ORIGINAL)' | sha256sum -c - >/dev/null
+	@mkdir -p $(@D)
+	@sed 's/^int main() {/int lwm0_retained_main() {/' $(LWM0A_ORIGINAL) > $@
+$(eval $(call TEST_ONEFILE,$(LWM0A_NAME),$(LWM0A_NAME).cpp,$(GPV1_LDLIBS_EXTRA)))
+$(LWM0A_BINARY): INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS) -I$(HERE_PATH) -I$(TEST_OUT)/lwm0a
+$(LWM0A_BINARY): $(LWM0A_RETAINED) $(HERE_PATH)/Makefile.lwm0a
+.PHONY: lwm0a run-lwm0a
+lwm0a: $(LWM0A_BINARY)
+run-lwm0a: lwm0a
+	cd $(SRC_ROOT)/.. && $(LWM0A_BINARY)
