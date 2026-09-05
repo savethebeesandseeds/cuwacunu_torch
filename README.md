@@ -1,3 +1,5 @@
+> **Project on hold:** Development of this project has stopped due to a lack of funds.
+
 # Cuwacunu
 An artificial intelligence agent for portfolio management.
 
